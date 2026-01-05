@@ -711,9 +711,6 @@ class TeensyControlGUI(QMainWindow):
         command = format_command(self.get_current_axis(), "GET_DATA")
         self.send_command(command, "Sent axis status query")
 
-    def query_position(self):
-        self.send_command(command, "Sent position query")
-
     def refresh_all_axes_status(self):
         if self.is_connected():
             # 使用互斥锁防止并发
