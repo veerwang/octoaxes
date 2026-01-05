@@ -1,22 +1,24 @@
 #include "axis.h"
-#include <SPI.h>
 #include "build_opt.h"
+#include <SPI.h>
 
 static inline int sgn(int val) {
-  if (val < 0) return -1;
-  if (val == 0) return 0;
+  if (val < 0)
+    return -1;
+  if (val == 0)
+    return 0;
   return 1;
 }
 
 // 构造函数
-Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char* axisName) 
-  : _csPin(csPin), _axisIndex(axisIndex), _axisName(axisName) {
-  
+Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char *axisName)
+    : _csPin(csPin), _axisIndex(axisIndex), _axisName(axisName) {
+
   _currentState = STATE_IDLE;
   _previousState = STATE_IDLE;
   _stateStartTime = 0;
   _homeFound = false;
-  
+
   _maxVelocityMicrosteps = 0;
   _maxAccelerationMicrosteps = 0;
 
@@ -29,60 +31,63 @@ Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char* axisName)
   _isMoving = false;
   _lastPosition = 0;
   _moveDirection = 0;
-  
+
   // 初始化配置结构体
   memset(&_config, 0, sizeof(_config));
 }
 
 // 初始化函数
-bool Axis::begin(const AxisConfig& config) {
+bool Axis::begin(const AxisConfig &config) {
   _config = config;
 
   // HOME timeout ms
   _homing_timeout_ms = _config.homing_timeout_ms;
-  
+
   // 配置CS引脚
   pinMode(_csPin, OUTPUT);
   digitalWrite(_csPin, HIGH);
-  
+
   // 初始化TMC4361A
-  tmc4361A_init(&_tmc4361, _csPin, &_tmc4361Config, tmc4361A_defaultRegisterResetState);
+  tmc4361A_init(&_tmc4361, _csPin, &_tmc4361Config,
+                tmc4361A_defaultRegisterResetState);
 
   // 配置电机参数
-  tmc4361A_tmc2660_config(&_tmc4361, 
-    (_config.motorCurrentMA / 1000) * _config.r_sense / 0.2298, 
-    _config.holdCurrent, 
-    1, 1, 1, 
-    _config.screwPitchMM, 
-    _config.fullStepsPerRev, 
-    _config.microstepping);
+  tmc4361A_tmc2660_config(
+      &_tmc4361, (_config.motorCurrentMA / 1000) * _config.r_sense / 0.2298,
+      _config.holdCurrent, 1, 1, 1, _config.screwPitchMM,
+      _config.fullStepsPerRev, _config.microstepping);
 
   // 初始化TMC4361和TMC2660
   tmc4361A_tmc2660_init(&_tmc4361, _config.clockFrequency);
-  
+
   // 设置运动参数
   setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
 
   // 初始化斜坡参数
   initializeRamp();
-  
+
   // 使能限位开关读取
-	if (_config.enableLeftLimitSwitch)
-  	tmc4361A_enableLimitSwitch(&_tmc4361, _config.leftSwitchPolarity, LEFT_SW, _config.leftFlipped, _config.leftIsInactive);
-	if (_config.enableRightLimitSwitch)
-  	tmc4361A_enableLimitSwitch(&_tmc4361, _config.rightSwitchPolarity, RGHT_SW, _config.rightFlipped, _config.rightIsInactive);
+  if (_config.enableLeftLimitSwitch)
+    tmc4361A_enableLimitSwitch(&_tmc4361, _config.leftSwitchPolarity, LEFT_SW,
+                               _config.leftFlipped, _config.leftIsInactive);
+  if (_config.enableRightLimitSwitch)
+    tmc4361A_enableLimitSwitch(&_tmc4361, _config.rightSwitchPolarity, RGHT_SW,
+                               _config.rightFlipped, _config.rightIsInactive);
 
   // 使能归位限位
-  tmc4361A_enableHomingLimit(&_tmc4361, _config.rightSwitchPolarity, _config.homingSwitch, mmToMicrosteps(_config.homeSafetyMarginMM));
-  
+  tmc4361A_enableHomingLimit(&_tmc4361, _config.rightSwitchPolarity,
+                             _config.homingSwitch,
+                             mmToMicrosteps(_config.homeSafetyMarginMM));
+
   // 禁用虚拟限位开关（初始状态）
-	enableSoftLimits(false);
-  
+  enableSoftLimits(false);
+
   // 禁用PID
   tmc4361A_set_PID(&_tmc4361, PID_DISABLE);
-  
+
   if (_config.enableStallSensitivity)
-    tmc4361A_config_init_stallGuard(&_tmc4361, _config.stallSensitivity, true, 1);
+    tmc4361A_config_init_stallGuard(&_tmc4361, _config.stallSensitivity, true,
+                                    1);
 
   // 默认使能轴
   enableAxis();
@@ -94,7 +99,7 @@ bool Axis::begin(const AxisConfig& config) {
 void Axis::setMotionParameters(float maxVelocityMM, float maxAccelerationMM) {
   _maxVelocityMicrosteps = velocityMMToMicrosteps(maxVelocityMM);
   _maxAccelerationMicrosteps = accelerationMMToMicrosteps(maxAccelerationMM);
-  
+
   tmc4361A_setMaxSpeed(&_tmc4361, _maxVelocityMicrosteps);
   tmc4361A_setMaxAcceleration(&_tmc4361, _maxAccelerationMicrosteps);
 }
@@ -105,44 +110,42 @@ void Axis::update() {
   AxisState oldState = _currentState;
 
   switch (_currentState) {
-    case STATE_HOMING_INIT:
-    case STATE_HOMING_SEARCH:
-    case STATE_HOMING_SET_ZERO:
-      performHomingSequence();
-      break;
-      
-    case STATE_LEAVING_HOME:
-      performLeavingHome();
-      break;
+  case STATE_HOMING_INIT:
+  case STATE_HOMING_SEARCH:
+  case STATE_HOMING_SET_ZERO:
+    performHomingSequence();
+    break;
 
-    case STATE_MOVING:
-			{
-				checkMovementComplete();
+  case STATE_LEAVING_HOME:
+    performLeavingHome();
+    break;
 
-				// 极限状态检测 
-				checkLimitPosition();
+  case STATE_MOVING: {
+    checkMovementComplete();
 
-				// 移动状态下的超时检查
-				if (checkTimeout(MOVEMENT_TIMEOUT_MS)) {
-					handleError("Movement timeout");
-				}
-			}
-      break;
-      
-    case STATE_IDLE:
-      // 空闲状态不需要特殊处理
-      break;
-      
-    case STATE_ERROR:
-      // 错误状态需要外部干预
-      break;
+    // 极限状态检测
+    checkLimitPosition();
+
+    // 移动状态下的超时检查
+    if (checkTimeout(MOVEMENT_TIMEOUT_MS)) {
+      handleError("Movement timeout");
+    }
+  } break;
+
+  case STATE_IDLE:
+    // 空闲状态不需要特殊处理
+    break;
+
+  case STATE_ERROR:
+    // 错误状态需要外部干预
+    break;
   }
 
   // 检查状态是否发生变化
   if (oldState != _currentState) {
     _stateChanged = true;
   }
-  
+
   // 上报状态变化（如果需要）
   reportStateIfChanged();
 }
@@ -151,7 +154,7 @@ void Axis::update() {
 void Axis::reportStateIfChanged(bool force) {
   // 检查是否需要上报
   bool shouldReport = false;
-  
+
   if (force) {
     // 强制上报
     shouldReport = true;
@@ -159,13 +162,13 @@ void Axis::reportStateIfChanged(bool force) {
     // 状态发生变化
     shouldReport = true;
   } else if (_currentState == STATE_MOVING) {
-  } else if (_currentState == STATE_HOMING_INIT || 
-             _currentState == STATE_HOMING_SEARCH || 
-             _currentState == STATE_HOMING_SET_ZERO || 
+  } else if (_currentState == STATE_HOMING_INIT ||
+             _currentState == STATE_HOMING_SEARCH ||
+             _currentState == STATE_HOMING_SET_ZERO ||
              _currentState == STATE_LEAVING_HOME) {
   } else {
   }
-  
+
   if (shouldReport) {
     handleEmergency();
     _stateChanged = false;
@@ -178,47 +181,49 @@ void Axis::reportStateIfChanged(bool force) {
 void Axis::checkLimitPosition() {
   uint32_t event = readAxisEvent();
 
-	// 软件限位
-  uint32_t i_datagram = event & (TMC4361A_VSTOPL_ACTIVE_MASK | TMC4361A_VSTOPR_ACTIVE_MASK);
+  // 软件限位
+  uint32_t i_datagram =
+      event & (TMC4361A_VSTOPL_ACTIVE_MASK | TMC4361A_VSTOPR_ACTIVE_MASK);
   i_datagram >>= TMC4361A_VSTOPL_ACTIVE_SHIFT;
   uint8_t result = i_datagram & 0xff;
 
-	// 添加方向的内容
-	if ((result == RGHT_SW && _moveDirection == RGHT_DIR) || (result == LEFT_SW && _moveDirection == LEFT_DIR)) {
+  // 添加方向的内容
+  if ((result == RGHT_SW && _moveDirection == RGHT_DIR) ||
+      (result == LEFT_SW && _moveDirection == LEFT_DIR)) {
     DEBUG_PRINT("Software Limit Stop: ");
     DEBUG_PRINTLN(result);
     completeMovement();
-		return;
-	}
+    return;
+  }
 
-	// 硬件件限位
+  // 硬件件限位
   i_datagram = event & (TMC4361A_STOPL_EVENT_MASK | TMC4361A_STOPR_EVENT_MASK);
   i_datagram >>= TMC4361A_STOPL_EVENT_SHIFT;
   result = i_datagram & 0xff;
 
-	// 添加方向的内容
-	if ((result == RGHT_SW && _moveDirection == RGHT_DIR) || (result == LEFT_SW && _moveDirection == LEFT_DIR)) {
+  // 添加方向的内容
+  if ((result == RGHT_SW && _moveDirection == RGHT_DIR) ||
+      (result == LEFT_SW && _moveDirection == LEFT_DIR)) {
     DEBUG_PRINT("Hardware Limit Stop: ");
     DEBUG_PRINTLN(result);
     completeMovement();
-		return;
-	}
+    return;
+  }
 
-	// 判断是否是stall状态 
+  // 判断是否是stall状态
   if (event & 0x20000000) {
     DEBUG_PRINTLN("Axis Is Stop for Stalling");
     DEBUG_PRINTLNF(event, HEX);
+  } else {
+    if (event != 0) {
+      DEBUG_PRINT("Axis Event is not Zero: ");
+      DEBUG_PRINTLNF(event, HEX);
+    }
   }
-	else {
-		if (event != 0) {
-			DEBUG_PRINT("Axis Event is not Zero: ");
-			DEBUG_PRINTLNF(event, HEX);
-		}
-	}
 }
 
 // 命令处理
-bool Axis::processCommand(const String& command) {
+bool Axis::processCommand(const String &command) {
   if (command.startsWith("GET_POSITION")) {
     return handleGetPosition();
   } else if (command.startsWith("SET_LIMITS")) {
@@ -247,7 +252,7 @@ bool Axis::processCommand(const String& command) {
 
 // 命令处理辅助方法
 bool Axis::handleGetPosition() {
-	int32_t microsteps = getCurrentPosition();
+  int32_t microsteps = getCurrentPosition();
   float positionMM = microstepsToMM(microsteps);
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Current Position (mm):");
@@ -259,48 +264,47 @@ bool Axis::handleGetPosition() {
 }
 
 int32_t Axis::hexStringToInt32(String hex) {
-    char *endptr;
-    uint32_t value = strtoul(hex.c_str(), &endptr, 16);
-    return (int32_t)value;
+  char *endptr;
+  uint32_t value = strtoul(hex.c_str(), &endptr, 16);
+  return (int32_t)value;
 }
 
 bool Axis::moveAxis(int32_t value) {
-	float positionMM = float(value) / 1000.0f;
-	positionMM = 1 * positionMM;
+  float positionMM = float(value) / 1000.0f;
+  positionMM = 1 * positionMM;
 
-	_moveDirection = sgn(value);
+  _moveDirection = sgn(value);
 
   if (!moveRelative(positionMM)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":MOVE_AXIS ERROR: Movement failed");
     return false;
+  } else {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":MOVE_AXIS: ");
+    DEBUG_PRINTLNF(positionMM, 3);
   }
-	else {
-		DEBUG_PRINT(_axisName);
-		DEBUG_PRINT(":MOVE_AXIS: ");
-		DEBUG_PRINTLNF(positionMM, 3);
-	}
-	return true;
+  return true;
 }
 
-bool Axis::handleMoveAxis(const String& command) {
+bool Axis::handleMoveAxis(const String &command) {
   int space1 = command.indexOf(' ');
   int space2 = command.indexOf(' ', space1 + 1);
-  
+
   if (space1 == -1 || space2 == -1) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":MOVE_AXIS ERROR: Invalid format");
     return false;
   }
-	String dataType = command.substring(space1 + 1, space2);
-	String hexData = command.substring(space2 + 1);
+  String dataType = command.substring(space1 + 1, space2);
+  String hexData = command.substring(space2 + 1);
 
-	int32_t value = hexStringToInt32(hexData);
+  int32_t value = hexStringToInt32(hexData);
 
-	return moveAxis(value);
+  return moveAxis(value);
 }
 
-bool Axis::handleMoveToAxis(const String& command) {
+bool Axis::handleMoveToAxis(const String &command) {
   int space1 = command.indexOf(' ');
   int space2 = command.indexOf(' ', space1 + 1);
 
@@ -332,11 +336,12 @@ bool Axis::handleMoveToAxis(const String& command) {
 
 // 新增：移动状态检测函数
 void Axis::checkMovementComplete() {
-  if (!_isMoving) return;
-  
+  if (!_isMoving)
+    return;
+
   int32_t currentPos = tmc4361A_currentPosition(&_tmc4361);
   int32_t targetPos = tmc4361A_targetPosition(&_tmc4361);
-  
+
   // 检查是否到达目标位置
   if (currentPos == targetPos) {
     completeMovement();
@@ -357,7 +362,7 @@ void Axis::startMovement() {
 void Axis::completeMovement() {
   _isMoving = false;
   setState(STATE_IDLE);
-  
+
   // 可选：发送移动完成通知
   DEBUG_PRINT(_axisName);
   DEBUG_PRINTLN(":MOVEMENT_COMPLETED");
@@ -369,7 +374,7 @@ bool Axis::handleHoming() {
     DEBUG_PRINTLN(":HOMING ERROR: Already in progress or busy");
     return false;
   }
-  
+
   DEBUG_PRINT(_axisName);
   DEBUG_PRINTLN(":Received HOME command, starting homing process...");
   return true;
@@ -378,9 +383,9 @@ bool Axis::handleHoming() {
 bool Axis::handleReset() {
   _isMoving = false;
 
-	// 清除状态
-	readLimitSwitches();
-	readSwitchEvent();
+  // 清除状态
+  readLimitSwitches();
+  readSwitchEvent();
 
   setState(STATE_IDLE);
 
@@ -400,24 +405,24 @@ bool Axis::moveToPosition(float positionMM) {
     DEBUG_PRINTLN(_currentState);
     return false;
   }
-  
+
   if (!isValidPosition(positionMM)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Movement rejected: Invalid position");
     DEBUG_PRINTLN(positionMM);
     return false;
   }
-  
+
   int32_t microsteps = mmToMicrosteps(positionMM);
-  
+
   if (!isWithinSoftLimits(microsteps)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Movement rejected: Outside soft limits");
     return false;
   }
-  
+
   tmc4361A_moveTo(&_tmc4361, microsteps);
-  startMovement();  // 设置移动状态
+  startMovement(); // 设置移动状态
   return true;
 }
 
@@ -426,16 +431,16 @@ bool Axis::moveRelative(float distanceMM) {
   if (_currentState != STATE_IDLE) {
     return false;
   }
-  
+
   int32_t currentPos = tmc4361A_currentPosition(&_tmc4361);
   int32_t targetPos = currentPos + mmToMicrosteps(distanceMM);
-  
+
   if (!isWithinSoftLimits(targetPos)) {
     return false;
   }
 
   tmc4361A_moveTo(&_tmc4361, targetPos);
-  startMovement();  // 设置移动状态
+  startMovement(); // 设置移动状态
   return true;
 }
 
@@ -448,18 +453,18 @@ void Axis::setSpeed(float speedMM) {
 // 平滑停止
 void Axis::smoothStop() {
   tmc4361A_setSpeed(&_tmc4361, 0);
-  completeMovement();  // 停止移动状态
+  completeMovement(); // 停止移动状态
 }
 
 // 运动控制函数
 void Axis::disableAxis() {
   tmc4361A_tmc2660_disable_driver(&_tmc4361);
-  _isEnabled = false;  // 更新使能状态
+  _isEnabled = false; // 更新使能状态
 }
 
 void Axis::enableAxis() {
   tmc4361A_tmc2660_enable_driver(&_tmc4361);
-  _isEnabled = true;  // 更新使能状态
+  _isEnabled = true; // 更新使能状态
 }
 
 // 设置当前位置
@@ -471,7 +476,7 @@ void Axis::setCurrentPosition(float positionMM) {
 // 获取当前位置microsteps
 int32_t Axis::getCurrentPosition() const {
   int32_t microsteps = tmc4361A_currentPosition(&_tmc4361);
-	return microsteps;
+  return microsteps;
 }
 
 // 获取当前位置（毫米）
@@ -490,33 +495,34 @@ bool Axis::startHoming() {
   if (_currentState != STATE_IDLE) {
     return false;
   }
-  
+
   setState(STATE_HOMING_INIT);
   return true;
 }
 
 // 检查是否正在归位
 bool Axis::isHomingInProgress() const {
-  return _currentState == STATE_HOMING_INIT || 
-         _currentState == STATE_HOMING_SEARCH || 
-         _currentState == STATE_HOMING_SET_ZERO || 
+  return _currentState == STATE_HOMING_INIT ||
+         _currentState == STATE_HOMING_SEARCH ||
+         _currentState == STATE_HOMING_SET_ZERO ||
          _currentState == STATE_LEAVING_HOME;
 }
 
 // 检查运动是否完成
 bool Axis::isMovementComplete() const {
-  return tmc4361A_currentPosition(&_tmc4361) == tmc4361A_targetPosition(&_tmc4361);
+  return tmc4361A_currentPosition(&_tmc4361) ==
+         tmc4361A_targetPosition(&_tmc4361);
 }
 
 // 设置软限位
 void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
   int32_t lowerMicrosteps = mmToMicrosteps(lowerLimitMM);
   int32_t upperMicrosteps = mmToMicrosteps(upperLimitMM);
-  
+
   tmc4361A_setVirtualLimit(&_tmc4361, -1, lowerMicrosteps);
   tmc4361A_setVirtualLimit(&_tmc4361, 1, upperMicrosteps);
 
-	enableSoftLimits(true);
+  enableSoftLimits(true);
 }
 
 // 启用/禁用软限位
@@ -531,19 +537,13 @@ void Axis::enableSoftLimits(bool enable) {
 }
 
 // 获取当前状态
-AxisState Axis::getCurrentState() const {
-  return _currentState;
-}
+AxisState Axis::getCurrentState() const { return _currentState; }
 
 // 获取轴名称
-const char* Axis::getAxisName() const {
-  return _axisName;
-}
+const char *Axis::getAxisName() const { return _axisName; }
 
 // 检查是否在错误状态
-bool Axis::isInErrorState() const {
-  return _currentState == STATE_ERROR;
-}
+bool Axis::isInErrorState() const { return _currentState == STATE_ERROR; }
 
 // 读取电子限位开关状态
 uint8_t Axis::readLimitSwitches() const {
@@ -566,11 +566,11 @@ void Axis::setState(AxisState newState) {
     _previousState = _currentState;
     _currentState = newState;
     _stateStartTime = millis();
-    _stateChanged = true;  // 标记状态已变化
+    _stateChanged = true; // 标记状态已变化
   }
 }
 
-void Axis::handleError(const char* errorMsg) {
+void Axis::handleError(const char *errorMsg) {
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Axis Error: ");
   DEBUG_PRINTLN(errorMsg);
@@ -618,29 +618,29 @@ bool Axis::isWithinSoftLimits(int32_t microsteps) const {
 
 bool Axis::handleEmergency() {
   // 发送轴状态
-  const char* stateStr = "UNKNOWN";
+  const char *stateStr = "UNKNOWN";
   switch (_currentState) {
-    case STATE_IDLE:
-      stateStr = "IDLE";
-      break;
-    case STATE_HOMING_INIT:
-      stateStr = "HOMING_INIT";
-      break;
-    case STATE_HOMING_SEARCH:
-      stateStr = "HOMING_SEARCH";
-      break;
-    case STATE_HOMING_SET_ZERO:
-      stateStr = "HOMING_SET_ZERO";
-      break;
-    case STATE_LEAVING_HOME:
-      stateStr = "LEAVING_HOME";
-      break;
-    case STATE_MOVING:
-      stateStr = "MOVING";
-      break;
-    case STATE_ERROR:
-      stateStr = "ERROR";
-      break;
+  case STATE_IDLE:
+    stateStr = "IDLE";
+    break;
+  case STATE_HOMING_INIT:
+    stateStr = "HOMING_INIT";
+    break;
+  case STATE_HOMING_SEARCH:
+    stateStr = "HOMING_SEARCH";
+    break;
+  case STATE_HOMING_SET_ZERO:
+    stateStr = "HOMING_SET_ZERO";
+    break;
+  case STATE_LEAVING_HOME:
+    stateStr = "LEAVING_HOME";
+    break;
+  case STATE_MOVING:
+    stateStr = "MOVING";
+    break;
+  case STATE_ERROR:
+    stateStr = "ERROR";
+    break;
   }
 
   DEBUG_PRINT(_axisName);
@@ -652,37 +652,37 @@ bool Axis::handleEmergency() {
 
 bool Axis::handleGetData() {
   // 发送轴状态
-  const char* stateStr = "UNKNOWN";
+  const char *stateStr = "UNKNOWN";
   switch (_currentState) {
-    case STATE_IDLE:
-      stateStr = "IDLE";
-      break;
-    case STATE_HOMING_INIT:
-      stateStr = "HOMING_INIT";
-      break;
-    case STATE_HOMING_SEARCH:
-      stateStr = "HOMING_SEARCH";
-      break;
-    case STATE_HOMING_SET_ZERO:
-      stateStr = "HOMING_SET_ZERO";
-      break;
-    case STATE_LEAVING_HOME:
-      stateStr = "LEAVING_HOME";
-      break;
-    case STATE_MOVING:
-      stateStr = "MOVING";
-      break;
-    case STATE_ERROR:
-      stateStr = "ERROR";
-      break;
+  case STATE_IDLE:
+    stateStr = "IDLE";
+    break;
+  case STATE_HOMING_INIT:
+    stateStr = "HOMING_INIT";
+    break;
+  case STATE_HOMING_SEARCH:
+    stateStr = "HOMING_SEARCH";
+    break;
+  case STATE_HOMING_SET_ZERO:
+    stateStr = "HOMING_SET_ZERO";
+    break;
+  case STATE_LEAVING_HOME:
+    stateStr = "LEAVING_HOME";
+    break;
+  case STATE_MOVING:
+    stateStr = "MOVING";
+    break;
+  case STATE_ERROR:
+    stateStr = "ERROR";
+    break;
   }
-  
+
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":STATE:");
   DEBUG_PRINTLN(stateStr);
 
   // 发送当前位置
-	int32_t microsteps = getCurrentPosition();
+  int32_t microsteps = getCurrentPosition();
   float positionMM = microstepsToMM(microsteps);
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Current Position (mm):");
@@ -697,12 +697,12 @@ bool Axis::handleGetData() {
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":LIMIT_SWITCHES:0x");
   DEBUG_PRINTLNF(limitState, HEX);
-  
+
   // 新增：发送移动状态
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":IS_MOVING:");
   DEBUG_PRINTLN(_isMoving ? "YES" : "NO");
-  
+
   // 新增：发送使能状态
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":IS_ENABLED:");
@@ -720,7 +720,7 @@ bool Axis::handleGetData() {
   DEBUG_PRINT(_isEnabled ? "YES" : "NO");
   DEBUG_PRINT(" | Limits:0x");
   DEBUG_PRINTLNF(limitState, HEX);
-  
+
   return true;
 }
 
@@ -729,11 +729,10 @@ bool Axis::handleAxisAbilityToggle(bool action) {
     enableAxis();
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":AXIS Enable");
-  }
-  else {
+  } else {
     disableAxis();
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":AXIS Disable");
   }
-	return true;
+  return true;
 }
