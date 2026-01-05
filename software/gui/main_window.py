@@ -1,6 +1,7 @@
 import time
 import datetime
 import os
+from typing import Optional
 
 from define import *
 from utils.helpers import int_to_payload
@@ -34,7 +35,7 @@ from utils.helpers import format_command, find_teensy_port
 class TeensyControlGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.serial_thread = None
+        self.serial_thread: Optional[SerialThread] = None
         self.axis_manager = AxisManager()
         self._query_mutex = QMutex()
         self._query_timer_active = False
@@ -506,7 +507,7 @@ class TeensyControlGUI(QMainWindow):
 
     def check_connection_status(self):
         """检查连接状态"""
-        if self.is_connected():
+        if self.is_connected() and self.serial_thread is not None:
             self.update_connection_status(
                 True, f"Connected to {self.serial_thread.port}"
             )
@@ -712,7 +713,7 @@ class TeensyControlGUI(QMainWindow):
         self.send_command(command, "Sent axis status query")
 
     def refresh_all_axes_status(self):
-        if self.is_connected():
+        if self.is_connected() and self.serial_thread is not None:
             # 使用互斥锁防止并发
             if not self._query_mutex.tryLock():
                 return
@@ -742,6 +743,8 @@ class TeensyControlGUI(QMainWindow):
         self.send_command(command, f"Sent limits: Low={low} μm, High={high} μm")
 
     def _move_step_axis_relative_position(self, axis_index, distance):
+        if self.serial_thread is None:
+            return
         cmd = bytearray(8)
         payload = int_to_payload(distance, 4)
         cmd[1] = CMD_SET.MOVE_X + axis_index
@@ -752,6 +755,8 @@ class TeensyControlGUI(QMainWindow):
         self.serial_thread.send_binary_command(cmd)
 
     def _move_step_axis_obsolute_position(self, axis_index, distance):
+        if self.serial_thread is None:
+            return
         cmd = bytearray(8)
         payload = int_to_payload(distance, 4)
         cmd[1] = CMD_SET.MOVETO_X + axis_index
@@ -762,6 +767,8 @@ class TeensyControlGUI(QMainWindow):
         self.serial_thread.send_binary_command(cmd)
 
     def _home_or_zero(self, axis_index):
+        if self.serial_thread is None:
+            return
         cmd = bytearray(8)
         cmd[1] = CMD_SET.HOME_OR_ZERO
         cmd[2] = axis_index
