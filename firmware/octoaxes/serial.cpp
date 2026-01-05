@@ -30,7 +30,7 @@ static const uint8_t CRC_TABLE[256] = {
 
 SerialProtocolHandler serialProtocol;
 
-static const uint32_t VERSION = 105;
+static const uint32_t VERSION = 106;
 bool engineStarted = false;
 
 SerialProtocolHandler::SerialProtocolHandler()
