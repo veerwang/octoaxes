@@ -16,20 +16,22 @@ from PyQt5.QtGui import QFont
 from utils.debug import setup_exception_handler
 from gui.main_window import TeensyControlGUI
 
+
 def main():
     # 设置异常处理器
     setup_exception_handler()
-    
+
     app = QApplication(sys.argv)
-    
+
     # 设置全局字体
     font = QFont("Arial", 14)
     app.setFont(font)
-    
+
     window = TeensyControlGUI()
     window.show()
-    
+
     sys.exit(app.exec_())
+
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-80000, 80000),
         "movement_sign": 1,
-        "index": 0
+        "index": 0,
     },
     "Y": {
         "display_name": "Step Motor - y_axis",
@@ -18,7 +18,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-120000, 120000),
         "movement_sign": 1,
-        "index": 1
+        "index": 1,
     },
     "Z": {
         "display_name": "Step Motor - z_axis",
@@ -26,7 +26,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-6000, 6000),
         "movement_sign": -1,
-        "index": 2
+        "index": 2,
     },
     "W": {
         "display_name": "Filter Wheel 1 - w_axis",
@@ -34,7 +34,7 @@ AXIS_CONFIG = {
         "has_limits": False,
         "limits": (0, 7),
         "movement_sign": 1,
-        "index": 3
+        "index": 3,
     },
     "E1": {
         "display_name": "Objectives - expand1_axis",
@@ -42,7 +42,7 @@ AXIS_CONFIG = {
         "has_limits": False,
         "limits": (0, 4),
         "movement_sign": 1,
-        "index": 4
+        "index": 4,
     },
     "E3": {
         "display_name": "Step Motor - expand3_axis",
@@ -50,7 +50,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-6000, 6000),
         "movement_sign": -1,
-        "index": 5
+        "index": 5,
     },
     "E4": {
         "display_name": "Filter Wheel 2 - expand4_axis",
@@ -58,8 +58,8 @@ AXIS_CONFIG = {
         "has_limits": False,
         "limits": (0, 7),
         "movement_sign": 1,
-        "index": 6
-    }
+        "index": 6,
+    },
 }
 
 # 移动距离

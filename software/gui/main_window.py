@@ -3,7 +3,7 @@ import datetime
 import os
 
 from define import *
-from utils.helpers import int_to_payload 
+from utils.helpers import int_to_payload
 
 from PyQt5.QtWidgets import (
     QApplication,
@@ -590,7 +590,7 @@ class TeensyControlGUI(QMainWindow):
     def wait_until_idle(self, timeout: float = 10) -> bool:
         axis = self.get_current_axis()
         start = time.time()
-        while self.axis_manager.axis_status[axis]['state'] != 'IDLE':
+        while self.axis_manager.axis_status[axis]["state"] != "IDLE":
             QApplication.processEvents()
             time.sleep(0.05)
             if time.time() - start > timeout:
@@ -602,12 +602,12 @@ class TeensyControlGUI(QMainWindow):
         axis = self.get_current_axis()
         axis_index = int(AXIS_CONFIG[axis]["index"])
         self._home_or_zero(axis_index)
-        '''
+        """
         command = format_command(axis, "HOMING")
         if not self.send_command(command):
             return          # 发送失败直接返回
-        '''
-        self.axis_manager.axis_status[axis]['state'] = 'HOMING_INIT'
+        """
+        self.axis_manager.axis_status[axis]["state"] = "HOMING_INIT"
 
         # 等待轴回到 IDLE（成功或超时）
         self.wait_until_idle(15)
@@ -661,15 +661,17 @@ class TeensyControlGUI(QMainWindow):
 
                 # 更新位置显示
                 if "position_mm" in status:
-                    value = float(status['position_mm']) * AXIS_CONFIG[axis]["movement_sign"]
-                    self.pos_label.setText(
-                        f"Current Position: {value} mm"
+                    value = (
+                        float(status["position_mm"])
+                        * AXIS_CONFIG[axis]["movement_sign"]
                     )
+                    self.pos_label.setText(f"Current Position: {value} mm")
                 if "position_steps" in status:
-                    value = int(status['position_steps']) * AXIS_CONFIG[axis]["movement_sign"]
-                    self.steps_label.setText(
-                        f"Current Position: {value} microsteps"
+                    value = (
+                        int(status["position_steps"])
+                        * AXIS_CONFIG[axis]["movement_sign"]
                     )
+                    self.steps_label.setText(f"Current Position: {value} microsteps")
 
                 # 更新使能状态（如果从轴状态中获取）
                 if "enabled" in status:
@@ -747,9 +749,9 @@ class TeensyControlGUI(QMainWindow):
         payload = int_to_payload(distance, 4)
         cmd[1] = CMD_SET.MOVE_X + axis_index
         cmd[2] = payload >> 24
-        cmd[3] = (payload >> 16) & 0xff
-        cmd[4] = (payload >> 8) & 0xff 
-        cmd[5] = (payload) & 0xff 
+        cmd[3] = (payload >> 16) & 0xFF
+        cmd[4] = (payload >> 8) & 0xFF
+        cmd[5] = (payload) & 0xFF
         self.serial_thread.send_binary_command(cmd)
 
     def _move_step_axis_obsolute_position(self, axis_index, distance):
@@ -757,9 +759,9 @@ class TeensyControlGUI(QMainWindow):
         payload = int_to_payload(distance, 4)
         cmd[1] = CMD_SET.MOVETO_X + axis_index
         cmd[2] = payload >> 24
-        cmd[3] = (payload >> 16) & 0xff
-        cmd[4] = (payload >> 8) & 0xff 
-        cmd[5] = (payload) & 0xff 
+        cmd[3] = (payload >> 16) & 0xFF
+        cmd[4] = (payload >> 8) & 0xFF
+        cmd[5] = (payload) & 0xFF
         self.serial_thread.send_binary_command(cmd)
 
     def _home_or_zero(self, axis_index):
@@ -785,7 +787,7 @@ class TeensyControlGUI(QMainWindow):
         index = int(AXIS_CONFIG[axis]["index"])
         self._move_step_axis_relative_position(index, value)
 
-        '''
+        """
         value = int(AXIS_CONFIG[axis]["movement_sign"]) * value
 
         from utils.helpers import pack_move_command
@@ -794,7 +796,7 @@ class TeensyControlGUI(QMainWindow):
         command = format_command(axis, base_command)
         direction = "Forward" if is_forward else "Backward"
         self.send_command(command, f"Sent move command ({direction})")
-        '''
+        """
 
     def moveto_axis(self, pos_um):
         """绝对位置移动，单位um"""
@@ -807,7 +809,7 @@ class TeensyControlGUI(QMainWindow):
         index = int(AXIS_CONFIG[axis]["index"])
         self._move_step_axis_obsolute_position(index, value)
 
-        '''
+        """
         value = int(AXIS_CONFIG[axis]["movement_sign"]) * int(pos_um)
 
         from utils.helpers import pack_moveto_command
@@ -815,7 +817,7 @@ class TeensyControlGUI(QMainWindow):
         cmd = format_command(axis, pack_moveto_command(value))
         
         self.send_command(cmd, f"Sent absolute move to {pos_um/1000:.3f} mm")
-        '''
+        """
 
     def move_filtewheel(self, is_next):
         from utils.constants import FILTERWHEEL_DISTANCE
