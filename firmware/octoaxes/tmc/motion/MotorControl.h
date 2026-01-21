@@ -1,0 +1,380 @@
+/*
+ * MotorControl.h
+ *
+ * High-level motion control layer for TMC4361A + TMC2660.
+ * Provides unified API for motor initialization, motion control,
+ * and unit conversion.
+ *
+ * Created: 2026-01-21
+ */
+
+#ifndef TMC_MOTION_MOTOR_CONTROL_H_
+#define TMC_MOTION_MOTOR_CONTROL_H_
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// ============================================================================
+// Configuration Structures
+// ============================================================================
+
+/**
+ * @brief TMC4361A motion configuration
+ */
+typedef struct {
+    uint32_t clockFrequency;     // External clock frequency (Hz), typically 16MHz
+    float    screwPitchMM;       // Lead screw pitch (mm per revolution)
+    uint16_t fullStepsPerRev;    // Full steps per revolution (typically 200)
+    uint16_t microsteps;         // Microstep resolution (1, 2, 4, ... 256)
+    float    maxVelocityMM;      // Maximum velocity (mm/s)
+    float    maxAccelerationMM;  // Maximum acceleration (mm/s²)
+    float    maxDecelerationMM;  // Maximum deceleration (mm/s²), 0 = same as accel
+    bool     useSShapedRamp;     // Use S-shaped ramp (bow parameters)
+    uint32_t bow1;               // Bow parameter 1 (for S-shaped ramp)
+    uint32_t bow2;               // Bow parameter 2
+    uint32_t bow3;               // Bow parameter 3
+    uint32_t bow4;               // Bow parameter 4
+} MotionConfig;
+
+/**
+ * @brief TMC2660 motor/driver configuration
+ */
+typedef struct {
+    float    rSense;             // Sense resistor value (Ohms)
+    float    runCurrentMA;       // Run current (mA)
+    float    holdCurrentRatio;   // Hold current as ratio of run (0.0-1.0)
+    uint8_t  microstepRes;       // Microstep resolution (0=256, 1=128, ... 8=1)
+    bool     interpolation;      // Enable 256 microstep interpolation
+    uint8_t  toff;               // Chopper off time (1-15)
+    uint8_t  hstrt;              // Hysteresis start (0-7)
+    int8_t   hend;               // Hysteresis end (-3 to 12)
+    uint8_t  tbl;                // Blanking time (0-3)
+    int8_t   stallThreshold;     // StallGuard threshold (-64 to 63)
+    bool     stallFilter;        // Enable StallGuard filter
+} MotorConfig;
+
+/**
+ * @brief Limit switch configuration
+ */
+typedef struct {
+    bool     enableLeft;         // Enable left limit switch
+    bool     enableRight;        // Enable right limit switch
+    uint8_t  leftPolarity;       // Left switch polarity (0=active low, 1=active high)
+    uint8_t  rightPolarity;      // Right switch polarity
+    bool     leftFlipped;        // Swap left/right assignment
+    bool     rightFlipped;
+    uint8_t  homingSwitch;       // Which switch to use for homing (0=left, 1=right)
+    float    homeSafetyMarginMM; // Safety margin after homing
+} LimitConfig;
+
+/**
+ * @brief Combined axis configuration
+ */
+typedef struct {
+    MotionConfig motion;
+    MotorConfig  motor;
+    LimitConfig  limits;
+} AxisMotionConfig;
+
+// ============================================================================
+// Motion Parameter Cache (per IC)
+// ============================================================================
+
+#define MOTOR_IC_COUNT 7
+
+// Cached motion parameters for unit conversion
+typedef struct {
+    uint32_t clockFrequency;
+    float    screwPitchMM;
+    uint16_t fullStepsPerRev;
+    uint16_t microsteps;
+    float    stepsPerMM;         // Calculated: (fullStepsPerRev * microsteps) / screwPitchMM
+    bool     initialized;
+} MotorParams;
+
+extern MotorParams motorParams[MOTOR_IC_COUNT];
+
+// ============================================================================
+// Initialization API
+// ============================================================================
+
+/**
+ * @brief Initialize motor control subsystem
+ * Call once at startup before using any motor functions.
+ */
+void motor_initSubsystem(void);
+
+/**
+ * @brief Initialize a motor axis with full configuration
+ * @param icID  IC identifier (0-6)
+ * @param config Combined axis configuration
+ * @return true if successful
+ */
+bool motor_init(uint8_t icID, const AxisMotionConfig *config);
+
+/**
+ * @brief Initialize TMC4361A with motion parameters
+ * @param icID  IC identifier
+ * @param config Motion configuration
+ * @return true if successful
+ */
+bool motor_initMotionController(uint8_t icID, const MotionConfig *config);
+
+/**
+ * @brief Initialize TMC2660 driver
+ * @param icID  IC identifier
+ * @param config Motor configuration
+ * @return true if successful
+ */
+bool motor_initDriver(uint8_t icID, const MotorConfig *config);
+
+/**
+ * @brief Configure limit switches
+ * @param icID  IC identifier
+ * @param config Limit switch configuration
+ */
+void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config);
+
+// ============================================================================
+// Motion Control API
+// ============================================================================
+
+/**
+ * @brief Move to absolute position
+ * @param icID  IC identifier
+ * @param positionMM Target position in mm
+ */
+void motor_moveToPosition(uint8_t icID, float positionMM);
+
+/**
+ * @brief Move relative distance
+ * @param icID  IC identifier
+ * @param distanceMM Distance to move in mm
+ */
+void motor_moveByDistance(uint8_t icID, float distanceMM);
+
+/**
+ * @brief Move to absolute position in microsteps
+ * @param icID  IC identifier
+ * @param position Target position in microsteps
+ */
+void motor_moveToMicrosteps(uint8_t icID, int32_t position);
+
+/**
+ * @brief Start velocity mode rotation
+ * @param icID  IC identifier
+ * @param velocityMM Velocity in mm/s (negative for reverse)
+ */
+void motor_rotateVelocity(uint8_t icID, float velocityMM);
+
+/**
+ * @brief Stop motor (decelerate to stop)
+ * @param icID  IC identifier
+ */
+void motor_stop(uint8_t icID);
+
+/**
+ * @brief Emergency stop (immediate)
+ * @param icID  IC identifier
+ */
+void motor_emergencyStop(uint8_t icID);
+
+// ============================================================================
+// Status Query API
+// ============================================================================
+
+/**
+ * @brief Check if target position is reached
+ * @param icID  IC identifier
+ * @return true if target reached
+ */
+bool motor_isTargetReached(uint8_t icID);
+
+/**
+ * @brief Check if motor is running
+ * @param icID  IC identifier
+ * @return true if motor is moving
+ */
+bool motor_isRunning(uint8_t icID);
+
+/**
+ * @brief Get current position in mm
+ * @param icID  IC identifier
+ * @return Current position
+ */
+float motor_getPositionMM(uint8_t icID);
+
+/**
+ * @brief Get current position in microsteps
+ * @param icID  IC identifier
+ * @return Current position
+ */
+int32_t motor_getPositionMicrosteps(uint8_t icID);
+
+/**
+ * @brief Get target position in microsteps
+ * @param icID  IC identifier
+ * @return Target position
+ */
+int32_t motor_getTargetMicrosteps(uint8_t icID);
+
+/**
+ * @brief Get current velocity in mm/s
+ * @param icID  IC identifier
+ * @return Current velocity
+ */
+float motor_getVelocityMM(uint8_t icID);
+
+/**
+ * @brief Get current velocity in internal units
+ * @param icID  IC identifier
+ * @return Current velocity (24.8 fixed point)
+ */
+int32_t motor_getVelocityInternal(uint8_t icID);
+
+/**
+ * @brief Read limit switch status
+ * @param icID  IC identifier
+ * @return Bit 0 = left, Bit 1 = right
+ */
+uint8_t motor_readLimitSwitches(uint8_t icID);
+
+/**
+ * @brief Read TMC4361A status/event register
+ * @param icID  IC identifier
+ * @return Status bits
+ */
+uint32_t motor_readStatus(uint8_t icID);
+
+/**
+ * @brief Read TMC4361A event register
+ * @param icID  IC identifier
+ * @return Event bits
+ */
+uint32_t motor_readEvents(uint8_t icID);
+
+// ============================================================================
+// Parameter Setting API
+// ============================================================================
+
+/**
+ * @brief Set maximum velocity
+ * @param icID  IC identifier
+ * @param velocityMM Maximum velocity in mm/s
+ */
+void motor_setMaxVelocity(uint8_t icID, float velocityMM);
+
+/**
+ * @brief Set maximum acceleration
+ * @param icID  IC identifier
+ * @param accelerationMM Maximum acceleration in mm/s²
+ */
+void motor_setMaxAcceleration(uint8_t icID, float accelerationMM);
+
+/**
+ * @brief Set maximum deceleration
+ * @param icID  IC identifier
+ * @param decelerationMM Maximum deceleration in mm/s²
+ */
+void motor_setMaxDeceleration(uint8_t icID, float decelerationMM);
+
+/**
+ * @brief Set current position (without moving)
+ * @param icID  IC identifier
+ * @param positionMM Position to set in mm
+ */
+void motor_setCurrentPosition(uint8_t icID, float positionMM);
+
+/**
+ * @brief Set current position in microsteps
+ * @param icID  IC identifier
+ * @param position Position in microsteps
+ */
+void motor_setCurrentPositionMicrosteps(uint8_t icID, int32_t position);
+
+/**
+ * @brief Set motor run current
+ * @param icID  IC identifier
+ * @param currentMA Current in mA
+ */
+void motor_setRunCurrent(uint8_t icID, float currentMA);
+
+/**
+ * @brief Enable/disable motor driver
+ * @param icID  IC identifier
+ * @param enable true to enable
+ */
+void motor_enableDriver(uint8_t icID, bool enable);
+
+// ============================================================================
+// Unit Conversion API
+// ============================================================================
+
+/**
+ * @brief Convert mm to microsteps
+ * @param icID  IC identifier
+ * @param mm Distance in mm
+ * @return Distance in microsteps
+ */
+int32_t motor_mmToMicrosteps(uint8_t icID, float mm);
+
+/**
+ * @brief Convert microsteps to mm
+ * @param icID  IC identifier
+ * @param microsteps Distance in microsteps
+ * @return Distance in mm
+ */
+float motor_microstepsToMM(uint8_t icID, int32_t microsteps);
+
+/**
+ * @brief Convert velocity from mm/s to internal units
+ * @param icID  IC identifier
+ * @param velocityMM Velocity in mm/s
+ * @return Velocity in internal units (24.8 fixed point)
+ */
+int32_t motor_velocityMMToInternal(uint8_t icID, float velocityMM);
+
+/**
+ * @brief Convert velocity from internal units to mm/s
+ * @param icID  IC identifier
+ * @param velocityInternal Velocity in internal units
+ * @return Velocity in mm/s
+ */
+float motor_velocityInternalToMM(uint8_t icID, int32_t velocityInternal);
+
+/**
+ * @brief Convert acceleration from mm/s² to internal units
+ * @param icID  IC identifier
+ * @param accelMM Acceleration in mm/s²
+ * @return Acceleration in internal units
+ */
+uint32_t motor_accelMMToInternal(uint8_t icID, float accelMM);
+
+// ============================================================================
+// Homing API
+// ============================================================================
+
+/**
+ * @brief Start homing sequence
+ * @param icID  IC identifier
+ * @param direction Homing direction (-1 or +1)
+ * @param velocityMM Homing velocity in mm/s
+ */
+void motor_startHoming(uint8_t icID, int8_t direction, float velocityMM);
+
+/**
+ * @brief Set home position (current position becomes reference)
+ * @param icID  IC identifier
+ * @param positionMM Position value to set as home
+ */
+void motor_setHomePosition(uint8_t icID, float positionMM);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* TMC_MOTION_MOTOR_CONTROL_H_ */
