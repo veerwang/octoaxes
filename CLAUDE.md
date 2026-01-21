@@ -1,0 +1,69 @@
+# CLAUDE.md
+
+此文件为 Claude Code 在本仓库中工作时提供指导。
+
+## 重要：开始工作前
+
+**请先阅读以下文件了解项目当前状态：**
+1. `TODO.md` - 查看待办任务
+2. `SESSION.md` - 查看上次会话进度
+
+## 项目概述
+
+Octoaxes 是一个多轴显微镜运动控制系统，基于 SQUID 显微镜平台开发。支持 7 轴精密运动控制，适用于自动化显微成像应用。
+
+### 技术栈
+
+- **固件**: C++ (Arduino/PlatformIO), Teensy 4.1
+- **上位机**: Python, PyQt5
+- **硬件**: TMC4361A 运动控制器 + TMC2660 步进驱动器
+
+### 目录结构
+
+- `firmware/` - Teensy 4.1 嵌入式固件
+- `software/` - PyQt5 PC 控制软件
+- `documents/` - 文档资料
+
+## 项目管理说明
+
+本项目采用文件驱动的项目管理方式：
+
+- **CLAUDE.md** - 项目指导和架构说明（本文件）
+- **TODO.md** - 任务跟踪和待办事项
+- **SESSION.md** - 会话记录，用于跨会话延续上下文
+
+### 工作流程
+
+1. **开始新会话时**：先阅读 TODO.md 和 SESSION.md 了解当前状态
+2. **工作过程中**：及时更新 TODO.md 中的任务状态
+3. **结束会话前**：更新 SESSION.md 记录进度和下一步计划
+
+## 当前状态
+
+**最后更新**: 2026-01-21
+**当前进度**: 项目初始化完成
+**下一步**: 根据需求开始开发
+
+## 开发指南
+
+### 固件编译
+
+```bash
+cd firmware/octoaxes
+pio run                         # 编译生产版本
+pio run -e teensy41_debug       # 编译调试版本
+pio run --target upload         # 上传固件
+```
+
+### 运行上位机
+
+```bash
+cd software
+python main.py
+```
+
+### 代码规范
+
+- 固件代码遵循 Arduino/C++ 风格
+- Python 代码遵循 PEP 8 规范
+- 提交信息使用中文描述
