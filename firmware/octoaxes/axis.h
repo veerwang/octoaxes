@@ -3,6 +3,7 @@
 
 #include <SPI.h>
 #include "TMC4361A_TMC2660_Utils.h"
+#include "tmc/motion/MotorControl.h"
 
 // 状态定义 - 使用更明确的状态命名
 enum AxisState {
@@ -52,10 +53,13 @@ protected:
   uint8_t _csPin;
   uint8_t _axisIndex;
   const char* _axisName;
-  
-  // TMC4361 相关
+
+  // TMC4361 相关 - 兼容层保留
   ConfigurationTypeDef _tmc4361Config;
   TMC4361ATypeDef _tmc4361;
+
+  // 新架构: IC 标识符
+  uint8_t _icID;
   
   // 运动参数
   uint32_t _maxVelocityMicrosteps;

@@ -22,6 +22,9 @@ Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char *axisName)
   _maxVelocityMicrosteps = 0;
   _maxAccelerationMicrosteps = 0;
 
+  // 新架构: 使用 axisIndex 作为 IC 标识符
+  _icID = axisIndex;
+
   // 新增：初始化状态变化检测
   _lastReportedState = STATE_IDLE;
   _stateChanged = false;
@@ -50,6 +53,9 @@ bool Axis::begin(const AxisConfig &config) {
   // 初始化TMC4361A
   tmc4361A_init(&_tmc4361, _csPin, &_tmc4361Config,
                 tmc4361A_defaultRegisterResetState);
+
+  // 新架构: 设置 icID 以便与新 API 兼容
+  _tmc4361.icID = _icID;
 
   // 配置电机参数
   tmc4361A_tmc2660_config(

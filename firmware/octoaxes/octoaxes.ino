@@ -5,6 +5,8 @@
 #include "serial.h"
 #include "stepaxis.h"
 #include "utils.h"
+#include "tmc/hal/TMC_SPI.h"
+#include "tmc/motion/MotorControl.h"
 
 void initializeClock(uint8_t clk_pin, uint32_t frequence) {
   pinMode(clk_pin, OUTPUT);
@@ -65,6 +67,9 @@ bool initializeSystem() {
 
   // 初始化SPI和引脚
   initializeSPIAndPins();
+
+  // 初始化新架构的运动控制子系统
+  motor_initSubsystem();
 
   // 创建轴对象并添加到管理器
   Axis *xAxis = new StepAxis(Pins::X_AXIS_CS, 0, "X");

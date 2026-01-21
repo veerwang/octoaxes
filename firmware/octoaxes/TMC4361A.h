@@ -62,7 +62,7 @@ typedef struct
   bool velocity_mode;
   uint8_t dac_idx;
   uint32_t dac_fullscale_msteps;
-  
+
   //TMotorConfig motorConfig;
   //TClosedLoopConfig closedLoopConfig;
   uint8_t status;
@@ -70,6 +70,9 @@ typedef struct
 
   int target_tolerance;
   int pid_tolerance;
+
+  // NEW: IC identifier for new API (added for Phase 5 migration)
+  uint16_t icID;
 
 } TMC4361ATypeDef;
 
