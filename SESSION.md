@@ -7,36 +7,45 @@
 ## 最新会话
 
 **日期**: 2026-01-21
-**位置**: 固件架构文档化
+**位置**: 固件重构计划制定
 
 ### 本次完成
 
-- 创建 Claude Code 项目管理文件（CLAUDE.md, TODO.md, SESSION.md）
-- 深入分析固件代码架构
-- 创建详细技术文档 `documents/firmware-architecture.md`，包含：
-  - TMC4361A 与 TMC2660 SPI 通讯机制
-  - 芯片初始化流程
-  - 轴类继承体系和状态机设计
-  - 命令处理流程
-  - 单位转换系统
-  - 关键寄存器参考
-  - 配置参数表
-  - 重构建议
+- 分析官方 TMC-API 设计模式（API 文档和示例代码）
+- 对比当前项目与官方 API 的差异：
+  - 实例标识方式（指针 vs icID）
+  - SPI 回调机制
+  - 缓存机制
+  - 字段级操作
+  - TMC2660 驱动分离
+- 创建详细重构计划 `documents/refactoring-plan.md`，包含：
+  - 新架构设计（4 层：应用层、运动控制层、驱动层、HAL）
+  - 6 个实施阶段和具体任务
+  - 新 API 设计（TMC4361A、TMC2660、Motion）
+  - 代码模板和迁移指南
+  - 测试计划
 
 ### 下次继续
 
-- 根据重构建议优化代码
-- 或根据新需求开发功能
+- 按重构计划阶段 1 开始实施：创建 HAL 层
+- 或根据优先级调整实施顺序
 
 ### 备注
 
-技术文档供未来重构参考，包含完整的架构说明和改进方向。
+重构参考资料：
+- API 文档: `/home/hds/github.com/TMC-API/docs/TMC4361A_TMC2660_API_Reference.md`
+- TMC4361A 示例: `/home/hds/github.com/TMC-API/tmc/ic/TMC4361A/Examples/`
+- TMC2660 示例: `/home/hds/github.com/TMC-API/tmc/ic/TMC2660/Examples/`
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-01-21 - 固件架构文档化
+- 深入分析固件代码架构
+- 创建 `documents/firmware-architecture.md`
 
 ### 2026-01-21 - 项目初始化
 - 创建 Claude Code 项目管理文件

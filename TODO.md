@@ -12,12 +12,30 @@
 
 <!-- 计划要做但尚未开始的任务 -->
 
-- [ ] 完成项目基础搭建
+### 固件重构 (按 refactoring-plan.md 执行)
+
+**阶段 1：基础设施**
+- [ ] 创建 `tmc/hal/` 目录，实现 TMC_SPI.h/.cpp
+- [ ] 定义 IC 配置数组
+- [ ] 实现 SPI 回调函数
+
+**阶段 2：TMC4361A 驱动重构**
+- [ ] 迁移到 `tmc/ic/TMC4361A/` 目录
+- [ ] 重构 API 使用 icID
+- [ ] 实现全局缓存数组
+- [ ] 定义 RegisterField 结构体
+
+**阶段 3：TMC2660 驱动分离**
+- [ ] 创建独立 TMC2660 API
+
+**阶段 4-6：运动层、Axis 适配、测试**
+- [ ] 详见 documents/refactoring-plan.md
 
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
 
+- [x] 2026-01-21: 创建重构计划文档 (documents/refactoring-plan.md)
 - [x] 2026-01-21: 创建固件架构技术文档 (documents/firmware-architecture.md)
 - [x] 2026-01-21: 项目初始化，创建 Claude Code 项目管理文件
 
