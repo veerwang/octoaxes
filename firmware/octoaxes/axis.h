@@ -2,8 +2,15 @@
 #define AXIS_H
 
 #include <SPI.h>
-#include "TMC4361A_TMC2660_Utils.h"
 #include "tmc/motion/MotorControl.h"
+#include "TMC4361A_Fields.h"
+
+// 限位开关和方向常量
+#define LEFT_SW   0b01
+#define RGHT_SW   0b10
+#define LEFT_DIR  -1
+#define RGHT_DIR  1
+#define OBSW_SW   0b01  // 用于 Objectives 类
 
 // 状态定义 - 使用更明确的状态命名
 enum AxisState {
@@ -54,11 +61,7 @@ protected:
   uint8_t _axisIndex;
   const char* _axisName;
 
-  // TMC4361 相关 - 兼容层保留
-  ConfigurationTypeDef _tmc4361Config;
-  TMC4361ATypeDef _tmc4361;
-
-  // 新架构: IC 标识符
+  // IC 标识符
   uint8_t _icID;
   
   // 运动参数
@@ -171,7 +174,6 @@ protected:
   virtual void setState(AxisState newState);
   virtual void handleError(const char* errorMsg);
   virtual bool checkTimeout(unsigned long timeoutMs) const;
-  virtual void initializeRamp();
   virtual int32_t hexStringToInt32(String hex);
   
   // 命令处理辅助方法

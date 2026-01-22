@@ -94,39 +94,13 @@ bool Axis::begin(const AxisConfig &config) {
       .homeSafetyMarginMM = _config.homeSafetyMarginMM};
   motor_configLimitSwitches(_icID, &limitConfig);
 
-  // ========== 兼容层初始化 (保留旧 API 功能) ==========
-  // 初始化 TMC4361ATypeDef 结构 (派生类仍需要)
-  tmc4361A_init(&_tmc4361, _csPin, &_tmc4361Config,
-                tmc4361A_defaultRegisterResetState);
-  _tmc4361.icID = _icID;
-
-  // 配置电机参数 (设置 _tmc4361 内部状态)
-  tmc4361A_tmc2660_config(
-      &_tmc4361, (_config.motorCurrentMA / 1000) * _config.r_sense / 0.2298,
-      _config.holdCurrent, 1, 1, 1, _config.screwPitchMM,
-      _config.fullStepsPerRev, _config.microstepping);
-
-  // 初始化 TMC4361 和 TMC2660 (硬件初始化)
-  tmc4361A_tmc2660_init(&_tmc4361, _config.clockFrequency);
-
   // 设置运动参数
   setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
 
-  // 初始化斜坡参数
-  initializeRamp();
-
-  // 使能限位开关读取
-  if (_config.enableLeftLimitSwitch)
-    tmc4361A_enableLimitSwitch(&_tmc4361, _config.leftSwitchPolarity, LEFT_SW,
-                               _config.leftFlipped, _config.leftIsInactive);
-  if (_config.enableRightLimitSwitch)
-    tmc4361A_enableLimitSwitch(&_tmc4361, _config.rightSwitchPolarity, RGHT_SW,
-                               _config.rightFlipped, _config.rightIsInactive);
-
   // 使能归位限位
-  tmc4361A_enableHomingLimit(&_tmc4361, _config.rightSwitchPolarity,
-                             _config.homingSwitch,
-                             mmToMicrosteps(_config.homeSafetyMarginMM));
+  motor_enableHomingLimit(_icID, _config.rightSwitchPolarity,
+                          _config.homingSwitch,
+                          mmToMicrosteps(_config.homeSafetyMarginMM));
 
   // 禁用虚拟限位开关（初始状态）
   enableSoftLimits(false);
@@ -618,11 +592,6 @@ bool Axis::checkTimeout(unsigned long timeoutMs) const {
   return (millis() - _stateStartTime) > timeoutMs;
 }
 
-void Axis::initializeRamp() {
-  _tmc4361.rampParam[ASTART_IDX] = 0;
-  _tmc4361.rampParam[DFINAL_IDX] = 0;
-  tmc4361A_sRampInit(&_tmc4361);
-}
 
 // 单位转换函数 (使用新 API)
 int32_t Axis::mmToMicrosteps(float mm) const {
