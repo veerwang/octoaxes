@@ -116,6 +116,9 @@ void tmc2660_writeRegister(uint8_t icID, uint8_t address, uint32_t value)
 
 uint32_t tmc2660_readRegister(uint8_t icID, uint8_t address)
 {
+    if (icID >= TMC2660_IC_CACHE_COUNT || address >= TMC2660_REGISTER_COUNT)
+        return 0;
+
     uint32_t value;
 
     // Read from cache for write-only registers
@@ -129,6 +132,9 @@ uint32_t tmc2660_readRegister(uint8_t icID, uint8_t address)
 
 uint8_t tmc2660_getStatusBits(uint8_t icID)
 {
+    if (icID >= TMC2660_IC_CACHE_COUNT)
+        return 0;
+
     return tmc2660_shadowRegister[icID][TMC2660_RESPONSE_LATEST] & TMC2660_STATUS_MASK;
 }
 

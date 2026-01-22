@@ -15,7 +15,7 @@
 // Motor Parameters Cache
 // ============================================================================
 
-MotorParams motorParams[MOTOR_IC_COUNT] = {0};
+MotorParams motorParams[MOTOR_IC_COUNT] = {};
 
 // ============================================================================
 // Internal Helper Functions
@@ -37,7 +37,8 @@ static uint8_t calculateCurrentScale(float currentMA, float rSense)
     return (uint8_t)cs;
 }
 
-// Calculate microstep resolution register value
+// Calculate microstep resolution register value (reserved for future use)
+__attribute__((unused))
 static uint8_t calculateMresValue(uint16_t microsteps)
 {
     // MRES: 0=256, 1=128, 2=64, 3=32, 4=16, 5=8, 6=4, 7=2, 8=1

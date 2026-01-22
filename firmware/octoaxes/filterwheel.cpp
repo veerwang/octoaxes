@@ -133,7 +133,7 @@ float FilterWheel::getFilterPosition(uint8_t filterIndex) const {
 }
 
 bool FilterWheel::isValidFilterPosition(uint8_t filterPosition) const {
-  return (filterPosition >= 0 && filterPosition < _filterCount);
+  return (filterPosition < _filterCount);
 }
 
 void FilterWheel::performHomingSequence() {
