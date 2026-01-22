@@ -121,9 +121,9 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     uint32_t generalConf = 0x00000001;
     tmc4361A_writeRegister(icID, TMC4361A_GENERAL_CONF, generalConf);
 
-    // Configure SPI_OUT_CONF for TMC2660 communication
-    // Cover length = 3 bytes (24 bits for TMC2660)
-    uint32_t spiOutConf = (2 << 4);  // COVER_DATA_LENGTH = 2 (3 bytes)
+    // Configure SPI_OUT_CONF for TMC2660 SPI mode communication
+    // 0x4440108A: SCALE_VAL_TRANSFER_EN=1, SPI timing, COVER_DATA_LENGTH=1
+    uint32_t spiOutConf = 0x4440108A;
     tmc4361A_writeRegister(icID, TMC4361A_SPI_OUT_CONF, spiOutConf);
 
     // Set clock frequency
@@ -165,7 +165,10 @@ bool motor_initDriver(uint8_t icID, const MotorConfig *config)
     uint8_t cs = calculateCurrentScale(config->runCurrentMA, config->rSense);
 
     // Configure DRVCONF
-    uint32_t drvconf = TMC2660_SET_RDSEL(0) | TMC2660_SET_VSENSE(1);
+    // SDOFF=1: SPI mode (motion control via SPI, not Step/Dir)
+    // VSENSE=0: High sense resistor voltage range
+    // RDSEL=0: Microstep position in response
+    uint32_t drvconf = TMC2660_SET_RDSEL(0) | TMC2660_SET_VSENSE(0) | TMC2660_SET_SDOFF(1);
     tmc2660_writeRegister(icID, TMC2660_DRVCONF, drvconf);
 
     // Configure CHOPCONF
