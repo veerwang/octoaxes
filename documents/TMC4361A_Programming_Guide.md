@@ -33,6 +33,7 @@
 23. [dcStep 支持](#23-dcstep-支持)
 24. [编码器接口](#24-编码器接口)
 25. [编码器反馈调节](#25-编码器反馈调节)
+26. [闭环操作详解](#26-闭环操作详解)
 
 ---
 
@@ -2747,6 +2748,362 @@ int32_t read_filtered_encoder_velocity(void) {
 
 ---
 
+## 26. 闭环操作详解
+
+闭环操作直接修改 SPI 输出电流和内部步进生成器的 Step/Dir 输出，基于编码器反馈数据进行调节。TMC4361 的两相闭环控制采用与场向量控制（FOC）不同的方法，类似于 PID 控制级联。
+
+> **重要**: 闭环操作只能与 256 微步/全步分辨率配合使用（MSTEPS_PER_FS = 0）。
+
+### 26.1 闭环基本参数
+
+闭环控制通过评估内部位置 XACTUAL 与外部位置 ENC_POS 之间的差异来验证 SPI 输出电流值和 Step/Dir 输出，同时考虑校准偏移参数 CL_OFFSET。
+
+#### 26.1.1 关键寄存器
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| CL_OFFSET | 0x59 | 闭环校准偏移值（内外位置差） |
+| ENC_POS_DEV | 0x52 | 当前位置偏差（只读） |
+| CL_BETA | 0x1C[8:0] | 最大换相角（微步） |
+| CL_TOLERANCE | 0x5F[7:0] | 位置偏差容差 |
+| CL_DELTA_P | 0x5C | 比例控制器增益 |
+| CL_CYCLE | 0x63[31:16] | 调节周期延迟（时钟周期） |
+
+#### 26.1.2 参数说明
+
+**CL_BETA（最大换相角）**
+- 用于补偿检测到的位置偏差 ENC_POS_DEV 的最大换相角
+- 当偏差达到 CL_BETA 值时，换相角保持稳定并触发 CL_MAX 事件
+- 推荐值：255（90°）
+
+**CL_TOLERANCE（位置容差）**
+- 若 |ENC_POS_DEV| ≤ CL_TOLERANCE，则 CL_FIT_F 标志置位
+- 位置匹配消除时触发 CL_FIT 事件
+
+**CL_DELTA_P（比例控制器）**
+- 补偿检测到的内外位置偏差
+- 24 位值，后 16 位为小数位
+- 实际比例项：p_PID = CL_DELTA_P / 65536
+- 值越大，对位置偏差的响应越快
+- **注意**：过高的 p_PID 可能导致振荡
+
+```c
+// 配置闭环基本参数
+void configure_closed_loop_basic(void) {
+    // 设置最大换相角（推荐 255 = 90°）
+    uint32_t reg = tmc4361_read(0x1C);
+    reg = (reg & 0xFFFFFE00) | 255;  // CL_BETA = 255
+    tmc4361_write(0x1C, reg);
+
+    // 设置位置容差
+    reg = tmc4361_read(0x5F);
+    reg = (reg & 0xFFFFFF00) | 10;  // CL_TOLERANCE = 10 微步
+    tmc4361_write(0x5F, reg);
+
+    // 设置比例增益（65536 = 1.0）
+    tmc4361_write(0x5C, 65536);  // CL_DELTA_P = 1.0
+}
+```
+
+### 26.2 闭环校准与启用
+
+校准过程建立内部位置与外部编码器位置之间的对应关系。
+
+#### 26.2.1 方法一：自动校准（推荐）
+
+```c
+// 闭环校准和启用（自动生成 CL_OFFSET）
+void enable_closed_loop_with_calibration(void) {
+    // 前提：设置为最佳最大电流缩放
+
+    // 1. 设置为 256 微步/全步
+    uint32_t step_conf = tmc4361_read(STEP_CONF);
+    step_conf = (step_conf & 0xFFFFFFF0) | 0;  // MSTEP_PER_FS = 0
+    tmc4361_write(STEP_CONF, step_conf);
+
+    // 2. 移动到任意全步位置（MSCNT mod 128 = 0）
+    // ...（运动代码省略）
+
+    // 3. 设置调节模式为闭环
+    uint32_t enc_conf = tmc4361_read(ENC_IN_CONF);
+    enc_conf = (enc_conf & 0xFF3FFFFF) | (1 << 22);  // regulation_modus = 01
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+
+    // 4. 启用校准
+    enc_conf = tmc4361_read(ENC_IN_CONF);
+    enc_conf |= (1 << 24);  // cl_calibration_en = 1
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+
+    // 5. 等待系统稳定
+    delay_ms(100);
+
+    // 6. 关闭校准
+    enc_conf = tmc4361_read(ENC_IN_CONF);
+    enc_conf &= ~(1 << 24);  // cl_calibration_en = 0
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+
+    // 闭环操作已启用，CL_OFFSET 已自动设置
+}
+```
+
+#### 26.2.2 方法二：使用已知偏移值
+
+```c
+// 使用预存的 CL_OFFSET 启用闭环
+void enable_closed_loop_with_offset(int32_t offset) {
+    // 1. 设置为 256 微步/全步
+    uint32_t step_conf = tmc4361_read(STEP_CONF);
+    step_conf = (step_conf & 0xFFFFFFF0) | 0;
+    tmc4361_write(STEP_CONF, step_conf);
+
+    // 2. 设置调节模式为闭环
+    uint32_t enc_conf = tmc4361_read(ENC_IN_CONF);
+    enc_conf = (enc_conf & 0xFF3FFFFF) | (1 << 22);
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+
+    // 3. 写入已知偏移值
+    tmc4361_write(0x59, offset);  // CL_OFFSET
+
+    // 闭环操作已启用
+}
+```
+
+### 26.3 闭环追赶速度限制
+
+当需要补偿运动扰动时，可限制追赶速度以避免过冲。
+
+#### 26.3.1 速度限制寄存器
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| CL_VMAX_CALC_P | 0x5A | PI 调节器的 P 参数 |
+| CL_VMAX_CALC_I | 0x5B | PI 调节器的 I 参数 |
+| PID_DV_CLIP | 0x5E | 最大速度偏差限幅 |
+| PID_I_CLIP | 0x5D[14:0] | 积分累加器限幅 |
+
+#### 26.3.2 配置示例
+
+```c
+// 配置闭环追赶速度限制
+void configure_closed_loop_velocity_limit(void) {
+    // 设置 PI 参数
+    tmc4361_write(0x5A, 256);   // CL_VMAX_CALC_P
+    tmc4361_write(0x5B, 64);    // CL_VMAX_CALC_I
+
+    // 设置速度限幅
+    tmc4361_write(0x5E, 100000);  // PID_DV_CLIP
+
+    // 设置积分限幅（建议：PID_I_CLIP ≤ PID_DV_CLIP / PID_I）
+    uint32_t reg = tmc4361_read(0x5D);
+    reg = (reg & 0xFFFF8000) | 0x7FFF;
+    tmc4361_write(0x5D, reg);
+
+    // 启用速度限制
+    uint32_t enc_conf = tmc4361_read(ENC_IN_CONF);
+    enc_conf |= (1 << 27);  // cl_vlimit_en = 1
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+}
+```
+
+### 26.4 闭环速度模式
+
+某些应用只需维持指定的速度值，不关心位置偏差。TMC4361 提供闭环速度模式支持。
+
+> **注意**: 闭环速度模式独立于内部斜坡操作模式（速度或定位模式）设置。
+
+```c
+// 启用闭环速度模式
+void enable_closed_loop_velocity_mode(void) {
+    // 1. 先配置追赶速度参数
+    configure_closed_loop_velocity_limit();
+
+    // 2. 启用速度模式
+    uint32_t enc_conf = tmc4361_read(ENC_IN_CONF);
+    enc_conf |= (1 << 27);  // cl_vlimit_en = 1
+    enc_conf |= (1 << 28);  // cl_velocity_mode_en = 1
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+
+    // 若 |ENC_POS_DEV| 超过 768 微步，XACTUAL 自动调整为 ENC_POS ± 768
+}
+```
+
+### 26.5 闭环电流缩放
+
+为节省能源，闭环操作期间可根据实际负载调整电流缩放。
+
+#### 26.5.1 闭环缩放参数
+
+| 参数 | SCALE_VALUES 位 | 说明 |
+|------|-----------------|------|
+| CL_IMIN | [7:0] | 最小缩放值（低负载） |
+| CL_IMAX | [15:8] | 最大缩放值（高负载） |
+| CL_START_UP | [23:16] | 开始增加电流的偏差阈值 |
+| CL_START_DOWN | [31:24] | 开始降低电流的偏差阈值（建议设为 0） |
+
+#### 26.5.2 缩放逻辑
+
+1. 若 |ENC_POS_DEV| ≤ CL_START_UP：电流缩放值 = CL_IMIN
+2. 若 CL_START_UP < |ENC_POS_DEV| ≤ CL_BETA：电流从 CL_IMIN 线性增加到 CL_IMAX
+3. 若 |ENC_POS_DEV| > CL_BETA：电流缩放值 = CL_IMAX
+
+```c
+// 配置闭环电流缩放
+void configure_closed_loop_scaling(uint8_t imin, uint8_t imax, uint8_t start_up) {
+    // 设置缩放值
+    uint32_t scale_values = (0 << 24) |        // CL_START_DOWN = 0（自动设为 CL_BETA）
+                           (start_up << 16) |   // CL_START_UP
+                           (imax << 8) |        // CL_IMAX
+                           imin;                // CL_IMIN
+    tmc4361_write(SCALE_VALUES, scale_values);
+
+    // 启用闭环缩放（自动禁用开环缩放选项）
+    uint32_t current_conf = tmc4361_read(CURRENT_CONF);
+    current_conf |= (1 << 7);  // closed_loop_scale_en = 1
+    tmc4361_write(CURRENT_CONF, current_conf);
+}
+```
+
+#### 26.5.3 缩放过渡控制
+
+可配置电流缩放值的平滑过渡：
+
+```c
+// 配置缩放过渡延迟
+void configure_scale_transition(uint32_t upscale_delay, uint32_t dnscale_delay) {
+    // 上升延迟：每 upscale_delay 时钟周期增加一步
+    tmc4361_write(0x18, upscale_delay);   // CL_UPSCALE_DELAY
+
+    // 下降延迟：每 dnscale_delay 时钟周期减少一步
+    tmc4361_write(0x19, dnscale_delay);   // CL_DNSCALE_DELAY
+
+    // 若设为 0，则立即切换到目标值
+}
+```
+
+### 26.6 反电动势补偿
+
+高速运动时，电机线圈会产生电流和电压之间的相移。TMC4361 通过 γ 校正来补偿这一效应，在运动方向上添加与速度相关的角度到换相角。
+
+#### 26.6.1 反电动势寄存器
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| CL_GAMMA | 0x1C[23:16] | 最大补偿角（默认 255 = 90°） |
+| CL_VMIN_EMF | 0x60 | 开始补偿的最小速度 |
+| CL_VMAX_EMF | 0x61 | 达到最大补偿的速度（CL_VADD_EMF） |
+
+#### 26.6.2 补偿逻辑
+
+1. 若 |V_ENC_MEAN| ≤ CL_VMIN_EMF：GAMMA = 0
+2. 若 CL_VMIN_EMF < |V_ENC_MEAN| ≤ (CL_VMIN_EMF + CL_VADD_EMF)：GAMMA 线性增加
+3. 若 |V_ENC_MEAN| > (CL_VMIN_EMF + CL_VADD_EMF)：GAMMA = CL_GAMMA
+
+> **警告**: 启用 γ 校正后，最大可能换相角为 (CL_BETA + CL_GAMMA)，该值不得超过 180°（511 微步），否则会导致运动方向意外改变。
+
+```c
+// 配置反电动势补偿
+void configure_back_emf_compensation(uint32_t vmin, uint32_t vadd, uint8_t gamma) {
+    // 设置 CL_GAMMA
+    uint32_t reg = tmc4361_read(0x1C);
+    reg = (reg & 0xFF00FFFF) | ((uint32_t)gamma << 16);
+    tmc4361_write(0x1C, reg);
+
+    // 设置速度阈值
+    tmc4361_write(0x60, vmin);  // CL_VMIN_EMF
+    tmc4361_write(0x61, vadd);  // CL_VADD_EMF（实际为 CL_VMAX_EMF）
+
+    // 启用反电动势补偿
+    uint32_t enc_conf = tmc4361_read(ENC_IN_CONF);
+    enc_conf |= (1 << 25);  // cl_emf_en = 1
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+}
+```
+
+### 26.7 编码器速度滤波
+
+编码器速度值存在固有波动。TMC4361 提供滤波选项用于反电动势补偿。
+
+#### 26.7.1 速度读取寄存器
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| V_ENC | 0x65 | 实际编码器速度 [pps]（波动） |
+| V_ENC_MEAN | 0x66 | 滤波后编码器速度 [pps] |
+
+#### 26.7.2 滤波参数
+
+| 参数 | 地址/位 | 说明 |
+|------|---------|------|
+| ENC_VMEAN_WAIT | 0x63[7:0] | 速度采样间隔（时钟周期） |
+| ENC_VMEAN_FILTER | 0x63[11:8] | 滤波指数（值越小响应越快） |
+| ENC_VMEAN_INT | 0x63[31:16] | 速度更新周期 |
+| ENC_VEL_ZERO | 0x62 | 零速度检测阈值 |
+
+滤波公式：
+```
+V_ENC_MEAN = V_ENC_MEAN - V_ENC_MEAN/2^ENC_VMEAN_FILTER + V_ENC/2^ENC_VMEAN_FILTER
+```
+
+```c
+// 配置编码器速度滤波
+void configure_encoder_velocity_filter(uint8_t wait, uint8_t filter_exp) {
+    uint32_t reg = tmc4361_read(0x63);
+    reg = (reg & 0xFFFFF000) | ((uint32_t)filter_exp << 8) | wait;
+    tmc4361_write(0x63, reg);
+}
+
+// 设置零速度检测
+void set_encoder_velocity_zero_threshold(uint32_t threshold) {
+    tmc4361_write(0x62, threshold);  // ENC_VEL_ZERO
+    // 若在 threshold 时钟周期内无 AB 信号变化，触发 ENC_VEL0 事件
+}
+```
+
+### 26.8 PID 控制参数详解
+
+PID 控制器的高级配置参数。
+
+#### 26.8.1 裁剪参数
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| PID_DV_CLIP | 0x5E | 限制 vPID 和 PID_VEL 的最大值 |
+| PID_I_CLIP | 0x5D[14:0] | 积分累加器 PID_ISUM 的限幅 |
+| PID_D_CLKDIV | 0x5D[23:16] | 微分项的时间缩放 |
+| PID_TOLERANCE | 0x5F | 目标位置稳定的迟滞值 |
+
+> **约束条件**: PID_I_CLIP ≤ PID_DV_CLIP / PID_I
+
+#### 26.8.2 调节模式
+
+| regulation_modus | 说明 |
+|------------------|------|
+| 00 | 无调节 |
+| 01 | 闭环操作 |
+| 10 | PID 调节，脉冲生成器基速度 = 0 |
+| 11 | PID 调节，脉冲生成器基速度 = VACTUAL |
+
+```c
+// 配置 PID 裁剪参数
+void configure_pid_clipping(uint32_t dv_clip, uint16_t i_clip, uint8_t d_clkdiv) {
+    // 设置速度裁剪
+    tmc4361_write(0x5E, dv_clip);
+
+    // 设置积分和微分参数
+    uint32_t reg = ((uint32_t)d_clkdiv << 16) | i_clip;
+    tmc4361_write(0x5D, reg);
+}
+
+// 启用 PID 调节（基速度 = VACTUAL）
+void enable_pid_regulation_with_vactual(void) {
+    uint32_t enc_conf = tmc4361_read(ENC_IN_CONF);
+    enc_conf = (enc_conf & 0xFF3FFFFF) | (3 << 22);  // regulation_modus = 11
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+}
+```
+
+---
+
 ## 附录 B: STATUS_FLAGS 和 EVENTS 位定义
 
 ### STATUS_FLAGS (0x0F) 重要位
@@ -2785,6 +3142,7 @@ int32_t read_filtered_encoder_velocity(void) {
 | 1.1 | 2026-01-22 | 添加页 41-80 内容：高级斜坡配置、外部步进控制、参考开关、同步 |
 | 1.2 | 2026-01-22 | 添加页 81-120 内容：目标管线、无主同步、SPI 输出接口、电流缩放 |
 | 1.3 | 2026-01-22 | 添加页 121-160 内容：紧急停止、PWM 输出、dcStep 支持、编码器接口、编码器反馈调节 |
+| 1.4 | 2026-01-22 | 添加页 161-200 内容：闭环操作详解（校准、速度模式、电流缩放、反电动势补偿） |
 
 ---
 
