@@ -8,13 +8,7 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-### Axis 类深度适配
-- [x] Axis 基类 `begin()` 方法改用新 API
-- [x] 运动控制方法改用新 API (moveToPosition, moveRelative, setSpeed, stop)
-- [x] 轴使能方法改用新 API (enableAxis, disableAxis)
-- [x] MotorControl 新增高级功能 API
-- [ ] 提交当前修改
-- [ ] 派生类适配 (StepAxis, FilterWheel, Objectives)
+（暂无）
 
 ## 待办
 
@@ -35,13 +29,14 @@
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
 
-### 固件重构 (2026-01-21)
+### 固件重构 (2026-01-21 ~ 2026-01-22)
 - [x] 阶段 1: 实现 SPI 硬件抽象层 (HAL) - `965acdb`
 - [x] 阶段 2: TMC4361A 驱动重构 - `92b0da4`
 - [x] 阶段 3: TMC2660 驱动分离 - `000a7c7`
 - [x] 阶段 4: 运动控制层 - `4c9dbc6`
 - [x] 阶段 5: Axis 类适配新架构 - `8b6184a`
 - [x] 阶段 6: 测试和清理 - `2ae9549`
+- [x] 阶段 7: API替换和风险修复 - `bebac80`
 
 ### 项目管理
 - [x] 2026-01-21: 创建详细重构任务列表

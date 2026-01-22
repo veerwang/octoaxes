@@ -7,37 +7,30 @@
 ## 最新会话
 
 **日期**: 2026-01-22
-**位置**: Axis 类深度适配新架构
+**位置**: API替换和风险修复完成
 
 ### 本次完成
 
-- Axis 类 `begin()` 方法完全改用新架构 API：
-  - 使用 `motor_initMotionController()` 初始化运动参数
-  - 使用 `motor_initDriver()` 初始化驱动器
-  - 使用 `motor_configLimitSwitches()` 配置限位开关
-- Axis 类运动控制方法改用新 API：
-  - `moveToPosition()` → `motor_moveToMicrosteps()`
-  - `moveRelative()` → `motor_getPositionMicrosteps()` + `motor_moveToMicrosteps()`
-  - `setSpeed()` → `motor_setMaxVelocity()`
-  - `smoothStop()` → `motor_stop()`
-  - `disableAxis()/enableAxis()` → `motor_enableDriver()`
-  - `setCurrentPosition()` → `motor_setCurrentPosition()`
-- MotorControl 新增高级功能 API：
-  - `motor_enableHomingLimit()` - 归位限位配置
-  - `motor_setSoftLimits()` / `motor_enableSoftLimits()` - 软限位
-  - `motor_disablePID()` - 禁用 PID 控制
-  - `motor_configStallGuard()` - StallGuard 配置
-  - `motor_readSwitchEvent()` - 读取开关事件
+- 完成旧API到新MotorControl API的全面替换
+- 修复5个关键风险：
+  1. `motor_readLimitSwitches()`: bit 2,3 → bit 7,8 (STOPL/STOPR_ACTIVE_F)
+  2. `motor_readSwitchEvent()`: bit 6,7 → bit 11,12 (STOPL/STOPR_EVENT)
+  3. `motor_velocityMMToInternal()`: 简化为 `(1<<8)*mm*stepsPerMM`
+  4. `motor_accelMMToInternal()`: 简化为 `(1<<2)*mm*stepsPerMM`
+  5. `motor_setVelocityInternal()`: 添加EVENTS寄存器清除
+- 新增API: `motor_setVelocityInternal()`, `motor_readLatchPosition()`
+- 派生类全部适配: StepAxis, FilterWheel, Objectives
+- 提交: `bebac80 阶段7: API替换和风险修复`
 
 ### 下次继续
 
-- 提交当前修改
-- 继续 Axis 派生类 (StepAxis, FilterWheel, Objectives) 适配
-- 功能测试和验证
+- 硬件功能测试
+- 上位机兼容性测试
+- 代码清理（可选）
 
 ### 备注
 
-当前状态：固件重构 6 个阶段已全部完成并提交，正在进行 Axis 类深度适配优化。
+当前状态：固件重构阶段1-7全部完成，API替换和风险修复已验证编译通过。
 
 ---
 
