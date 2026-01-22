@@ -39,10 +39,10 @@ public:
     }
     
     // 获取命令长度
-    static const int getCommandLength() { return CMD_LENGTH; }
-    
+    static int getCommandLength() { return CMD_LENGTH; }
+
     // 获取消息长度
-    static const int getMessageLength() { return MSG_LENGTH; }
+    static int getMessageLength() { return MSG_LENGTH; }
     
     // 串口调试信息处理函数
     void processSerialCommands();
