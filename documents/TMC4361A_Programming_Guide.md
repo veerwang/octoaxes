@@ -28,6 +28,11 @@
 18. [无主同步](#18-无主同步)
 19. [SPI 输出接口](#19-spi-输出接口)
 20. [电流缩放](#20-电流缩放)
+21. [紧急停止 (NFREEZE)](#21-紧急停止-nfreeze)
+22. [可控 PWM 输出](#22-可控-pwm-输出)
+23. [dcStep 支持](#23-dcstep-支持)
+24. [编码器接口](#24-编码器接口)
+25. [编码器反馈调节](#25-编码器反馈调节)
 
 ---
 
@@ -2118,6 +2123,630 @@ tmc4361_write(SCALE_VALUES, scale_values);
 
 ---
 
+## 21. 紧急停止 (NFREEZE)
+
+当系统发生故障时，某些应用需要立即终止当前操作的策略。TMC4361 提供低电平有效的安全引脚 NFREEZE。
+
+### 21.1 NFREEZE 工作原理
+
+NFREEZE 是低电平有效的紧急停止引脚：
+
+- 当 NFREEZE 从高电平变为低电平时，立即以用户配置的方式停止当前斜坡
+- 触发 FROZEN 事件（EVENTS 位 10）
+- FROZEN 状态保持到 TMC4361 复位
+
+**重要**: NFREEZE 必须保持低电平至少 3 个时钟周期（输入滤波需要 3 个连续采样点）。
+
+### 21.2 FREEZE 寄存器配置
+
+| 寄存器 | 地址 | 位域 | 说明 |
+|--------|------|------|------|
+| DFREEZE | 0x4E | 23:0 | 紧急减速值 |
+| IFREEZE | 0x4E | 31:24 | 紧急电流缩放值 |
+
+**注意**: FREEZE 寄存器只能在复位后、斜坡启动前写入一次，之后无法修改直到下次复位。
+
+### 21.3 DFREEZE 配置
+
+DFREEZE 用于配置紧急停止时的减速方式：
+
+- **DFREEZE = 0**: 硬停止（立即停止）
+- **DFREEZE ≠ 0**: 线性减速斜坡
+
+减速值计算：
+```
+d_freeze [pps²] = DFREEZE / 2³⁷ · fCLK²
+```
+
+### 21.4 IFREEZE 配置
+
+IFREEZE 用于配置紧急事件时的电流缩放：
+
+- **IFREEZE = 0**: 保持紧急事件前的最后缩放值
+- **IFREEZE ≠ 0**: 使用指定的电流缩放值
+
+### 21.5 配置示例
+
+```c
+// 配置紧急停止（复位后立即配置）
+void configure_freeze(void) {
+    // 设置减速值（硬停止）
+    uint32_t freeze_val = 0;  // DFREEZE = 0
+
+    // 设置电流缩放（保持当前值）
+    freeze_val |= (0 << 24);  // IFREEZE = 0
+
+    tmc4361_write(0x4E, freeze_val);
+}
+
+// 带减速斜坡的配置
+void configure_freeze_with_ramp(uint32_t decel_value, uint8_t current_scale) {
+    uint32_t freeze_val = (decel_value & 0xFFFFFF);
+    freeze_val |= ((uint32_t)current_scale << 24);
+    tmc4361_write(0x4E, freeze_val);
+}
+```
+
+---
+
+## 22. 可控 PWM 输出
+
+TMC4361 可在 STPOUT 和 DIROUT 输出引脚提供可控 PWM（脉宽调制）信号，用于电压模式驱动。
+
+### 22.1 PWM 输出引脚
+
+| 引脚名 | 类型 | 说明 |
+|--------|------|------|
+| STPOUT_PWMA | 输出 | 线圈 A 的 PWM 输出 |
+| DIROUT_PWMB | 输出 | 线圈 B 的 PWM 输出 |
+| SDODRV | 输出 | TMC23x/24x 时的 PWM A |
+| NSCSDRV | 输出 | TMC23x/24x 时的 PWM B |
+
+### 22.2 PWM 相关寄存器
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| GENERAL_CONF | 0x00 | 位 21: pwm_out_en |
+| CURRENT_CONF | 0x05 | pwm_scale_en (位 8), PWM_AMPL (31:16) |
+| PWM_VMAX | 0x17 | PWM 缩放达到最大值的速度 |
+| PWM_FREQ | 0x1F | PWM 周期的时钟周期数 |
+
+### 22.3 启用 PWM 输出
+
+```c
+// 启用 PWM 输出
+void enable_pwm_output(uint16_t pwm_freq) {
+    // 设置 PWM 周期
+    tmc4361_write(PWM_FREQ, pwm_freq);
+
+    // 启用 PWM 输出
+    uint32_t general_conf = tmc4361_read(GENERAL_CONF);
+    general_conf |= (1 << 21);  // pwm_out_en = 1
+    tmc4361_write(GENERAL_CONF, general_conf);
+}
+```
+
+PWM 频率计算：
+```
+fPWM = fCLK / PWM_FREQ
+```
+
+### 22.4 PWM 占空比缩放
+
+在低速时必须启用 PWM 电压缩放，以避免电机过热。
+
+```c
+// 配置 PWM 缩放
+void configure_pwm_scaling(uint16_t pwm_ampl, uint32_t pwm_vmax) {
+    // 设置起始 PWM 缩放值
+    uint32_t current_conf = tmc4361_read(CURRENT_CONF);
+    current_conf &= ~(0xFFFF << 16);
+    current_conf |= ((uint32_t)pwm_ampl << 16);  // PWM_AMPL
+    current_conf |= (1 << 8);  // pwm_scale_en = 1
+    tmc4361_write(CURRENT_CONF, current_conf);
+
+    // 设置达到最大缩放的速度
+    tmc4361_write(PWM_VMAX, pwm_vmax);
+}
+```
+
+缩放计算：
+- VACTUAL = 0 时: `PWM_SCALE = (PWM_AMPL + 1) / 2¹⁷`
+- VACTUAL = PWM_VMAX 时: `PWM_SCALE = 0.5`（最大）
+- 最小占空比: `DUTY_MIN = 0.5 - PWM_SCALE`
+- 最大占空比: `DUTY_MAX = 0.5 + PWM_SCALE`
+
+### 22.5 TMC23x/24x PWM 模式
+
+TMC4361 可自动将 PWM 信号路由到 SPI 输出接口引脚，用于 TMC23x/24x 电压 PWM 模式。
+
+```c
+// 配置 TMC23x/24x PWM 模式
+void configure_tmc23x_pwm(uint16_t pwm_freq) {
+    // 设置 PWM 周期
+    tmc4361_write(PWM_FREQ, pwm_freq);
+
+    // 设置 spi_output_format
+    uint32_t spiout_conf = tmc4361_read(SPIOUT_CONF);
+    spiout_conf &= ~0x0F;
+    spiout_conf |= 0x08;  // TMC23x: b'1000, TMC24x: b'1001
+    tmc4361_write(SPIOUT_CONF, spiout_conf);
+
+    // 启用 PWM 输出
+    uint32_t general_conf = tmc4361_read(GENERAL_CONF);
+    general_conf |= (1 << 21);  // pwm_out_en = 1
+    tmc4361_write(GENERAL_CONF, general_conf);
+
+    // 禁用 SPI 切换
+    tmc4361_write(SPI_SWITCH_VEL, 0);
+}
+```
+
+---
+
+## 23. dcStep 支持
+
+dcStep 是步进电机驱动器的自动换向模式，允许在电机能够承受负载的情况下以标称速度运行。当电机过载时，会自动降速到能够驱动负载的较低速度，避免电机失步。
+
+### 23.1 dcStep 引脚
+
+| 引脚名 | 类型 | 说明 |
+|--------|------|------|
+| MP1 | 输入 | dcStep 输入信号 |
+| MP2 | 输出 | dcStep 输出信号 |
+
+### 23.2 dcStep 寄存器
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| GENERAL_CONF | 0x00 | 位 22:21: dc_step_mode |
+| DC_VEL | 0x60 | dcStep 启动速度（全步）|
+| DC_TIME | 0x61(7:0) | 内部 dcStep 计算的 PWM 开启时间上限 |
+| DC_SG | 0x61(15:8) | 失步检测的最大 PWM 开启时间（×16）|
+| DC_BLKTIME | 0x61(31:16) | 全步释放后的 dcStep 空白时间 |
+| DC_LSPTM | 0x62 | dcStep 低速定时器 |
+
+### 23.3 dcStep 原理
+
+dcStep 扩展了电机的可用工作区域：
+
+- **传统操作**: 受最大速度下所需扭矩限制，需要 50% 的安全裕度
+- **dcStep 操作**: 充分利用可用电机扭矩，利用飞轮质量补偿扭矩峰值
+
+最小全步频率计算：
+```
+fFS = fCLK / DC_LSPTM
+```
+
+### 23.4 TMC26x dcStep 配置
+
+TMC26x 硬件连接：
+- SG_TST (TMC26x) → MP1 (TMC4361)
+- TST_MODE (TMC26x) → VCCIO
+
+```c
+// 配置 TMC26x dcStep
+void configure_tmc26x_dcstep(uint32_t dc_vel, uint32_t dc_lsptm) {
+    // TMC26x 预配置
+    // CHM = 1 (constant tOFF-Chopper)
+    // HSTRT = 0 (slow decay only)
+    // SGTO = 1, SGT1 = 1 (on_state_xy as test signal output)
+    // TST = 1 (Test mode on)
+
+    // 设置 spi_output_format
+    uint32_t spiout_conf = tmc4361_read(SPIOUT_CONF);
+    spiout_conf &= ~0x0F;
+    spiout_conf |= 0x0A;  // b'1010 或 b'1011
+    tmc4361_write(SPIOUT_CONF, spiout_conf);
+
+    // 配置 dcStep 参数
+    uint32_t dc_conf = 0;
+    dc_conf |= (dc_time & 0xFF);           // DC_TIME
+    dc_conf |= ((dc_sg & 0xFF) << 8);      // DC_SG
+    dc_conf |= ((dc_blktime & 0xFFFF) << 16);  // DC_BLKTIME
+    tmc4361_write(0x61, dc_conf);
+
+    // 设置 dcStep 速度阈值
+    tmc4361_write(DC_VEL, dc_vel);
+
+    // 设置低速定时器
+    tmc4361_write(DC_LSPTM, dc_lsptm);
+
+    // 启用 dcStep 模式
+    uint32_t general_conf = tmc4361_read(GENERAL_CONF);
+    general_conf &= ~(0x03 << 21);
+    general_conf |= (0x01 << 21);  // dcstep_mode = b'01
+    tmc4361_write(GENERAL_CONF, general_conf);
+}
+```
+
+### 23.5 TMC2130 dcStep 配置
+
+TMC2130 硬件连接：
+- DCO (TMC2130) → MP1 (TMC4361)
+- DCEN (TMC2130) ← MP2 (TMC4361)
+
+```c
+// 配置 TMC2130 dcStep
+void configure_tmc2130_dcstep(uint32_t dc_vel, uint32_t dc_lsptm) {
+    // 设置 spi_output_format
+    uint32_t spiout_conf = tmc4361_read(SPIOUT_CONF);
+    spiout_conf &= ~0x0F;
+    spiout_conf |= 0x0C;  // b'1100 或 b'1101
+    tmc4361_write(SPIOUT_CONF, spiout_conf);
+
+    // 设置 dcStep 速度阈值
+    tmc4361_write(DC_VEL, dc_vel);
+
+    // 设置低速定时器
+    tmc4361_write(DC_LSPTM, dc_lsptm);
+
+    // 启用 dcStep 模式
+    uint32_t general_conf = tmc4361_read(GENERAL_CONF);
+    general_conf &= ~(0x03 << 21);
+    general_conf |= (0x01 << 21);  // dcstep_mode = b'01
+    tmc4361_write(GENERAL_CONF, general_conf);
+}
+```
+
+---
+
+## 24. 编码器接口
+
+TMC4361 配备编码器输入接口，支持增量式 ABN 编码器、绝对式 SSI 编码器和 SPI 编码器。
+
+### 24.1 编码器引脚
+
+| 引脚名 | 类型 | ABN 模式 | SSI 模式 | SPI 模式 |
+|--------|------|----------|----------|----------|
+| A_SCLK | 输入/输出 | A 信号 | SCLK | SCLK |
+| ANEG_NSCLK | 输入/输出 | ¬A 信号 | ¬SCLK | CS |
+| B_SDI | 输入 | B 信号 | SDI | SDI |
+| BNEG_NSDI | 输入/输出 | ¬B 信号 | ¬SDI | SDO |
+| N | 输入 | N (索引) 信号 | - | - |
+| NNEG | 输入 | ¬N 信号 | - | - |
+
+### 24.2 编码器寄存器
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| GENERAL_CONF | 0x00 | 位 11:10: serial_enc_in_mode, 位 12: diff_enc_in_disable |
+| INPUT_FILT_CONF | 0x03 | 输入滤波配置 |
+| ENC_IN_CONF | 0x07 | 编码器配置 |
+| ENC_IN_DATA | 0x08 | 串行编码器数据结构 |
+| STEP_CONF | 0x0A | 电机配置 |
+| ENC_POS | 0x50 | 当前编码器位置（微步） |
+| ENC_LATCH | 0x51 | 锁存的编码器位置 |
+| ENC_POS_DEV | 0x52 | XACTUAL 与 ENC_POS 的偏差 |
+| ENC_CONST | 0x54 | 内部计算的编码器常数 |
+| ENC_VEL | 0x65 | 当前编码器速度（无符号） |
+| ENC_VEL_FILT | 0x66 | 滤波后编码器速度（有符号） |
+
+### 24.3 选择编码器类型
+
+```c
+// 选择增量式 ABN 编码器
+void select_abn_encoder(void) {
+    uint32_t general_conf = tmc4361_read(GENERAL_CONF);
+    general_conf &= ~(0x03 << 10);  // serial_enc_in_mode = b'00
+    tmc4361_write(GENERAL_CONF, general_conf);
+}
+
+// 选择绝对式 SSI 编码器
+void select_ssi_encoder(void) {
+    uint32_t general_conf = tmc4361_read(GENERAL_CONF);
+    general_conf &= ~(0x03 << 10);
+    general_conf |= (0x01 << 10);  // serial_enc_in_mode = b'01
+    tmc4361_write(GENERAL_CONF, general_conf);
+}
+
+// 选择绝对式 SPI 编码器
+void select_spi_encoder(void) {
+    uint32_t general_conf = tmc4361_read(GENERAL_CONF);
+    general_conf &= ~(0x03 << 10);
+    general_conf |= (0x03 << 10);  // serial_enc_in_mode = b'11
+    tmc4361_write(GENERAL_CONF, general_conf);
+}
+```
+
+### 24.4 禁用差分信号
+
+如果使用单端编码器信号：
+
+```c
+void disable_differential_encoder(void) {
+    uint32_t general_conf = tmc4361_read(GENERAL_CONF);
+    general_conf |= (1 << 12);  // diff_enc_in_disable = 1
+    tmc4361_write(GENERAL_CONF, general_conf);
+}
+```
+
+### 24.5 ABN 编码器配置
+
+#### 24.5.1 自动计算编码器常数
+
+```c
+// 配置 ABN 编码器（自动计算常数）
+void configure_abn_encoder(uint16_t fs_per_rev, uint8_t mstep_per_fs,
+                           uint32_t enc_resolution) {
+    // 设置电机参数
+    uint32_t step_conf = tmc4361_read(STEP_CONF);
+    step_conf &= ~0xFFFF;
+    step_conf |= (fs_per_rev & 0x0FFF);           // FS_PER_REV
+    step_conf |= ((mstep_per_fs & 0x0F) << 12);   // MSTEP_PER_FS
+    tmc4361_write(STEP_CONF, step_conf);
+
+    // 设置编码器分辨率（AB 转换数/转）
+    tmc4361_write(ENC_IN_RES, enc_resolution);
+}
+```
+
+编码器常数计算：
+```
+ENC_CONST = MSTEP_PER_FS × FS_PER_REV / ENC_IN_RES
+```
+
+#### 24.5.2 索引信号 (N) 配置
+
+```c
+// 配置索引信号极性
+void configure_n_channel(bool high_active, uint8_t sensitivity) {
+    uint32_t enc_conf = tmc4361_read(ENC_IN_CONF);
+
+    if (high_active) {
+        enc_conf |= (1 << 0);   // pol_n = 1
+    } else {
+        enc_conf &= ~(1 << 0);  // pol_n = 0
+    }
+
+    // 设置灵敏度
+    // b'00: N 电平匹配 pol_n 时有效
+    // b'01: N 切换到有效极性时触发
+    // b'10: N 切换到无效极性时触发
+    // b'11: N 任意边沿触发
+    enc_conf &= ~(0x03 << 1);
+    enc_conf |= ((sensitivity & 0x03) << 1);
+
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+}
+
+// 在 N 事件时清零 ENC_POS
+void clear_enc_pos_on_n(uint32_t reset_value, bool continuous) {
+    // 设置复位值
+    tmc4361_write(ENC_RESET_VAL, reset_value);
+
+    uint32_t enc_conf = tmc4361_read(ENC_IN_CONF);
+
+    if (continuous) {
+        enc_conf |= (1 << 3);  // clr_latch_cont_on_n = 1
+    } else {
+        enc_conf &= ~(1 << 3);
+        enc_conf |= (1 << 4);  // clr_latch_once_on_n = 1
+    }
+    enc_conf |= (1 << 5);  // clear_on_n = 1
+
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+}
+```
+
+### 24.6 SSI 编码器配置
+
+#### 24.6.1 数据结构配置
+
+```c
+// 配置 SSI 编码器数据格式
+void configure_ssi_data_format(uint8_t single_turn_bits, uint8_t multi_turn_bits,
+                               uint8_t status_bits, bool left_aligned) {
+    uint32_t enc_in_data = 0;
+    enc_in_data |= ((single_turn_bits - 1) & 0x1F);          // SINGLE_TURN_RES
+    enc_in_data |= (((multi_turn_bits - 1) & 0x1F) << 5);    // MULTI_TURN_RES
+    enc_in_data |= ((status_bits & 0x07) << 10);             // STATUS_BIT_CNT
+    tmc4361_write(ENC_IN_DATA, enc_in_data);
+
+    uint32_t enc_conf = tmc4361_read(ENC_IN_CONF);
+    if (left_aligned) {
+        enc_conf |= (1 << 6);  // left_aligned_data = 1
+    } else {
+        enc_conf &= ~(1 << 6);
+    }
+    tmc4361_write(ENC_IN_CONF, enc_conf);
+}
+```
+
+#### 24.6.2 SSI 时钟配置
+
+```c
+// 配置 SSI 时钟
+void configure_ssi_clock(uint16_t clk_low, uint16_t clk_high,
+                        uint16_t clk_delay, uint32_t pause_time) {
+    // 设置时钟高低电平周期
+    uint32_t ser_clk = ((uint32_t)clk_high << 16) | clk_low;
+    tmc4361_write(SER_CLK_IN, ser_clk);
+
+    // 设置时钟延迟
+    tmc4361_write(SSI_IN_CLK_DELAY, clk_delay);
+
+    // 设置请求间隔（SSI 标准 > 21µs）
+    tmc4361_write(SER_PTIME, pause_time);
+
+    // 启用 SSI 模式
+    select_ssi_encoder();
+}
+```
+
+### 24.7 SPI 编码器配置
+
+```c
+// 配置 SPI 编码器
+void configure_spi_encoder(uint8_t single_turn_bits, uint32_t addr_to_enc,
+                          uint16_t clk_low, uint16_t clk_high) {
+    // 配置数据格式
+    configure_ssi_data_format(single_turn_bits, 0, 0, false);
+
+    // 设置时钟
+    uint32_t ser_clk = ((uint32_t)clk_high << 16) | clk_low;
+    tmc4361_write(SER_CLK_IN, ser_clk);
+
+    // 设置请求地址
+    tmc4361_write(ADDR_TO_ENC, addr_to_enc);
+
+    // 启用 SPI 模式
+    select_spi_encoder();
+}
+
+// 通过 TMC4361 配置 SPI 编码器
+void spi_encoder_write(uint32_t addr, uint32_t data) {
+    // 停止数据请求
+    tmc4361_write(DATA_TO_ENC, 0);
+
+    // 设置地址
+    tmc4361_write(ADDR_TO_ENC, addr);
+
+    // 发送数据（触发传输）
+    tmc4361_write(DATA_TO_ENC, data);
+
+    // 等待完成并读取响应
+    uint32_t addr_resp = tmc4361_read(ADDR_FROM_ENC);
+    uint32_t data_resp = tmc4361_read(DATA_FROM_ENC);  // 必须读取以恢复数据流
+}
+```
+
+### 24.8 编码器失准补偿
+
+TMC4361 可通过三角函数补偿编码器安装偏差：
+
+```c
+// 配置编码器失准补偿
+void configure_encoder_compensation(uint16_t x_offset, uint8_t y_offset,
+                                   uint8_t amplitude) {
+    uint32_t comp = 0;
+    comp |= x_offset;                    // ENC_COMP_XOFFSET
+    comp |= ((uint32_t)y_offset << 16);  // ENC_COMP_YOFFSET
+    comp |= ((uint32_t)amplitude << 24); // ENC_COMP_AMPL
+    tmc4361_write(ENC_COMP, comp);
+}
+```
+
+---
+
+## 25. 编码器反馈调节
+
+编码器反馈可用于控制运动控制器输出，使内部位置与实际位置匹配。TMC4361 提供 PID 控制和闭环操作两种调节模式。
+
+### 25.1 调节模式选择
+
+| 应用场景 | 推荐模式 |
+|----------|----------|
+| 编码器直接安装在电机后端，位置数据精确 | 闭环操作 |
+| 编码器在驱动端，电机和驱动端无固定连接（如皮带驱动） | PID 控制 |
+
+### 25.2 反馈监控
+
+根据内部位置 XACTUAL 与外部位置 ENC_POS 的偏差 ENC_POS_DEV 自动生成状态标志和事件。
+
+```c
+// 设置容许的位置偏差
+void set_encoder_tolerance(uint32_t tolerance) {
+    tmc4361_write(ENC_POS_DEV_TOL, tolerance);
+}
+```
+
+判断逻辑：
+- 若 |ENC_POS_DEV| ≤ ENC_POS_DEV_TOL: 无编码器故障标志
+- 若 |ENC_POS_DEV| > ENC_POS_DEV_TOL: ENC_FAIL_F 标志置位，触发 ENC_FAIL 事件
+
+### 25.3 调节模式下的目标到达
+
+在调节模式下，TARGET_REACHED 事件和标志仅在满足以下条件时触发：
+
+```
+XACTUAL = XTARGET 且 |ENC_POS_DEV| ≤ CL_TR_TOLERANCE
+```
+
+```c
+// 设置目标到达容差
+void set_closed_loop_tr_tolerance(uint32_t tolerance) {
+    tmc4361_write(CL_TR_TOLERANCE, tolerance);
+}
+```
+
+### 25.4 PID 控制
+
+PID 控制器根据位置偏差 PID_E = XACTUAL - ENC_POS 计算速度值来最小化位置误差。
+
+#### 25.4.1 PID 计算公式
+
+```
+vPID = (PID_P/256) × PID_E × [1/s] + (PID_I/256) × PID_ISUM + PID_D × dPID_E/dt
+```
+
+其中：
+- PID_P: 比例项
+- PID_I: 积分项
+- PID_D: 微分项
+- PID_ISUM: 积分累加器（更新频率: fCLK/128）
+
+#### 25.4.2 PID 寄存器
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| PID_P | 0x59 | 比例增益 |
+| PID_VEL | 0x5A | 当前 PID 输出速度 |
+| PID_ISUM | 0x5B | 积分累加器 |
+| PID_ISUM_LIMIT | 0x5C | 积分限幅 |
+| PID_E | 0x5D | 当前位置偏差 |
+| PID_I | 0x5E | 积分增益 |
+| PID_D | 0x5F | 微分增益 |
+| PID_TOLERANCE | 0x60 | PID 容差 |
+
+#### 25.4.3 PID 配置示例
+
+```c
+// 配置 PID 控制器
+void configure_pid_controller(uint16_t p_gain, uint16_t i_gain,
+                             uint16_t d_gain, uint32_t tolerance) {
+    // 设置 PID 参数
+    tmc4361_write(PID_P, p_gain);
+    tmc4361_write(PID_I, i_gain);
+    tmc4361_write(PID_D, d_gain);
+
+    // 设置容差
+    tmc4361_write(PID_TOLERANCE, tolerance);
+
+    // 设置积分限幅（防止积分饱和）
+    tmc4361_write(PID_ISUM_LIMIT, 0x7FFFFFFF);
+
+    // 启用闭环电流缩放
+    uint32_t current_conf = tmc4361_read(CURRENT_CONF);
+    current_conf |= (1 << 7);  // closed_loop_scale_en = 1
+    tmc4361_write(CURRENT_CONF, current_conf);
+}
+
+// 读取 PID 状态
+void read_pid_status(int32_t *pid_e, int32_t *pid_vel, int32_t *pid_isum) {
+    *pid_e = (int32_t)tmc4361_read(PID_E);
+    *pid_vel = (int32_t)tmc4361_read(PID_VEL);
+    *pid_isum = (int32_t)tmc4361_read(PID_ISUM);
+}
+```
+
+### 25.5 编码器速度计算
+
+TMC4361 可自动计算编码器速度：
+
+```c
+// 读取编码器速度
+uint32_t read_encoder_velocity(void) {
+    return tmc4361_read(ENC_VEL);  // 无符号
+}
+
+int32_t read_filtered_encoder_velocity(void) {
+    return (int32_t)tmc4361_read(ENC_VEL_FILT);  // 有符号，滤波后
+}
+```
+
+---
+
 ## 附录 B: STATUS_FLAGS 和 EVENTS 位定义
 
 ### STATUS_FLAGS (0x0F) 重要位
@@ -2155,6 +2784,7 @@ tmc4361_write(SCALE_VALUES, scale_values);
 | 1.0 | 2026-01-22 | 初始版本，基于 TMC4361 Datasheet 页 1-40 |
 | 1.1 | 2026-01-22 | 添加页 41-80 内容：高级斜坡配置、外部步进控制、参考开关、同步 |
 | 1.2 | 2026-01-22 | 添加页 81-120 内容：目标管线、无主同步、SPI 输出接口、电流缩放 |
+| 1.3 | 2026-01-22 | 添加页 121-160 内容：紧急停止、PWM 输出、dcStep 支持、编码器接口、编码器反馈调节 |
 
 ---
 
