@@ -6,39 +6,54 @@
 
 ## 最新会话
 
-**日期**: 2026-01-21
-**位置**: 固件重构计划制定
+**日期**: 2026-01-22
+**位置**: Axis 类深度适配新架构
 
 ### 本次完成
 
-- 分析官方 TMC-API 设计模式（API 文档和示例代码）
-- 对比当前项目与官方 API 的差异
-- 创建详细重构计划 `documents/refactoring-plan.md`
-- 更新 `TODO.md` 添加详细实现步骤（共 6 个阶段，约 100+ 个子任务）：
-  - 阶段 1：基础设施 (HAL 层) - 5 个子模块
-  - 阶段 2：TMC4361A 驱动重构 - 7 个子模块
-  - 阶段 3：TMC2660 驱动分离 - 8 个子模块
-  - 阶段 4：运动控制层 - 9 个子模块
-  - 阶段 5：Axis 类适配 - 6 个子模块
-  - 阶段 6：测试和清理 - 6 个子模块
+- Axis 类 `begin()` 方法完全改用新架构 API：
+  - 使用 `motor_initMotionController()` 初始化运动参数
+  - 使用 `motor_initDriver()` 初始化驱动器
+  - 使用 `motor_configLimitSwitches()` 配置限位开关
+- Axis 类运动控制方法改用新 API：
+  - `moveToPosition()` → `motor_moveToMicrosteps()`
+  - `moveRelative()` → `motor_getPositionMicrosteps()` + `motor_moveToMicrosteps()`
+  - `setSpeed()` → `motor_setMaxVelocity()`
+  - `smoothStop()` → `motor_stop()`
+  - `disableAxis()/enableAxis()` → `motor_enableDriver()`
+  - `setCurrentPosition()` → `motor_setCurrentPosition()`
+- MotorControl 新增高级功能 API：
+  - `motor_enableHomingLimit()` - 归位限位配置
+  - `motor_setSoftLimits()` / `motor_enableSoftLimits()` - 软限位
+  - `motor_disablePID()` - 禁用 PID 控制
+  - `motor_configStallGuard()` - StallGuard 配置
+  - `motor_readSwitchEvent()` - 读取开关事件
 
 ### 下次继续
 
-- 从阶段 1.1 开始：创建目录结构
-- 或根据优先级选择其他任务
+- 提交当前修改
+- 继续 Axis 派生类 (StepAxis, FilterWheel, Objectives) 适配
+- 功能测试和验证
 
 ### 备注
 
-重构参考资料：
-- API 文档: `/home/hds/github.com/TMC-API/docs/TMC4361A_TMC2660_API_Reference.md`
-- TMC4361A 示例: `/home/hds/github.com/TMC-API/tmc/ic/TMC4361A/Examples/`
-- TMC2660 示例: `/home/hds/github.com/TMC-API/tmc/ic/TMC2660/Examples/`
+当前状态：固件重构 6 个阶段已全部完成并提交，正在进行 Axis 类深度适配优化。
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-01-21 - 固件重构完成
+- 完成阶段 1-6 全部重构任务
+- 提交记录：
+  - `965acdb` 阶段1: 实现 SPI 硬件抽象层 (HAL)
+  - `92b0da4` 阶段2: TMC4361A 驱动重构
+  - `000a7c7` 阶段3: TMC2660 驱动分离
+  - `4c9dbc6` 阶段4: 运动控制层
+  - `8b6184a` 阶段5: Axis 类适配新架构
+  - `2ae9549` 阶段6: 测试和清理
 
 ### 2026-01-21 - 固件架构文档化
 - 深入分析固件代码架构
