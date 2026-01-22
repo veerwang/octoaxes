@@ -7,36 +7,46 @@
 ## 最新会话
 
 **日期**: 2026-01-22
-**位置**: API替换和风险修复完成
+**位置**: TMC4361A 编程文档扩展（续）
 
 ### 本次完成
 
-- 完成旧API到新MotorControl API的全面替换
-- 修复5个关键风险：
-  1. `motor_readLimitSwitches()`: bit 2,3 → bit 7,8 (STOPL/STOPR_ACTIVE_F)
-  2. `motor_readSwitchEvent()`: bit 6,7 → bit 11,12 (STOPL/STOPR_EVENT)
-  3. `motor_velocityMMToInternal()`: 简化为 `(1<<8)*mm*stepsPerMM`
-  4. `motor_accelMMToInternal()`: 简化为 `(1<<2)*mm*stepsPerMM`
-  5. `motor_setVelocityInternal()`: 添加EVENTS寄存器清除
-- 新增API: `motor_setVelocityInternal()`, `motor_readLatchPosition()`
-- 派生类全部适配: StepAxis, FilterWheel, Objectives
-- 提交: `bebac80 阶段7: API替换和风险修复`
+- 读取 TMC4361 Datasheet 第 81-120 页内容
+- 将内容整理并写入 `documents/TMC4361A_Programming_Guide.md`
+- 新增章节：
+  - 第 17 章：目标管线（X_PIPE0-7、循环管线、管线映射表）
+  - 第 18 章：无主同步（三态 START 引脚、busy_en 配置）
+  - 第 19 章：SPI 输出接口（覆盖数据报、MSLUT、TMC 驱动配置、Stop-on-Stall）
+  - 第 20 章：电流缩放（HOLD/BOOST/DRV1/DRV2 参数、MULT_SCALE 计算）
+- 扩展附录 A：添加分类寄存器表（时钟、斜坡、位置、编码器、SPI 输出等）
+- 文档版本更新为 1.2
 
 ### 下次继续
 
+- 继续读取第 121-160 页（如需要）
 - 硬件功能测试
 - 上位机兼容性测试
-- 代码清理（可选）
 
 ### 备注
 
-当前状态：固件重构阶段1-7全部完成，API替换和风险修复已验证编译通过。
+TMC4361A 编程指南现已涵盖数据手册第 1-120 页核心内容，包含 20 个章节和 2 个附录。
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-01-22 - TMC4361A 文档扩展（页 41-80）
+- 读取 TMC4361 Datasheet 第 41-80 页
+- 添加章节 7-16（高级斜坡、外部步进、参考开关、同步等）
+- 添加附录 B（STATUS_FLAGS 和 EVENTS 位定义）
+- 文档版本更新为 1.1
+
+### 2026-01-22 - API替换和风险修复
+- 完成旧API到新MotorControl API的全面替换
+- 修复5个关键风险（限位开关位、速度/加速度转换、EVENTS清除）
+- 提交: `bebac80 阶段7: API替换和风险修复`
 
 ### 2026-01-21 - 固件重构完成
 - 完成阶段 1-6 全部重构任务
