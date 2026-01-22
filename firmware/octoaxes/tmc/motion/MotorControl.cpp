@@ -164,11 +164,11 @@ bool motor_initDriver(uint8_t icID, const MotorConfig *config)
     // Calculate current scale
     uint8_t cs = calculateCurrentScale(config->runCurrentMA, config->rSense);
 
-    // Configure DRVCONF
+    // Configure DRVCONF (matching old API value 0x000A1)
     // SDOFF=1: SPI mode (motion control via SPI, not Step/Dir)
     // VSENSE=0: High sense resistor voltage range
-    // RDSEL=0: Microstep position in response
-    uint32_t drvconf = TMC2660_SET_RDSEL(0) | TMC2660_SET_VSENSE(0) | TMC2660_SET_SDOFF(1);
+    // RDSEL=2: StallGuard2 value and CoolStep current level in response
+    uint32_t drvconf = TMC2660_SET_RDSEL(2) | TMC2660_SET_VSENSE(0) | TMC2660_SET_SDOFF(1) | 0x01;
     tmc2660_writeRegister(icID, TMC2660_DRVCONF, drvconf);
 
     // Configure CHOPCONF
