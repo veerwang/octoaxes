@@ -120,11 +120,11 @@ void StepAxis::performHomingSequence() {
   }
 
   uint8_t limit_state = readLimitSwitches();
-  
+
   switch (_currentState) {
     case STATE_HOMING_INIT:
       enableSoftLimits(false);
-      
+
       if (limit_state & _config.homingSwitch) {
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Already at home position, moving away first...");
@@ -132,60 +132,56 @@ void StepAxis::performHomingSequence() {
       } else {
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Starting homing process...");
-        int32_t speedMicrosteps = _config.homing_direct * velocityMMToMicrosteps(_config.homingVelocityMM);
-        tmc4361A_setSpeed(&_tmc4361, speedMicrosteps);
+        int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        motor_setVelocityInternal(_icID, speedInternal);
         setState(STATE_HOMING_SEARCH);
       }
       break;
-      
+
     case STATE_HOMING_SEARCH:
       if (limit_state & _config.homingSwitch) {
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Home limit switch triggered!");
-        tmc4361A_setSpeed(&_tmc4361, 0); // 直接停止
-        
+        motor_setVelocityInternal(_icID, 0); // 直接停止
+
         // 等待完全停止
         delay(100);
-        
-        int32_t latchedPosition = tmc4361A_readInt(&_tmc4361, TMC4361A_X_LATCH_RD);
+
+        int32_t latchedPosition = motor_readLatchPosition(_icID);
         DEBUG_PRINT(_axisName);
         DEBUG_PRINT(":Latched position: ");
-        DEBUG_PRINTLN(latchedPosition);	
-        if (_config.homingSwitch == RGHT_SW) {
-          _tmc4361.xmax = latchedPosition;
-        } else {
-          _tmc4361.xmin = latchedPosition;
-        }
+        DEBUG_PRINTLN(latchedPosition);
+
         // 计算安全位置（离开限位开关）
         int32_t safePosition = latchedPosition;
         if (_config.homingSwitch == RGHT_SW) {
-          safePosition -= mmToMicrosteps(_config.homeSafetyPositionMM);
+          safePosition -= motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
         } else {
-          safePosition += mmToMicrosteps(_config.homeSafetyPositionMM);
+          safePosition += motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
         }
-        
+
         DEBUG_PRINT(_axisName);
         DEBUG_PRINT(":Moving to safe position: ");
         DEBUG_PRINTLN(safePosition);
-        
-        tmc4361A_moveTo(&_tmc4361, safePosition);
+
+        motor_moveToMicrosteps(_icID, safePosition);
         _checkHomeReachTimeout = 0;
 
         setState(STATE_HOMING_SET_ZERO);
       }
       break;
-      
+
     case STATE_HOMING_SET_ZERO:
       // 等待移动到安全位置完成
       if (isMovementComplete() || _checkHomeReachTimeout >= 1000 * 1000) {
         // 设置当前位置为0
-        tmc4361A_setCurrentPosition(&_tmc4361, 0);
+        motor_setCurrentPositionMicrosteps(_icID, 0);
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Homing completed! Current position set to 0");
         if (_checkHomeReachTimeout > 1000 * 1000)
           DEBUG_PRINTLN(":Homing Set Current Position to safe position Timeout");
         enableSoftLimits(true);
-        
+
         setState(STATE_IDLE);
       } else {
         // 可选：添加进度显示
@@ -195,12 +191,12 @@ void StepAxis::performHomingSequence() {
           DEBUG_PRINT(":Moving to safe position... Current: ");
           DEBUG_PRINT(getCurrentPositionMM());
           DEBUG_PRINT("mm, Target: ");
-          DEBUG_PRINTLN(microstepsToMM(tmc4361A_targetPosition(&_tmc4361)));
+          DEBUG_PRINTLN(motor_microstepsToMM(_icID, motor_getTargetMicrosteps(_icID)));
           lastProgressTime = millis();
         }
       }
       break;
-      
+
     default:
       break;
   }
@@ -213,26 +209,25 @@ void StepAxis::performLeavingHome() {
   }
 
   uint8_t limit_state = readLimitSwitches();
-  
+
   if (_currentState == STATE_LEAVING_HOME) {
     if (!(limit_state & _config.homingSwitch)) {
       DEBUG_PRINT(_axisName);
       DEBUG_PRINTLN(":Left home position, starting homing...");
-      tmc4361A_setSpeed(&_tmc4361, 0); // 直接停止
-      
+      motor_setVelocityInternal(_icID, 0); // 直接停止
+
       // 等待完全停止
       delay(100);
-      
+
       // 开始真正的归位搜索
-      int32_t speedMicrosteps = _config.homing_direct * velocityMMToMicrosteps(_config.maxVelocityMM);
-      tmc4361A_setSpeed(&_tmc4361, speedMicrosteps);
+      int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.maxVelocityMM);
+      motor_setVelocityInternal(_icID, speedInternal);
       setState(STATE_HOMING_SEARCH);
     } else {
       // 继续移动离开home位置
       // 根据限位开关类型设置正确的离开方向
-      int32_t speedMicrosteps;
-      speedMicrosteps = -1 *_config.homing_direct * velocityMMToMicrosteps(_config.maxVelocityMM); // 向左移动离开右限位
-      tmc4361A_setSpeed(&_tmc4361, speedMicrosteps);
+      int32_t speedInternal = -1 * _config.homing_direct * motor_velocityMMToInternal(_icID, _config.maxVelocityMM);
+      motor_setVelocityInternal(_icID, speedInternal);
     }
   }
 }

@@ -373,6 +373,76 @@ void motor_startHoming(uint8_t icID, int8_t direction, float velocityMM);
  */
 void motor_setHomePosition(uint8_t icID, float positionMM);
 
+/**
+ * @brief Configure homing limit switch
+ * @param icID  IC identifier
+ * @param polarity Switch polarity (0=active low, 1=active high)
+ * @param whichSwitch Which switch (0x01=left, 0x02=right)
+ * @param safetyMarginMicrosteps Safety margin after homing
+ */
+void motor_enableHomingLimit(uint8_t icID, uint8_t polarity, uint8_t whichSwitch,
+                              int32_t safetyMarginMicrosteps);
+
+// ============================================================================
+// Soft Limit API
+// ============================================================================
+
+/**
+ * @brief Set soft (virtual) limit positions
+ * @param icID  IC identifier
+ * @param lowerLimitMicrosteps Lower limit position
+ * @param upperLimitMicrosteps Upper limit position
+ */
+void motor_setSoftLimits(uint8_t icID, int32_t lowerLimitMicrosteps, int32_t upperLimitMicrosteps);
+
+/**
+ * @brief Enable/disable soft limits
+ * @param icID  IC identifier
+ * @param enableLower Enable lower limit
+ * @param enableUpper Enable upper limit
+ */
+void motor_enableSoftLimits(uint8_t icID, bool enableLower, bool enableUpper);
+
+// ============================================================================
+// Advanced Configuration API
+// ============================================================================
+
+/**
+ * @brief Disable PID control mode
+ * @param icID  IC identifier
+ */
+void motor_disablePID(uint8_t icID);
+
+/**
+ * @brief Configure StallGuard parameters
+ * @param icID  IC identifier
+ * @param threshold StallGuard threshold (-64 to 63)
+ * @param filterEnable Enable StallGuard filter
+ * @param stopOnStall Stop motor when stall detected
+ */
+void motor_configStallGuard(uint8_t icID, int8_t threshold, bool filterEnable, bool stopOnStall);
+
+/**
+ * @brief Read switch event register (clears on read)
+ * @param icID  IC identifier
+ * @return Switch event bits
+ */
+uint8_t motor_readSwitchEvent(uint8_t icID);
+
+/**
+ * @brief Set velocity directly in internal units (for homing)
+ * @param icID  IC identifier
+ * @param velocityInternal Velocity in internal units (signed, direction included)
+ */
+void motor_setVelocityInternal(uint8_t icID, int32_t velocityInternal);
+
+/**
+ * @brief Read latched position (captured on limit switch event)
+ * @param icID  IC identifier
+ * @return Latched position in microsteps
+ */
+int32_t motor_readLatchPosition(uint8_t icID);
+
 #ifdef __cplusplus
 }
 #endif

@@ -50,20 +50,63 @@ bool Axis::begin(const AxisConfig &config) {
   pinMode(_csPin, OUTPUT);
   digitalWrite(_csPin, HIGH);
 
-  // 初始化TMC4361A
+  // ========== 新架构初始化 ==========
+  // 初始化运动参数缓存 (用于新 API 的单位转换)
+  MotionConfig motionConfig = {
+      .clockFrequency = _config.clockFrequency,
+      .screwPitchMM = _config.screwPitchMM,
+      .fullStepsPerRev = (uint16_t)_config.fullStepsPerRev,
+      .microsteps = (uint16_t)_config.microstepping,
+      .maxVelocityMM = _config.maxVelocityMM,
+      .maxAccelerationMM = _config.maxAccelerationMM,
+      .maxDecelerationMM = _config.maxAccelerationMM,
+      .useSShapedRamp = true,
+      .bow1 = 0,
+      .bow2 = 0,
+      .bow3 = 0,
+      .bow4 = 0};
+  motor_initMotionController(_icID, &motionConfig);
+
+  // 初始化驱动器配置
+  MotorConfig motorConfig = {
+      .rSense = _config.r_sense,
+      .runCurrentMA = _config.motorCurrentMA,
+      .holdCurrentRatio = _config.holdCurrent,
+      .microstepRes = 0,  // 256 microsteps
+      .interpolation = true,
+      .toff = 5,
+      .hstrt = 4,
+      .hend = 3,
+      .tbl = 2,
+      .stallThreshold = (int8_t)_config.stallSensitivity,
+      .stallFilter = true};
+  motor_initDriver(_icID, &motorConfig);
+
+  // 配置限位开关
+  LimitConfig limitConfig = {
+      .enableLeft = _config.enableLeftLimitSwitch,
+      .enableRight = _config.enableRightLimitSwitch,
+      .leftPolarity = _config.leftSwitchPolarity,
+      .rightPolarity = _config.rightSwitchPolarity,
+      .leftFlipped = _config.leftFlipped,
+      .rightFlipped = _config.rightFlipped,
+      .homingSwitch = _config.homingSwitch,
+      .homeSafetyMarginMM = _config.homeSafetyMarginMM};
+  motor_configLimitSwitches(_icID, &limitConfig);
+
+  // ========== 兼容层初始化 (保留旧 API 功能) ==========
+  // 初始化 TMC4361ATypeDef 结构 (派生类仍需要)
   tmc4361A_init(&_tmc4361, _csPin, &_tmc4361Config,
                 tmc4361A_defaultRegisterResetState);
-
-  // 新架构: 设置 icID 以便与新 API 兼容
   _tmc4361.icID = _icID;
 
-  // 配置电机参数
+  // 配置电机参数 (设置 _tmc4361 内部状态)
   tmc4361A_tmc2660_config(
       &_tmc4361, (_config.motorCurrentMA / 1000) * _config.r_sense / 0.2298,
       _config.holdCurrent, 1, 1, 1, _config.screwPitchMM,
       _config.fullStepsPerRev, _config.microstepping);
 
-  // 初始化TMC4361和TMC2660
+  // 初始化 TMC4361 和 TMC2660 (硬件初始化)
   tmc4361A_tmc2660_init(&_tmc4361, _config.clockFrequency);
 
   // 设置运动参数
@@ -88,12 +131,12 @@ bool Axis::begin(const AxisConfig &config) {
   // 禁用虚拟限位开关（初始状态）
   enableSoftLimits(false);
 
-  // 禁用PID
-  tmc4361A_set_PID(&_tmc4361, PID_DISABLE);
+  // 禁用 PID (使用新 API)
+  motor_disablePID(_icID);
 
+  // 配置 StallGuard (使用新 API)
   if (_config.enableStallSensitivity)
-    tmc4361A_config_init_stallGuard(&_tmc4361, _config.stallSensitivity, true,
-                                    1);
+    motor_configStallGuard(_icID, _config.stallSensitivity, true, true);
 
   // 默认使能轴
   enableAxis();
@@ -101,13 +144,13 @@ bool Axis::begin(const AxisConfig &config) {
   return true;
 }
 
-// 设置运动参数
+// 设置运动参数 (使用新 API)
 void Axis::setMotionParameters(float maxVelocityMM, float maxAccelerationMM) {
-  _maxVelocityMicrosteps = velocityMMToMicrosteps(maxVelocityMM);
-  _maxAccelerationMicrosteps = accelerationMMToMicrosteps(maxAccelerationMM);
+  _maxVelocityMicrosteps = motor_velocityMMToInternal(_icID, maxVelocityMM);
+  _maxAccelerationMicrosteps = motor_accelMMToInternal(_icID, maxAccelerationMM);
 
-  tmc4361A_setMaxSpeed(&_tmc4361, _maxVelocityMicrosteps);
-  tmc4361A_setMaxAcceleration(&_tmc4361, _maxAccelerationMicrosteps);
+  motor_setMaxVelocity(_icID, maxVelocityMM);
+  motor_setMaxAcceleration(_icID, maxAccelerationMM);
 }
 
 // 状态机更新
@@ -340,13 +383,13 @@ bool Axis::handleMoveToAxis(const String &command) {
   return true;
 }
 
-// 新增：移动状态检测函数
+// 新增：移动状态检测函数 (使用新 API)
 void Axis::checkMovementComplete() {
   if (!_isMoving)
     return;
 
-  int32_t currentPos = tmc4361A_currentPosition(&_tmc4361);
-  int32_t targetPos = tmc4361A_targetPosition(&_tmc4361);
+  int32_t currentPos = motor_getPositionMicrosteps(_icID);
+  int32_t targetPos = motor_getTargetMicrosteps(_icID);
 
   // 检查是否到达目标位置
   if (currentPos == targetPos) {
@@ -357,10 +400,10 @@ void Axis::checkMovementComplete() {
   }
 }
 
-// 新增：开始移动
+// 新增：开始移动 (使用新 API)
 void Axis::startMovement() {
   _isMoving = true;
-  _lastPosition = tmc4361A_currentPosition(&_tmc4361);
+  _lastPosition = motor_getPositionMicrosteps(_icID);
   setState(STATE_MOVING);
 }
 
@@ -419,7 +462,7 @@ bool Axis::moveToPosition(float positionMM) {
     return false;
   }
 
-  int32_t microsteps = mmToMicrosteps(positionMM);
+  int32_t microsteps = motor_mmToMicrosteps(_icID, positionMM);
 
   if (!isWithinSoftLimits(microsteps)) {
     DEBUG_PRINT(_axisName);
@@ -427,7 +470,7 @@ bool Axis::moveToPosition(float positionMM) {
     return false;
   }
 
-  tmc4361A_moveTo(&_tmc4361, microsteps);
+  motor_moveToMicrosteps(_icID, microsteps);
   startMovement(); // 设置移动状态
   return true;
 }
@@ -438,62 +481,58 @@ bool Axis::moveRelative(float distanceMM) {
     return false;
   }
 
-  int32_t currentPos = tmc4361A_currentPosition(&_tmc4361);
-  int32_t targetPos = currentPos + mmToMicrosteps(distanceMM);
+  int32_t currentPos = motor_getPositionMicrosteps(_icID);
+  int32_t targetPos = currentPos + motor_mmToMicrosteps(_icID, distanceMM);
 
   if (!isWithinSoftLimits(targetPos)) {
     return false;
   }
 
-  tmc4361A_moveTo(&_tmc4361, targetPos);
+  motor_moveToMicrosteps(_icID, targetPos);
   startMovement(); // 设置移动状态
   return true;
 }
 
 // 设置速度
 void Axis::setSpeed(float speedMM) {
-  int32_t speedMicrosteps = velocityMMToMicrosteps(speedMM);
-  tmc4361A_setSpeed(&_tmc4361, speedMicrosteps);
+  motor_setMaxVelocity(_icID, speedMM);
 }
 
 // 平滑停止
 void Axis::smoothStop() {
-  tmc4361A_setSpeed(&_tmc4361, 0);
+  motor_stop(_icID);
   completeMovement(); // 停止移动状态
 }
 
 // 运动控制函数
 void Axis::disableAxis() {
-  tmc4361A_tmc2660_disable_driver(&_tmc4361);
+  motor_enableDriver(_icID, false);
   _isEnabled = false; // 更新使能状态
 }
 
 void Axis::enableAxis() {
-  tmc4361A_tmc2660_enable_driver(&_tmc4361);
+  motor_enableDriver(_icID, true);
   _isEnabled = true; // 更新使能状态
 }
 
 // 设置当前位置
 void Axis::setCurrentPosition(float positionMM) {
-  int32_t microsteps = mmToMicrosteps(positionMM);
-  tmc4361A_setCurrentPosition(&_tmc4361, microsteps);
+  motor_setCurrentPosition(_icID, positionMM);
 }
 
-// 获取当前位置microsteps
+// 获取当前位置 microsteps (使用新 API)
 int32_t Axis::getCurrentPosition() const {
-  int32_t microsteps = tmc4361A_currentPosition(&_tmc4361);
-  return microsteps;
+  return motor_getPositionMicrosteps(_icID);
 }
 
-// 获取当前位置（毫米）
+// 获取当前位置（毫米）(使用新 API)
 float Axis::getCurrentPositionMM() const {
-  int32_t microsteps = tmc4361A_currentPosition(&_tmc4361);
-  return microstepsToMM(microsteps);
+  return motor_getPositionMM(_icID);
 }
 
-// 获取当前位置（微步）
+// 获取当前位置（微步）(使用新 API)
 int32_t Axis::getCurrentPositionMicrosteps() const {
-  return tmc4361A_currentPosition(&_tmc4361);
+  return motor_getPositionMicrosteps(_icID);
 }
 
 // 开始归位
@@ -514,32 +553,23 @@ bool Axis::isHomingInProgress() const {
          _currentState == STATE_LEAVING_HOME;
 }
 
-// 检查运动是否完成
+// 检查运动是否完成 (使用新 API)
 bool Axis::isMovementComplete() const {
-  return tmc4361A_currentPosition(&_tmc4361) ==
-         tmc4361A_targetPosition(&_tmc4361);
+  return motor_getPositionMicrosteps(_icID) == motor_getTargetMicrosteps(_icID);
 }
 
-// 设置软限位
+// 设置软限位 (使用新 API)
 void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
-  int32_t lowerMicrosteps = mmToMicrosteps(lowerLimitMM);
-  int32_t upperMicrosteps = mmToMicrosteps(upperLimitMM);
+  int32_t lowerMicrosteps = motor_mmToMicrosteps(_icID, lowerLimitMM);
+  int32_t upperMicrosteps = motor_mmToMicrosteps(_icID, upperLimitMM);
 
-  tmc4361A_setVirtualLimit(&_tmc4361, -1, lowerMicrosteps);
-  tmc4361A_setVirtualLimit(&_tmc4361, 1, upperMicrosteps);
-
+  motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
   enableSoftLimits(true);
 }
 
-// 启用/禁用软限位
+// 启用/禁用软限位 (使用新 API)
 void Axis::enableSoftLimits(bool enable) {
-  if (enable) {
-    tmc4361A_enableVirtualLimitSwitch(&_tmc4361, 1);
-    tmc4361A_enableVirtualLimitSwitch(&_tmc4361, -1);
-  } else {
-    tmc4361A_disableVirtualLimitSwitch(&_tmc4361, 1);
-    tmc4361A_disableVirtualLimitSwitch(&_tmc4361, -1);
-  }
+  motor_enableSoftLimits(_icID, enable, enable);
 }
 
 // 获取当前状态
@@ -551,19 +581,19 @@ const char *Axis::getAxisName() const { return _axisName; }
 // 检查是否在错误状态
 bool Axis::isInErrorState() const { return _currentState == STATE_ERROR; }
 
-// 读取电子限位开关状态
+// 读取电子限位开关状态 (使用新 API)
 uint8_t Axis::readLimitSwitches() const {
-  return tmc4361A_readLimitSwitches(&_tmc4361);
+  return motor_readLimitSwitches(_icID);
 }
 
-// 读取开关事件
+// 读取开关事件 (使用新 API)
 uint8_t Axis::readSwitchEvent() const {
-  return tmc4361A_readSwitchEvent(&_tmc4361);
+  return motor_readSwitchEvent(_icID);
 }
 
-// 读取轴事件
+// 读取轴事件 (使用新 API)
 uint32_t Axis::readAxisEvent() const {
-  return tmc4361A_readInt(&_tmc4361, TMC4361A_EVENTS);
+  return motor_readEvents(_icID);
 }
 
 // 私有方法实现
@@ -594,21 +624,21 @@ void Axis::initializeRamp() {
   tmc4361A_sRampInit(&_tmc4361);
 }
 
-// 单位转换函数
+// 单位转换函数 (使用新 API)
 int32_t Axis::mmToMicrosteps(float mm) const {
-  return tmc4361A_xmmToMicrosteps(&_tmc4361, mm);
+  return motor_mmToMicrosteps(_icID, mm);
 }
 
 float Axis::microstepsToMM(int32_t microsteps) const {
-  return tmc4361A_xmicrostepsTomm(&_tmc4361, microsteps);
+  return motor_microstepsToMM(_icID, microsteps);
 }
 
 uint32_t Axis::velocityMMToMicrosteps(float velocityMM) const {
-  return tmc4361A_vmmToMicrosteps(&_tmc4361, velocityMM);
+  return motor_velocityMMToInternal(_icID, velocityMM);
 }
 
 uint32_t Axis::accelerationMMToMicrosteps(float accelerationMM) const {
-  return tmc4361A_ammToMicrosteps(&_tmc4361, accelerationMM);
+  return motor_accelMMToInternal(_icID, accelerationMM);
 }
 
 bool Axis::isValidPosition(float positionMM) const {

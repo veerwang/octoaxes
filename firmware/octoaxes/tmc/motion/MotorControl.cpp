@@ -356,15 +356,14 @@ uint8_t motor_readLimitSwitches(uint8_t icID)
     if (icID >= MOTOR_IC_COUNT)
         return 0;
 
-    int32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
+    uint32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
 
-    uint8_t result = 0;
-    if (status & (1 << 2))  // STOPL triggered
-        result |= 0x01;
-    if (status & (1 << 3))  // STOPR triggered
-        result |= 0x02;
+    // STOPL_ACTIVE_F is bit 7 (0x80), STOPR_ACTIVE_F is bit 8 (0x100)
+    // Mask and shift to get bits 0 and 1
+    status &= (TMC4361A_STOPL_ACTIVE_F_MASK | TMC4361A_STOPR_ACTIVE_F_MASK);
+    status >>= TMC4361A_STOPL_ACTIVE_F_SHIFT;
 
-    return result;
+    return (uint8_t)(status & 0x03);
 }
 
 uint32_t motor_readStatus(uint8_t icID)
@@ -474,14 +473,11 @@ int32_t motor_velocityMMToInternal(uint8_t icID, float velocityMM)
     if (icID >= MOTOR_IC_COUNT || !motorParams[icID].initialized)
         return 0;
 
-    // TMC4361A velocity format: 24.8 fixed point
-    // velocity_internal = velocity_pps * 2^8 / clock_freq
-    // velocity_pps = velocity_mm * steps_per_mm
+    // TMC4361A velocity format: multiply by 2^8 (256) to account for 8 decimal places
+    // Formula matches old API: (1 << 8) * mm * stepsPerMM
+    int32_t velocity = (int32_t)((1 << 8) * velocityMM * motorParams[icID].stepsPerMM);
 
-    float velocityPPS = velocityMM * motorParams[icID].stepsPerMM;
-    float velocityInternal = velocityPPS * 256.0f / (float)motorParams[icID].clockFrequency;
-
-    return (int32_t)(velocityInternal * 256.0f);  // Another factor of 256 for the fractional part
+    return velocity;
 }
 
 float motor_velocityInternalToMM(uint8_t icID, int32_t velocityInternal)
@@ -499,17 +495,11 @@ uint32_t motor_accelMMToInternal(uint8_t icID, float accelMM)
     if (icID >= MOTOR_IC_COUNT || !motorParams[icID].initialized)
         return 0;
 
-    // TMC4361A acceleration format:
-    // accel_internal = accel_ppss * 2^8 / clock_freq^2 * 2^32
-    // Simplified: accel_internal = accel_mm * steps_per_mm * 2^40 / clock_freq^2
+    // TMC4361A acceleration format: multiply by 2^2 (4) to account for 2 decimal places
+    // Formula matches old API: (1 << 2) * mm * stepsPerMM
+    uint32_t accel = (uint32_t)((1 << 2) * accelMM * motorParams[icID].stepsPerMM);
 
-    float accelPPSS = accelMM * motorParams[icID].stepsPerMM;
-    float clockFreq = (float)motorParams[icID].clockFrequency;
-
-    // Use 2^24 scaling to avoid overflow
-    float accelInternal = accelPPSS * 16777216.0f / (clockFreq * clockFreq / 65536.0f);
-
-    return (uint32_t)accelInternal;
+    return accel;
 }
 
 // ============================================================================
@@ -528,4 +518,150 @@ void motor_startHoming(uint8_t icID, int8_t direction, float velocityMM)
 void motor_setHomePosition(uint8_t icID, float positionMM)
 {
     motor_setCurrentPosition(icID, positionMM);
+}
+
+void motor_enableHomingLimit(uint8_t icID, uint8_t polarity, uint8_t whichSwitch,
+                              int32_t safetyMarginMicrosteps)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    // Configure HOME_SAFETY_MARGIN
+    tmc4361A_writeRegister(icID, TMC4361A_HOME_SAFETY_MARGIN, safetyMarginMicrosteps);
+
+    // Read current REFERENCE_CONF and update homing settings
+    uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
+
+    // Configure latch position on home switch
+    if (whichSwitch == 0x01) {  // Left switch
+        refConf |= (1 << 8);  // LATCH_X_ON_ACTIVE_L
+        if (polarity)
+            refConf |= (1 << 4);  // POL_STOP_LEFT
+        else
+            refConf &= ~(1 << 4);
+    } else {  // Right switch
+        refConf |= (1 << 9);  // LATCH_X_ON_ACTIVE_R
+        if (polarity)
+            refConf |= (1 << 5);  // POL_STOP_RIGHT
+        else
+            refConf &= ~(1 << 5);
+    }
+
+    tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
+}
+
+// ============================================================================
+// Soft Limit Implementation
+// ============================================================================
+
+void motor_setSoftLimits(uint8_t icID, int32_t lowerLimitMicrosteps, int32_t upperLimitMicrosteps)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    // Set virtual stop positions
+    tmc4361A_writeRegister(icID, TMC4361A_VIRT_STOP_LEFT, lowerLimitMicrosteps);
+    tmc4361A_writeRegister(icID, TMC4361A_VIRT_STOP_RIGHT, upperLimitMicrosteps);
+}
+
+void motor_enableSoftLimits(uint8_t icID, bool enableLower, bool enableUpper)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    // Read current REFERENCE_CONF
+    uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
+
+    // Configure virtual stop enables
+    if (enableLower)
+        refConf |= (1 << 2);  // VIRT_STOP_LEFT_EN
+    else
+        refConf &= ~(1 << 2);
+
+    if (enableUpper)
+        refConf |= (1 << 3);  // VIRT_STOP_RIGHT_EN
+    else
+        refConf &= ~(1 << 3);
+
+    tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
+}
+
+// ============================================================================
+// Advanced Configuration Implementation
+// ============================================================================
+
+void motor_disablePID(uint8_t icID)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    // Clear PID mode bits in ENC_IN_CONF or relevant register
+    // TMC4361A PID is controlled via RAMPMODE and ENC_IN_CONF
+    uint32_t rampMode = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
+    rampMode &= ~(0x03 << 8);  // Clear PID mode bits
+    tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
+}
+
+void motor_configStallGuard(uint8_t icID, int8_t threshold, bool filterEnable, bool stopOnStall)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    // Configure TMC2660 StallGuard
+    tmc2660_setStallGuardThreshold(icID, threshold);
+    tmc2660_setStallGuardFilter(icID, filterEnable);
+
+    // Configure TMC4361A to react to stall event
+    if (stopOnStall) {
+        // Read SPI_STATUS_SELECTION and enable stall detection
+        uint32_t spiStatus = tmc4361A_readRegister(icID, TMC4361A_SPI_STATUS_SELECTION);
+        spiStatus |= (1 << 0);  // Enable SG status from TMC2660
+        tmc4361A_writeRegister(icID, TMC4361A_SPI_STATUS_SELECTION, spiStatus);
+
+        // Configure to stop on stall
+        uint32_t eventConfig = tmc4361A_readRegister(icID, TMC4361A_INTR_CONF);
+        eventConfig |= (1 << 29);  // Enable stall event
+        tmc4361A_writeRegister(icID, TMC4361A_INTR_CONF, eventConfig);
+    }
+}
+
+uint8_t motor_readSwitchEvent(uint8_t icID)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return 0;
+
+    // Read EVENTS register and extract switch events
+    // STOPL_EVENT is bit 11 (0x0800), STOPR_EVENT is bit 12 (0x1000)
+    uint32_t events = tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+
+    // Mask and shift to get bits 0 and 1
+    events &= (TMC4361A_STOPL_EVENT_MASK | TMC4361A_STOPR_EVENT_MASK);
+    events >>= TMC4361A_STOPL_EVENT_SHIFT;
+
+    return (uint8_t)(events & 0x03);
+}
+
+void motor_setVelocityInternal(uint8_t icID, int32_t velocityInternal)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    // Clear EVENTS register (reading clears it) - matches old API behavior
+    tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+
+    // Switch to velocity mode: clear position and hold bits
+    uint32_t rampMode = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
+    rampMode &= ~(TMC4361A_RAMP_POSITION | TMC4361A_RAMP_HOLD);
+    tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
+
+    // Set velocity directly to VMAX (signed value determines direction)
+    tmc4361A_writeRegister(icID, TMC4361A_VMAX, velocityInternal);
+}
+
+int32_t motor_readLatchPosition(uint8_t icID)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return 0;
+
+    return tmc4361A_readRegister(icID, TMC4361A_X_LATCH);
 }
