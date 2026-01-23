@@ -67,17 +67,17 @@ bool Axis::begin(const AxisConfig &config) {
       .bow4 = 0};
   motor_initMotionController(_icID, &motionConfig);
 
-  // 初始化驱动器配置
+  // 初始化驱动器配置 (与旧 API 一致: CHOPCONF = 0x100C3)
   MotorConfig motorConfig = {
       .rSense = _config.r_sense,
       .runCurrentMA = _config.motorCurrentMA,
       .holdCurrentRatio = _config.holdCurrent,
       .microstepRes = 0,  // 256 microsteps
       .interpolation = true,
-      .toff = 5,
-      .hstrt = 4,
-      .hend = 3,
-      .tbl = 2,
+      .toff = 3,   // 旧 API: TOFF = 3
+      .hstrt = 4,  // 旧 API: HSTRT = 4
+      .hend = -2,  // 旧 API: HEND 寄存器值 = 1, 实际值 = 1 + (-3) = -2
+      .tbl = 2,    // 旧 API: TBL = 2
       .stallThreshold = (int8_t)_config.stallSensitivity,
       .stallFilter = true};
   motor_initDriver(_icID, &motorConfig);

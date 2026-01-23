@@ -109,6 +109,9 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     motorParams[icID].stepsPerMM = (float)(config->fullStepsPerRev * config->microsteps) / config->screwPitchMM;
     motorParams[icID].initialized = true;
 
+    // Reset TMC4361A (same as old API)
+    tmc4361A_writeRegister(icID, TMC4361A_SW_RESET, 0x52535400);
+
     // Read VERSION_NO to verify communication
     int32_t version = tmc4361A_readRegister(icID, TMC4361A_VERSION_NO);
     if (version == 0 || version == -1) {
