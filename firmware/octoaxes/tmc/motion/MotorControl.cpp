@@ -207,20 +207,20 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
 
     // Left switch configuration
     if (config->enableLeft) {
-        refConf |= (1 << 0);  // STOP_LEFT_EN
+        refConf |= TMC4361A_STOP_LEFT_EN_MASK;   // bit 0
         if (config->leftPolarity)
-            refConf |= (1 << 4);  // POL_STOP_LEFT
+            refConf |= TMC4361A_POL_STOP_LEFT_MASK;  // bit 2
     }
 
     // Right switch configuration
     if (config->enableRight) {
-        refConf |= (1 << 1);  // STOP_RIGHT_EN
+        refConf |= TMC4361A_STOP_RIGHT_EN_MASK;  // bit 1
         if (config->rightPolarity)
-            refConf |= (1 << 5);  // POL_STOP_RIGHT
+            refConf |= TMC4361A_POL_STOP_RIGHT_MASK;  // bit 3
     }
 
     // Soft stop enable
-    refConf |= (1 << 10);  // SOFT_STOP_EN
+    refConf |= TMC4361A_SOFT_STOP_EN_MASK;  // bit 5
 
     tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
 }
