@@ -7,41 +7,36 @@
 ## 最新会话
 
 **日期**: 2026-01-23
-**位置**: 硬件测试与 REFERENCE_CONF 位偏移修复
+**位置**: 修复 Cover 接口超时问题
 
 ### 本次完成
 
-- **创建硬件测试脚本** (`software/tests/`):
-  - `test_01_serial_connection.py` - 串口连接测试
-  - `test_02_version_query.py` - 版本查询测试
-  - `test_03_engine_start.py` - Engine Start 测试
-  - `test_04_tmc_status.py` - TMC 芯片通信测试
-  - `test_05_axis_move.py` - 轴运动测试
-  - `run_all_tests.py` - 测试运行器
+- **定位并修复 Cover 接口阻塞问题**:
+  - 症状：初始化时每个 TMC2660 寄存器写入需要约 3 秒
+  - 根因：新 API 的 `tmc4361A_readWriteCover` 轮询 COVER_DONE 位，但该位从未被设置
+  - 修复：使用与旧 API 相同的简单延时方式（循环 100 次），而非轮询 COVER_DONE
+  - 文件：`tmc/ic/TMC4361A/TMC4361A.cpp`
 
-- **运行测试 01-04**:
-  - 测试 01-03: 全部通过（串口连接、版本查询、Engine Start）
-  - 测试 04: X/Y/Z/W 轴 TMC 通信正常，E1/E3/E4 未配置
-  - 发现 Z 轴 `LIMIT_SWITCHES: 0x3`（两个限位都触发）- 异常
+- **测试验证**:
+  - ✅ 初始化速度恢复正常（4 轴 < 0.1 秒）
+  - ✅ GET_DATA 命令正常工作
+  - ✅ 限位开关状态正确 (0x0)
+  - ⚠️ 运动命令有超时问题（需进一步调试）
 
-- **发现并修复多处 REFERENCE_CONF 位偏移错误**:
+- **清理调试代码**:
+  - 移除 `axis.cpp` 中的详细初始化调试点
+  - 移除 `MotorControl.cpp` 中的 TMC2660 写入调试点
 
-  | 函数 | 问题 | 错误位 | 正确位 |
-  |------|------|--------|--------|
-  | `motor_enableHomingLimit` | POL_STOP_LEFT | bit 4 | bit 2 |
-  | `motor_enableHomingLimit` | POL_STOP_RIGHT | bit 5 | bit 3 |
-  | `motor_enableSoftLimits` | VIRTUAL_LEFT_LIMIT_EN | bit 2 | bit 6 |
-  | `motor_enableSoftLimits` | VIRTUAL_RIGHT_LIMIT_EN | bit 3 | bit 7 |
-  | `motor_configStallGuard` | 写错寄存器 | INTR_CONF | REFERENCE_CONF |
+### 教训
 
-- **反思**: 上次 API 对比检查不够系统，只检查了 `motor_configLimitSwitches`，遗漏了其他涉及 REFERENCE_CONF 的函数
+- 新 API 实现时，应直接参考旧 API 的实现方式，而不是想当然地使用"正确"的方法
+- COVER_DONE 位轮询虽然是数据手册推荐的方式，但在此硬件上不工作，需要使用简单延时
 
 ### 下次继续
 
-- 烧写修复后的固件
-- 重新运行测试 04 验证 Z 轴限位开关状态
-- 运行测试 05 验证 Z 轴运动功能
-- 完成硬件功能测试
+- 调试运动命令超时问题（Z 轴运动后进入 ERROR 状态）
+- 检查运动完成检测逻辑
+- 验证电机是否实际转动
 
 ### 备注
 
@@ -54,15 +49,20 @@
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
 
+### 2026-01-23 - 系统性新旧 API 行为比对与修复
+- 逐函数对比新旧 API 行为差异
+- 修复 4 个关键函数的实现问题
+- 修复 `motor_enableHomingLimit` 的根本错误
+
+### 2026-01-23 - 硬件测试与位偏移修复
+- 运行测试 01-04，发现 Z 轴限位异常 (0x3)
+- 修复 motor_enableHomingLimit/enableSoftLimits/configStallGuard 位偏移
+- 烧写固件后初始化变慢 - 发现 motor_enableHomingLimit 逻辑完全错误
+
 ### 2026-01-23 - 新旧 API 初始化一致性修复
 - 对比新旧 API 芯片初始化过程
 - 发现并修复 TMC4361A 复位操作缺失
 - 修复 CHOPCONF 参数不一致 (0x10345 → 0x100C3)
-
-### 2026-01-23 - API 参数对比检查
-- 修复 REFERENCE_CONF 限位开关位偏移错误
-- 对比新旧 API 初始化过程
-- 修复 TMC4361A 复位和 CHOPCONF 参数差异
 
 ### 2026-01-22 - TMC4361A 编程文档完成（页 201-224）
 - 完成 TMC4361A 编程指南 v1.5（完整版）
@@ -72,10 +72,6 @@
 - 完成旧API到新MotorControl API的全面替换
 - 修复5个关键风险（限位开关位、速度/加速度转换、EVENTS清除）
 - 提交: `bebac80 阶段7: API替换和风险修复`
-
-### 2026-01-21 - 固件重构完成
-- 完成阶段 1-6 全部重构任务
-- 提交记录：`965acdb` ~ `2ae9549`
 
 ---
 

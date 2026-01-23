@@ -122,6 +122,12 @@ void setup() {
 }
 
 void loop() {
+  static bool firstLoop = true;
+  if (firstLoop) {
+    DEBUG_PRINTLN("MAIN_LOOP_ENTERED");  // 确认进入主循环
+    firstLoop = false;
+  }
+
   // 处理串口调试命令
   serialProtocol.processSerialCommands();
 

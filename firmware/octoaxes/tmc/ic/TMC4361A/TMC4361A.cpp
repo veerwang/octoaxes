@@ -215,14 +215,13 @@ void tmc4361A_readWriteCover(uint16_t icID, uint8_t *data, size_t length)
         tmc4361A_writeRegister(icID, TMC4361A_COVER_LOW, coverValue);
 
         // Wait for cover transfer to complete
-        // Poll COVER_DONE bit in STATUS register
-        uint32_t timeout = 10000;
-        while (timeout--)
-        {
-            int32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
-            if (status & TMC4361A_COVER_DONE)
-                break;
+        // 使用与旧 API 相同的简单延时方式（旧 API 循环 100 次）
+        // COVER_DONE 位轮询在此硬件上不工作
+        volatile uint32_t dummy;
+        for (uint32_t i = 0; i < 100; i++) {
+            dummy = i;  // 简单延时，防止编译器优化
         }
+        (void)dummy;  // 防止 unused variable 警告
 
         // Read response from COVER_DRV_LOW
         int32_t response = tmc4361A_readRegister(icID, TMC4361A_COVER_DRV_LOW);

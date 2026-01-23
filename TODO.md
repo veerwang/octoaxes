@@ -8,7 +8,7 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-- [ ] 硬件功能测试 - Z 轴限位开关和运动测试
+- [ ] 调试运动命令超时问题 - Z 轴运动后进入 ERROR 状态
 
 ## 待办
 
@@ -20,8 +20,10 @@
 - [x] 新旧 API 初始化一致性修复 (2026-01-23) - 添加复位 + CHOPCONF 参数对齐
 - [x] 创建硬件测试脚本 (2026-01-23) - `software/tests/`
 - [x] 修复 REFERENCE_CONF 多处位偏移错误 (2026-01-23)
-- [ ] 烧写固件并验证 Z 轴限位开关
-- [ ] 验证 Z 轴运动功能
+- [x] 系统性新旧 API 行为比对 (2026-01-23) - 修复 4 个关键函数
+- [x] 修复 Cover 接口超时问题 (2026-01-23) - 使用延时替代 COVER_DONE 轮询
+- [x] 烧写固件并验证 Z 轴限位开关 (2026-01-23) - 限位状态 0x0 正确
+- [ ] 验证 Z 轴运动功能 - 运动命令有超时问题
 - [ ] 上位机兼容性测试
 
 ### 代码清理（可选）
@@ -34,11 +36,28 @@
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
 
+### Cover 接口修复 (2026-01-23)
+- [x] 定位初始化慢的根因：COVER_DONE 轮询超时（每次约 3 秒）
+- [x] 修复 `tmc4361A_readWriteCover` - 使用简单延时替代 COVER_DONE 轮询
+- [x] 验证初始化速度恢复正常（4 轴 < 0.1 秒）
+- [x] 验证 GET_DATA 命令正常
+- [x] 验证限位开关状态正确 (0x0)
+
+### 系统性 API 行为比对 (2026-01-23)
+- [x] 完整比对 `motor_configLimitSwitches` vs `tmc4361A_enableLimitSwitch`
+- [x] 完整比对 `motor_enableSoftLimits` vs `tmc4361A_enableVirtualLimitSwitch`
+- [x] 完整比对 `motor_moveToMicrosteps` vs `tmc4361A_moveTo`
+- [x] 完整比对 `motor_configStallGuard` vs `tmc4361A_config_init_stallGuard`
+- [x] 修复 `motor_configLimitSwitches` - 添加 LATCH_X_ON_ACTIVE + 读-修改-写
+- [x] 修复 `motor_enableSoftLimits` - 添加 VIRT_STOP_MODE 硬停止
+- [x] 修复 `motor_moveToMicrosteps` - 添加 EVENTS 清除 + XACTUAL 刷新
+- [x] 修复 `motor_configStallGuard` - 添加 VSTALL_LIMIT 设置
+
 ### 硬件测试准备 (2026-01-23)
 - [x] 创建测试脚本 `software/tests/`
 - [x] 运行测试 01-03 (串口、版本、Engine Start)
 - [x] 运行测试 04 (TMC 状态) - 发现 Z 轴限位异常
-- [x] 修复 `motor_enableHomingLimit` 位偏移
+- [x] 修复 `motor_enableHomingLimit` - 重写整个函数逻辑
 - [x] 修复 `motor_enableSoftLimits` 位偏移
 - [x] 修复 `motor_configStallGuard` 寄存器错误
 

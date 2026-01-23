@@ -39,15 +39,19 @@ bool AxisManager::addAxis(Axis* axis) {
 }
 
 bool AxisManager::beginAll() {
+  DEBUG_PRINTLN("beginAll:START");  // 调试点
   bool allSuccess = true;
-  
+
   for (uint8_t i = 0; i < axisCount; i++) {
     if (axes[i] != nullptr) {
       bool success = false;
-      
+
       // 根据轴名称选择相应的配置
       String axisName = String(axes[i]->getAxisName());  // 修正：使用 getAxisName() 并转换为 String
-      
+
+      DEBUG_PRINT("beginAll:INIT_AXIS:");
+      DEBUG_PRINTLN(axisName);  // 调试点
+
       // 修正：使用 equals() 方法进行字符串比较
       if (axisName.equals("X")) {
         success = axes[i]->begin(AxisConfigs::X_AXIS);
@@ -69,6 +73,9 @@ bool AxisManager::beginAll() {
         success = false;
       }
       
+      DEBUG_PRINT("beginAll:AFTER_BEGIN:");
+      DEBUG_PRINTLN(axisName);  // 调试点
+
       if (!success) {
         DEBUG_PRINT("Failed to initialize axis: ");
         DEBUG_PRINTLN(axisName);
@@ -102,32 +109,45 @@ Axis* AxisManager::findAxisByName(const String& axisName) {
 }
 
 bool AxisManager::processCommand(const String& command) {
+  DEBUG_PRINT("AxisMgr:CMD:");
+  DEBUG_PRINTLN(command);  // 调试点A - 收到命令
+
   // 命令格式: "轴名称:命令内容"，例如 "E3:HOMING"
   int colonIndex = command.indexOf(':');
-  
+
   if (colonIndex == -1) {
     DEBUG_PRINTLN("Invalid command format. Expected: AXIS:COMMAND");
     return false;
   }
-  
+
   String axisName = command.substring(0, colonIndex);
   String cmd = command.substring(colonIndex + 1);
-  
+
   axisName.trim();
   cmd.trim();
-  
+
+  DEBUG_PRINT("AxisMgr:AXIS=");
+  DEBUG_PRINT(axisName);
+  DEBUG_PRINT(",CMD=");
+  DEBUG_PRINTLN(cmd);  // 调试点B - 解析结果
+
   if (axisName.length() == 0 || cmd.length() == 0) {
     DEBUG_PRINTLN("Empty axis name or command");
     return false;
   }
-  
+
   // 查找对应的轴
+  DEBUG_PRINT("AxisMgr:FIND_AXIS,count=");
+  DEBUG_PRINTLN(axisCount);  // 调试点C - 轴数量
+
   Axis* targetAxis = findAxisByName(axisName);
   if (targetAxis == nullptr) {
     DEBUG_PRINT("Axis not found: ");
     DEBUG_PRINTLN(axisName);
     return false;
   }
+
+  DEBUG_PRINTLN("AxisMgr:AXIS_FOUND");  // 调试点D - 找到轴
   
   // 将命令传递给对应的轴处理
   bool success = targetAxis->processCommand(cmd);

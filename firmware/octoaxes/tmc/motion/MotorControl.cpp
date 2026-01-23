@@ -205,14 +205,18 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
     if (icID >= MOTOR_IC_COUNT || config == NULL)
         return;
 
-    // Configure REFERENCE_CONF register
-    uint32_t refConf = 0;
+    // Read current REFERENCE_CONF to preserve other bits (与旧 API setBits 行为一致)
+    uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
     // Left switch configuration
     if (config->enableLeft) {
         refConf |= TMC4361A_STOP_LEFT_EN_MASK;   // bit 0
         if (config->leftPolarity)
             refConf |= TMC4361A_POL_STOP_LEFT_MASK;  // bit 2
+        else
+            refConf &= ~TMC4361A_POL_STOP_LEFT_MASK;
+        // Enable position latching on limit switch activation (与旧 API 一致)
+        refConf |= TMC4361A_LATCH_X_ON_ACTIVE_L_MASK;  // bit 11
     }
 
     // Right switch configuration
@@ -220,6 +224,10 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
         refConf |= TMC4361A_STOP_RIGHT_EN_MASK;  // bit 1
         if (config->rightPolarity)
             refConf |= TMC4361A_POL_STOP_RIGHT_MASK;  // bit 3
+        else
+            refConf &= ~TMC4361A_POL_STOP_RIGHT_MASK;
+        // Enable position latching on limit switch activation (与旧 API 一致)
+        refConf |= TMC4361A_LATCH_X_ON_ACTIVE_R_MASK;  // bit 13
     }
 
     // Soft stop enable
@@ -255,8 +263,17 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
     rampMode |= TMC4361A_RAMP_POSITION;  // Set position mode bit
     tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
 
+    // Clear EVENTS before writing target (与旧 API tmc4361A_moveTo 一致)
+    tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+
     // Set target position
     tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
+
+    // Clear EVENTS after writing target (与旧 API 一致)
+    tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+
+    // Read XACTUAL to refresh (与旧 API 一致)
+    tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
 }
 
 void motor_rotateVelocity(uint8_t icID, float velocityMM)
@@ -533,29 +550,36 @@ void motor_enableHomingLimit(uint8_t icID, uint8_t polarity, uint8_t whichSwitch
     if (icID >= MOTOR_IC_COUNT)
         return;
 
-    // Configure HOME_SAFETY_MARGIN
-    tmc4361A_writeRegister(icID, TMC4361A_HOME_SAFETY_MARGIN, safetyMarginMicrosteps);
-
-    // Read current REFERENCE_CONF and update homing settings
+    // Read current REFERENCE_CONF
     uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
-    // Configure latch position on home switch
-    // 使用官方宏定义确保位偏移正确
-    if (whichSwitch == 0x01) {  // Left switch
-        refConf |= TMC4361A_LATCH_X_ON_ACTIVE_L_MASK;  // bit 8
-        if (polarity)
-            refConf |= TMC4361A_POL_STOP_LEFT_MASK;   // bit 2
-        else
-            refConf &= ~TMC4361A_POL_STOP_LEFT_MASK;
-    } else {  // Right switch
-        refConf |= TMC4361A_LATCH_X_ON_ACTIVE_R_MASK;  // bit 9
-        if (polarity)
-            refConf |= TMC4361A_POL_STOP_RIGHT_MASK;  // bit 3
-        else
-            refConf &= ~TMC4361A_POL_STOP_RIGHT_MASK;
+    // Configure HOME_EVENT and home switch (与旧 API tmc4361A_enableHomingLimit 一致)
+    if (whichSwitch == 0x01) {  // Left switch (LEFT_SW)
+        if (polarity != 0) {
+            // Active high: HOME_REF = 0 indicates positive direction
+            refConf |= (0b1100 << TMC4361A_HOME_EVENT_SHIFT);
+        } else {
+            // Active low: HOME_REF = 0 indicates negative direction
+            refConf |= (0b0011 << TMC4361A_HOME_EVENT_SHIFT);
+        }
+        // Use stop left as home
+        refConf |= TMC4361A_STOP_LEFT_IS_HOME_MASK;
+    } else {  // Right switch (RGHT_SW)
+        if (polarity != 0) {
+            // Active high
+            refConf |= (0b0011 << TMC4361A_HOME_EVENT_SHIFT);
+        } else {
+            // Active low
+            refConf |= (0b1100 << TMC4361A_HOME_EVENT_SHIFT);
+        }
+        // Use stop right as home (bit 15)
+        refConf |= (1 << 15);  // TMC4361A_STOP_RIGHT_IS_HOME
     }
 
     tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
+
+    // Set HOME_SAFETY_MARGIN
+    tmc4361A_writeRegister(icID, TMC4361A_HOME_SAFETY_MARGIN, safetyMarginMicrosteps);
 }
 
 // ============================================================================
@@ -581,15 +605,21 @@ void motor_enableSoftLimits(uint8_t icID, bool enableLower, bool enableUpper)
     uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
     // Configure virtual stop enables (使用官方宏定义)
-    if (enableLower)
+    if (enableLower) {
         refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;   // bit 6
-    else
+        // Set VIRT_STOP_MODE = 1 for hard stop (与旧 API 一致)
+        refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);  // bit 8
+    } else {
         refConf &= ~TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
+    }
 
-    if (enableUpper)
+    if (enableUpper) {
         refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;  // bit 7
-    else
+        // Set VIRT_STOP_MODE = 1 for hard stop (与旧 API 一致)
+        refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);  // bit 8
+    } else {
         refConf &= ~TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
+    }
 
     tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
 }
@@ -621,6 +651,10 @@ void motor_configStallGuard(uint8_t icID, int8_t threshold, bool filterEnable, b
 
     // Configure TMC4361A to react to stall event (与旧 API 一致)
     if (stopOnStall) {
+        // Set VSTALL_LIMIT (与旧 API 一致)
+        // 0 = react at any velocity > 0
+        tmc4361A_writeRegister(icID, TMC4361A_VSTALL_LIMIT, 0);
+
         // Enable stop on stall in REFERENCE_CONF (bit 26)
         uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
         refConf |= TMC4361A_STOP_ON_STALL_MASK;      // Enable stop on stall

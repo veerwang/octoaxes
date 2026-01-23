@@ -155,7 +155,17 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
 }
 
 void SerialProtocolHandler::processSerialCommands() {
+  static uint32_t lastPrint = 0;
+  if (millis() - lastPrint > 5000) {  // 每5秒打印一次
+    DEBUG_PRINT("LOOP_ALIVE:");
+    DEBUG_PRINTLN(SerialUSB.available());
+    lastPrint = millis();
+  }
+
   if (SerialUSB.available() >= 2) {
+    DEBUG_PRINT("RX_AVAIL:");
+    DEBUG_PRINTLN(SerialUSB.available());  // 调试：收到数据
+
     // 查看前两个字节但不移除
     int firstByte = SerialUSB.peek();
 
@@ -207,6 +217,9 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     // 处理其他调试命令
+    DEBUG_PRINT("Serial:TO_AXISMGR:");
+    DEBUG_PRINTLN(command);  // 调试点 - 发往AxisManager
+
     bool success = axisManager.processCommand(command);
     if (!success) {
       sendDebugInfo("Command processing failed: %s", command.c_str());

@@ -247,6 +247,10 @@ void Axis::checkLimitPosition() {
 
 // 命令处理
 bool Axis::processCommand(const String &command) {
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":CMD_RECV:");
+  DEBUG_PRINTLN(command);  // 调试点0 - 命令接收
+
   if (command.startsWith("GET_POSITION")) {
     return handleGetPosition();
   } else if (command.startsWith("SET_LIMITS")) {
@@ -656,6 +660,9 @@ bool Axis::handleEmergency() {
 }
 
 bool Axis::handleGetData() {
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINTLN(":GET_DATA:START");  // 调试点1
+
   // 发送轴状态
   const char *stateStr = "UNKNOWN";
   switch (_currentState) {
@@ -686,8 +693,14 @@ bool Axis::handleGetData() {
   DEBUG_PRINT(":STATE:");
   DEBUG_PRINTLN(stateStr);
 
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINTLN(":GET_DATA:BEFORE_GET_POS");  // 调试点2
+
   // 发送当前位置
   int32_t microsteps = getCurrentPosition();
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINTLN(":GET_DATA:AFTER_GET_POS");  // 调试点3
   float positionMM = microstepsToMM(microsteps);
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Current Position (mm):");
@@ -697,8 +710,15 @@ bool Axis::handleGetData() {
   DEBUG_PRINT(":Current Position (microsteps):");
   DEBUG_PRINTLN(microsteps);
 
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINTLN(":GET_DATA:BEFORE_READ_LIMIT");  // 调试点4
+
   // 发送限位开关状态
   uint8_t limitState = readLimitSwitches();
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINTLN(":GET_DATA:AFTER_READ_LIMIT");  // 调试点5
+
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":LIMIT_SWITCHES:0x");
   DEBUG_PRINTLNF(limitState, HEX);
