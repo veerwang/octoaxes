@@ -7,46 +7,57 @@
 ## 最新会话
 
 **日期**: 2026-01-23
-**位置**: 新旧 API 初始化一致性修复
+**位置**: 硬件测试与 REFERENCE_CONF 位偏移修复
 
 ### 本次完成
 
-- 对比新旧 API 芯片初始化过程
-- **发现并修复两个差异**:
-  1. **TMC4361A 复位操作缺失** - 添加 `tmc4361A_writeRegister(TMC4361A_SW_RESET, 0x52535400)`
-  2. **CHOPCONF 参数不一致** - 修改为与旧 API 一致:
-     - TOFF: 5 → 3
-     - HEND: 6 → 1 (用户值 -2)
-     - CHOPCONF: 0x10345 → 0x100C3
-- 修复文件:
-  - `tmc/motion/MotorControl.cpp:112-113` - 添加复位
-  - `axis.cpp:77-80` - CHOPCONF 参数
-- 编译验证通过
+- **创建硬件测试脚本** (`software/tests/`):
+  - `test_01_serial_connection.py` - 串口连接测试
+  - `test_02_version_query.py` - 版本查询测试
+  - `test_03_engine_start.py` - Engine Start 测试
+  - `test_04_tmc_status.py` - TMC 芯片通信测试
+  - `test_05_axis_move.py` - 轴运动测试
+  - `run_all_tests.py` - 测试运行器
 
-### 验证结果
+- **运行测试 01-04**:
+  - 测试 01-03: 全部通过（串口连接、版本查询、Engine Start）
+  - 测试 04: X/Y/Z/W 轴 TMC 通信正常，E1/E3/E4 未配置
+  - 发现 Z 轴 `LIMIT_SWITCHES: 0x3`（两个限位都触发）- 异常
 
-| 检查项 | 旧 API | 新 API | 状态 |
-|--------|--------|--------|------|
-| TMC4361A 复位 | 0x52535400 | 0x52535400 | ✅ |
-| CHOPCONF | 0x100C3 | 0x100C3 | ✅ |
-| DRVCONF | 0x000A1 | 0x000A1 | ✅ |
-| SMARTEN | 0x00000 | 0x00000 | ✅ |
-| SPI_OUT_CONF | 0x4440108A | 0x4440108A | ✅ |
+- **发现并修复多处 REFERENCE_CONF 位偏移错误**:
+
+  | 函数 | 问题 | 错误位 | 正确位 |
+  |------|------|--------|--------|
+  | `motor_enableHomingLimit` | POL_STOP_LEFT | bit 4 | bit 2 |
+  | `motor_enableHomingLimit` | POL_STOP_RIGHT | bit 5 | bit 3 |
+  | `motor_enableSoftLimits` | VIRTUAL_LEFT_LIMIT_EN | bit 2 | bit 6 |
+  | `motor_enableSoftLimits` | VIRTUAL_RIGHT_LIMIT_EN | bit 3 | bit 7 |
+  | `motor_configStallGuard` | 写错寄存器 | INTR_CONF | REFERENCE_CONF |
+
+- **反思**: 上次 API 对比检查不够系统，只检查了 `motor_configLimitSwitches`，遗漏了其他涉及 REFERENCE_CONF 的函数
 
 ### 下次继续
 
-- 硬件功能测试
-- 上位机兼容性测试
+- 烧写修复后的固件
+- 重新运行测试 04 验证 Z 轴限位开关状态
+- 运行测试 05 验证 Z 轴运动功能
+- 完成硬件功能测试
 
 ### 备注
 
-新旧 API 初始化现已完全一致，可以进行硬件测试。
+- 只有 Z 轴接了实际电机，其他轴未接
+- 测试脚本使用调试协议 (0x55 0xAA + 文本命令)
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-01-23 - 新旧 API 初始化一致性修复
+- 对比新旧 API 芯片初始化过程
+- 发现并修复 TMC4361A 复位操作缺失
+- 修复 CHOPCONF 参数不一致 (0x10345 → 0x100C3)
 
 ### 2026-01-23 - API 参数对比检查
 - 修复 REFERENCE_CONF 限位开关位偏移错误
@@ -57,28 +68,6 @@
 - 完成 TMC4361A 编程指南 v1.5（完整版）
 - 新增章节 27-29（寄存器定义、电气特性、封装信息）
 
-### 2026-01-22 - TMC4361A 文档扩展（页 161-200）
-- 读取 TMC4361 Datasheet 第 161-200 页
-- 添加第 26 章：闭环操作详解
-- 文档版本更新为 1.4
-
-### 2026-01-22 - TMC4361A 文档扩展（页 121-160）
-- 读取 TMC4361 Datasheet 第 121-160 页
-- 添加章节 21-25（紧急停止、PWM 输出、dcStep、编码器接口、编码器反馈调节）
-- 文档版本更新为 1.3
-
-### 2026-01-22 - TMC4361A 文档扩展（页 81-120）
-- 读取 TMC4361 Datasheet 第 81-120 页
-- 添加章节 17-20（目标管线、无主同步、SPI 输出接口、电流缩放）
-- 扩展附录 A
-- 文档版本更新为 1.2
-
-### 2026-01-22 - TMC4361A 文档扩展（页 41-80）
-- 读取 TMC4361 Datasheet 第 41-80 页
-- 添加章节 7-16（高级斜坡、外部步进、参考开关、同步等）
-- 添加附录 B（STATUS_FLAGS 和 EVENTS 位定义）
-- 文档版本更新为 1.1
-
 ### 2026-01-22 - API替换和风险修复
 - 完成旧API到新MotorControl API的全面替换
 - 修复5个关键风险（限位开关位、速度/加速度转换、EVENTS清除）
@@ -86,21 +75,7 @@
 
 ### 2026-01-21 - 固件重构完成
 - 完成阶段 1-6 全部重构任务
-- 提交记录：
-  - `965acdb` 阶段1: 实现 SPI 硬件抽象层 (HAL)
-  - `92b0da4` 阶段2: TMC4361A 驱动重构
-  - `000a7c7` 阶段3: TMC2660 驱动分离
-  - `4c9dbc6` 阶段4: 运动控制层
-  - `8b6184a` 阶段5: Axis 类适配新架构
-  - `2ae9549` 阶段6: 测试和清理
-
-### 2026-01-21 - 固件架构文档化
-- 深入分析固件代码架构
-- 创建 `documents/firmware-architecture.md`
-
-### 2026-01-21 - 项目初始化
-- 创建 Claude Code 项目管理文件
-- 配置项目级 hooks
+- 提交记录：`965acdb` ~ `2ae9549`
 
 ---
 

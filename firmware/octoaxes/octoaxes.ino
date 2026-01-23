@@ -4,9 +4,9 @@
 #include "objectives.h"
 #include "serial.h"
 #include "stepaxis.h"
-#include "utils.h"
 #include "tmc/hal/TMC_SPI.h"
 #include "tmc/motion/MotorControl.h"
+#include "utils.h"
 
 void initializeClock(uint8_t clk_pin, uint32_t frequence) {
   pinMode(clk_pin, OUTPUT);
@@ -80,7 +80,7 @@ bool initializeSystem() {
   // Axis* expand3Axis = new StepAxis(Pins::EXPAND3_AXIS_CS, 6, "E3");
   // Axis* expand4Axis = new FilterWheel(Pins::EXPAND4_AXIS_CS, 7, "E4");
 
-  Axis *wAxis = new Objectives(Pins::W_AXIS_CS, 3, "E1");
+  Axis *wAxis = new Objectives(Pins::W_AXIS_CS, 3, "W");
   // 初始化顺序很重要，homing的时候需要通过这个index获取句柄
   if (!axisManager.addAxis(xAxis) || !axisManager.addAxis(yAxis) ||
       !axisManager.addAxis(zAxis) || !axisManager.addAxis(wAxis)) {

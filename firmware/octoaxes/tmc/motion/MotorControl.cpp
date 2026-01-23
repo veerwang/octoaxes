@@ -540,18 +540,19 @@ void motor_enableHomingLimit(uint8_t icID, uint8_t polarity, uint8_t whichSwitch
     uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
     // Configure latch position on home switch
+    // 使用官方宏定义确保位偏移正确
     if (whichSwitch == 0x01) {  // Left switch
-        refConf |= (1 << 8);  // LATCH_X_ON_ACTIVE_L
+        refConf |= TMC4361A_LATCH_X_ON_ACTIVE_L_MASK;  // bit 8
         if (polarity)
-            refConf |= (1 << 4);  // POL_STOP_LEFT
+            refConf |= TMC4361A_POL_STOP_LEFT_MASK;   // bit 2
         else
-            refConf &= ~(1 << 4);
+            refConf &= ~TMC4361A_POL_STOP_LEFT_MASK;
     } else {  // Right switch
-        refConf |= (1 << 9);  // LATCH_X_ON_ACTIVE_R
+        refConf |= TMC4361A_LATCH_X_ON_ACTIVE_R_MASK;  // bit 9
         if (polarity)
-            refConf |= (1 << 5);  // POL_STOP_RIGHT
+            refConf |= TMC4361A_POL_STOP_RIGHT_MASK;  // bit 3
         else
-            refConf &= ~(1 << 5);
+            refConf &= ~TMC4361A_POL_STOP_RIGHT_MASK;
     }
 
     tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
@@ -579,16 +580,16 @@ void motor_enableSoftLimits(uint8_t icID, bool enableLower, bool enableUpper)
     // Read current REFERENCE_CONF
     uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
-    // Configure virtual stop enables
+    // Configure virtual stop enables (使用官方宏定义)
     if (enableLower)
-        refConf |= (1 << 2);  // VIRT_STOP_LEFT_EN
+        refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;   // bit 6
     else
-        refConf &= ~(1 << 2);
+        refConf &= ~TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
 
     if (enableUpper)
-        refConf |= (1 << 3);  // VIRT_STOP_RIGHT_EN
+        refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;  // bit 7
     else
-        refConf &= ~(1 << 3);
+        refConf &= ~TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
 
     tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
 }
@@ -618,17 +619,13 @@ void motor_configStallGuard(uint8_t icID, int8_t threshold, bool filterEnable, b
     tmc2660_setStallGuardThreshold(icID, threshold);
     tmc2660_setStallGuardFilter(icID, filterEnable);
 
-    // Configure TMC4361A to react to stall event
+    // Configure TMC4361A to react to stall event (与旧 API 一致)
     if (stopOnStall) {
-        // Read SPI_STATUS_SELECTION and enable stall detection
-        uint32_t spiStatus = tmc4361A_readRegister(icID, TMC4361A_SPI_STATUS_SELECTION);
-        spiStatus |= (1 << 0);  // Enable SG status from TMC2660
-        tmc4361A_writeRegister(icID, TMC4361A_SPI_STATUS_SELECTION, spiStatus);
-
-        // Configure to stop on stall
-        uint32_t eventConfig = tmc4361A_readRegister(icID, TMC4361A_INTR_CONF);
-        eventConfig |= (1 << 29);  // Enable stall event
-        tmc4361A_writeRegister(icID, TMC4361A_INTR_CONF, eventConfig);
+        // Enable stop on stall in REFERENCE_CONF (bit 26)
+        uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
+        refConf |= TMC4361A_STOP_ON_STALL_MASK;      // Enable stop on stall
+        refConf &= ~TMC4361A_DRV_AFTER_STALL_MASK;   // Disable drive after stall
+        tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
     }
 }
 

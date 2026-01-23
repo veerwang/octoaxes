@@ -8,7 +8,7 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-（暂无）
+- [ ] 硬件功能测试 - Z 轴限位开关和运动测试
 
 ## 待办
 
@@ -18,7 +18,10 @@
 - [x] 编译测试 (2026-01-23)
 - [x] API 参数对比检查 (2026-01-23) - 修复 REFERENCE_CONF 位偏移错误
 - [x] 新旧 API 初始化一致性修复 (2026-01-23) - 添加复位 + CHOPCONF 参数对齐
-- [ ] 硬件功能测试
+- [x] 创建硬件测试脚本 (2026-01-23) - `software/tests/`
+- [x] 修复 REFERENCE_CONF 多处位偏移错误 (2026-01-23)
+- [ ] 烧写固件并验证 Z 轴限位开关
+- [ ] 验证 Z 轴运动功能
 - [ ] 上位机兼容性测试
 
 ### 代码清理（可选）
@@ -30,6 +33,14 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### 硬件测试准备 (2026-01-23)
+- [x] 创建测试脚本 `software/tests/`
+- [x] 运行测试 01-03 (串口、版本、Engine Start)
+- [x] 运行测试 04 (TMC 状态) - 发现 Z 轴限位异常
+- [x] 修复 `motor_enableHomingLimit` 位偏移
+- [x] 修复 `motor_enableSoftLimits` 位偏移
+- [x] 修复 `motor_configStallGuard` 寄存器错误
 
 ### TMC4361A 编程文档 (2026-01-22)
 - [x] 编程指南 v1.0 - 页 1-40（概述、引脚、SPI 通信、斜坡配置）
@@ -73,6 +84,7 @@
 
 - 重构计划：`documents/refactoring-plan.md`
 - 架构文档：`documents/firmware-architecture.md`
+- 测试脚本：`software/tests/`
 - 官方 API 文档：`/home/hds/github.com/TMC-API/docs/TMC4361A_TMC2660_API_Reference.md`
 - TMC4361A 示例：`/home/hds/github.com/TMC-API/tmc/ic/TMC4361A/Examples/`
 - TMC2660 示例：`/home/hds/github.com/TMC-API/tmc/ic/TMC2660/Examples/`
