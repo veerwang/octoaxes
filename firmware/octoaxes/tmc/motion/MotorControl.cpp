@@ -10,6 +10,18 @@
 #include "../ic/TMC4361A/TMC4361A.h"
 #include "../ic/TMC2660/TMC2660.h"
 #include "../hal/TMC_SPI.h"
+#include <Arduino.h>
+
+// ============================================================================
+// Debug Helper
+// ============================================================================
+
+extern "C" void motor_debugPrint(const char* msg, int32_t val)
+{
+    SerialUSB.print(msg);
+    SerialUSB.print(":");
+    SerialUSB.println(val);
+}
 
 // ============================================================================
 // Motor Parameters Cache
@@ -156,6 +168,46 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     tmc4361A_writeRegister(icID, TMC4361A_VSTART, 0);
     tmc4361A_writeRegister(icID, TMC4361A_VSTOP, 0);
 
+    // ========================================================================
+    // 关键配置: 微步和每转步数 (与旧 API tmc4361A_writeMicrosteps/writeSPR 一致)
+    // ========================================================================
+
+    // 计算 MSTEP_PER_FS 值: 256->0, 128->1, ..., 1->8
+    uint16_t mstep = config->microsteps;
+    uint8_t mstepVal = 0;
+    if (mstep > 0 && (mstep & (mstep - 1)) == 0 && mstep <= 256) {
+        // 计算 log2(mstep) + 1, 然后 9 - result
+        uint8_t bitsSet = 0;
+        while (mstep > 0) {
+            bitsSet++;
+            mstep >>= 1;
+        }
+        mstepVal = 9 - bitsSet;
+    }
+
+    // 组合 STEP_CONF: MSTEP_PER_FS (bit 0-3) + FS_PER_REV (bit 4-15)
+    uint32_t stepConf = (mstepVal & TMC4361A_MSTEP_PER_FS_MASK) |
+                        ((uint32_t)config->fullStepsPerRev << TMC4361A_FS_PER_REV_SHIFT);
+    tmc4361A_writeRegister(icID, TMC4361A_STEP_CONF, stepConf);
+
+    // ========================================================================
+    // 关键配置: 电流缩放 (与旧 API tmc4361A_cScaleInit 一致)
+    // ========================================================================
+
+    // SCALE_VALUES: 使用默认值 (hold=128, drv1=255, drv2=255, boost=128)
+    // 这些值对应旧 API 的 0.5, 1.0, 1.0, 0.5 缩放系数
+    uint32_t scaleValues = (128 << TMC4361A_HOLD_SCALE_VAL_SHIFT) |   // hold = 50%
+                           (255 << TMC4361A_DRV2_SCALE_VAL_SHIFT) |   // drv2 = 100%
+                           (255 << TMC4361A_DRV1_SCALE_VAL_SHIFT) |   // drv1 = 100%
+                           (128 << TMC4361A_BOOST_SCALE_VAL_SHIFT);   // boost = 50%
+    tmc4361A_writeRegister(icID, TMC4361A_SCALE_VALUES, scaleValues);
+
+    // CURRENT_CONF: 使能驱动电流缩放和保持电流缩放
+    uint32_t currentConf = tmc4361A_readRegister(icID, TMC4361A_CURRENT_CONF);
+    currentConf |= TMC4361A_DRIVE_CURRENT_SCALE_EN_MASK;  // bit 1
+    currentConf |= TMC4361A_HOLD_CURRENT_SCALE_EN_MASK;   // bit 0
+    tmc4361A_writeRegister(icID, TMC4361A_CURRENT_CONF, currentConf);
+
     return true;
 }
 
@@ -167,14 +219,13 @@ bool motor_initDriver(uint8_t icID, const MotorConfig *config)
     // Calculate current scale
     uint8_t cs = calculateCurrentScale(config->runCurrentMA, config->rSense);
 
-    // Configure DRVCONF (matching old API value 0x000A1)
-    // SDOFF=1: SPI mode (motion control via SPI, not Step/Dir)
-    // VSENSE=0: High sense resistor voltage range
-    // RDSEL=2: StallGuard2 value and CoolStep current level in response
-    uint32_t drvconf = TMC2660_SET_RDSEL(2) | TMC2660_SET_VSENSE(0) | TMC2660_SET_SDOFF(1) | 0x01;
-    tmc2660_writeRegister(icID, TMC2660_DRVCONF, drvconf);
+    // ========================================================================
+    // TMC2660 初始化 - 与旧 API 顺序一致
+    // 旧 API 顺序: CHOPCONF -> SMARTEN -> SGCSCONF -> DRVCONF
+    // 注意: SPI 模式 (SDOFF=1) 下不发送 DRVCTRL
+    // ========================================================================
 
-    // Configure CHOPCONF
+    // 1. Configure CHOPCONF (旧 API: 0x000900C3)
     uint8_t hend_reg = (uint8_t)(config->hend + 3);  // Offset by 3
     uint32_t chopconf = TMC2660_SET_TBL(config->tbl) |
                         TMC2660_SET_HEND(hend_reg) |
@@ -182,20 +233,25 @@ bool motor_initDriver(uint8_t icID, const MotorConfig *config)
                         TMC2660_SET_TOFF(config->toff);
     tmc2660_writeRegister(icID, TMC2660_CHOPCONF, chopconf);
 
-    // Configure SGCSCONF (current and StallGuard)
+    // 2. Configure SMARTEN (旧 API: 0x000A0000, CoolStep disabled)
+    tmc2660_writeRegister(icID, TMC2660_SMARTEN, 0);
+
+    // 3. Configure SGCSCONF (旧 API: 0x000C000A)
     uint8_t sgt = (uint8_t)(config->stallThreshold & 0x7F);
     uint32_t sgcsconf = TMC2660_SET_CS(cs) |
                         TMC2660_SET_SGT(sgt) |
                         TMC2660_SET_SFILT(config->stallFilter ? 1 : 0);
     tmc2660_writeRegister(icID, TMC2660_SGCSCONF, sgcsconf);
 
-    // Configure SMARTEN (CoolStep - disabled by default)
-    tmc2660_writeRegister(icID, TMC2660_SMARTEN, 0);
+    // 4. Configure DRVCONF (旧 API: 0x000E00A1)
+    // SDOFF=1: SPI mode (motion control via SPI, not Step/Dir)
+    // VSENSE=0: High sense resistor voltage range
+    // RDSEL=2: StallGuard2 value and CoolStep current level in response
+    uint32_t drvconf = TMC2660_SET_RDSEL(2) | TMC2660_SET_VSENSE(0) | TMC2660_SET_SDOFF(1) | 0x01;
+    tmc2660_writeRegister(icID, TMC2660_DRVCONF, drvconf);
 
-    // Configure DRVCTRL (microstep and interpolation)
-    uint32_t drvctrl = TMC2660_SET_MRES(config->microstepRes) |
-                       TMC2660_SET_INTERPOL(config->interpolation ? 1 : 0);
-    tmc2660_writeRegister(icID, TMC2660_DRVCTRL, drvctrl);
+    // 注意: 在 SPI 模式 (SDOFF=1) 下，不发送 DRVCTRL
+    // 微步由 TMC4361A 的 STEP_CONF 寄存器控制
 
     return true;
 }
@@ -258,6 +314,10 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
     if (icID >= MOTOR_IC_COUNT)
         return;
 
+    // Debug: read before
+    int32_t xactual_before = tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
+    int32_t xtarget_before = tmc4361A_readRegister(icID, TMC4361A_XTARGET);
+
     // Ensure position mode
     uint32_t rampMode = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
     rampMode |= TMC4361A_RAMP_POSITION;  // Set position mode bit
@@ -274,6 +334,20 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
 
     // Read XACTUAL to refresh (与旧 API 一致)
     tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
+
+    // Debug: read after
+    int32_t xactual_after = tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
+    int32_t xtarget_after = tmc4361A_readRegister(icID, TMC4361A_XTARGET);
+    int32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
+
+    // Output debug info (using SerialUSB since we're in C code)
+    extern void motor_debugPrint(const char* msg, int32_t val);
+    motor_debugPrint("motor_moveToMicrosteps:BEFORE XACTUAL", xactual_before);
+    motor_debugPrint("motor_moveToMicrosteps:BEFORE XTARGET", xtarget_before);
+    motor_debugPrint("motor_moveToMicrosteps:REQUESTED POS", position);
+    motor_debugPrint("motor_moveToMicrosteps:AFTER XACTUAL", xactual_after);
+    motor_debugPrint("motor_moveToMicrosteps:AFTER XTARGET", xtarget_after);
+    motor_debugPrint("motor_moveToMicrosteps:STATUS", status);
 }
 
 void motor_rotateVelocity(uint8_t icID, float velocityMM)

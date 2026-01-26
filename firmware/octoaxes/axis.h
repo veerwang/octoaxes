@@ -143,6 +143,7 @@ public:
   // 归位控制
   virtual bool startHoming();
   virtual bool handleReset();
+  virtual bool handleDebugReg();
   virtual bool isHomingInProgress() const;
   virtual bool isMovementComplete() const;
 

@@ -1,5 +1,7 @@
 #include "axis.h"
 #include "build_opt.h"
+#include "TMC4361A_Register.h"
+#include "tmc/ic/TMC4361A/TMC4361A.h"
 #include <SPI.h>
 
 static inline int sgn(int val) {
@@ -269,6 +271,8 @@ bool Axis::processCommand(const String &command) {
     return handleAxisAbilityToggle(true);
   } else if (command.startsWith("RESET")) {
     return handleReset();
+  } else if (command.startsWith("DEBUG_REG")) {
+    return handleDebugReg();
   } else {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":Unknown command: ");
@@ -413,6 +417,9 @@ bool Axis::handleReset() {
   // 清除状态
   readLimitSwitches();
   readSwitchEvent();
+
+  // 恢复运动参数（VMAX/AMAX 可能被 stop 清零）
+  setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
 
   setState(STATE_IDLE);
 
@@ -759,5 +766,81 @@ bool Axis::handleAxisAbilityToggle(bool action) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":AXIS Disable");
   }
+  return true;
+}
+
+bool Axis::handleDebugReg() {
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINTLN(":DEBUG_REG:START");
+
+  // 读取关键 TMC4361A 寄存器
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:GENERAL_CONF(0x00)=0x");
+  DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_GENERAL_CONF), HEX);
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:REFERENCE_CONF(0x01)=0x");
+  DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_REFERENCE_CONF), HEX);
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:SPI_OUT_CONF(0x05)=0x");
+  DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_SPI_OUT_CONF), HEX);
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:STATUS(0x0E)=0x");
+  DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_STATUS), HEX);
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:EVENTS(0x0F)=0x");
+  DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_EVENTS), HEX);
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:CLK_FREQ(0x1F)=");
+  DEBUG_PRINTLN(tmc4361A_readRegister(_icID, TMC4361A_CLK_FREQ));
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:RAMPMODE(0x20)=0x");
+  DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_RAMPMODE), HEX);
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:XACTUAL(0x21)=");
+  DEBUG_PRINTLN(tmc4361A_readRegister(_icID, TMC4361A_XACTUAL));
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:VACTUAL(0x22)=");
+  DEBUG_PRINTLN(tmc4361A_readRegister(_icID, TMC4361A_VACTUAL));
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:XTARGET(0x2D)=");
+  DEBUG_PRINTLN(tmc4361A_readRegister(_icID, TMC4361A_XTARGET));
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:VMAX(0x24)=");
+  DEBUG_PRINTLN(tmc4361A_readRegister(_icID, TMC4361A_VMAX));
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:AMAX(0x28)=");
+  DEBUG_PRINTLN(tmc4361A_readRegister(_icID, TMC4361A_AMAX));
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:DMAX(0x29)=");
+  DEBUG_PRINTLN(tmc4361A_readRegister(_icID, TMC4361A_DMAX));
+
+  // 新增：关键配置寄存器
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:STEP_CONF(0x0A)=0x");
+  DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_STEP_CONF), HEX);
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:CURRENT_CONF(0x05)=0x");
+  DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_CURRENT_CONF), HEX);
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":REG:SCALE_VALUES(0x06)=0x");
+  DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_SCALE_VALUES), HEX);
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINTLN(":DEBUG_REG:END");
+
   return true;
 }

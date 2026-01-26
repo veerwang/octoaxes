@@ -93,6 +93,7 @@ typedef struct {
     uint16_t fullStepsPerRev;
     uint16_t microsteps;
     float    stepsPerMM;         // Calculated: (fullStepsPerRev * microsteps) / screwPitchMM
+    int32_t  vmaxInternal;       // Cached VMAX value for restoration after stop
     bool     initialized;
 } MotorParams;
 
