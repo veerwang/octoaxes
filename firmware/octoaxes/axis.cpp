@@ -418,6 +418,9 @@ bool Axis::handleReset() {
   readLimitSwitches();
   readSwitchEvent();
 
+  // 重置 RAMPMODE（硬件限位触发后可能变成 HOLD 模式）
+  motor_resetRampMode(_icID);
+
   // 恢复运动参数（VMAX/AMAX 可能被 stop 清零）
   setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
 

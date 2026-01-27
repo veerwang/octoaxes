@@ -270,6 +270,13 @@ uint32_t motor_readEvents(uint8_t icID);
 void motor_setMaxVelocity(uint8_t icID, float velocityMM);
 
 /**
+ * @brief Reset RAMPMODE to position mode (S-shaped)
+ * Call after RESET command or hardware limit trigger to restore normal operation
+ * @param icID  IC identifier
+ */
+void motor_resetRampMode(uint8_t icID);
+
+/**
  * @brief Set maximum acceleration
  * @param icID  IC identifier
  * @param accelerationMM Maximum acceleration in mm/s²
