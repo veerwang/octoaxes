@@ -149,10 +149,29 @@ void StepAxis::performHomingSequence() {
       if (limit_state & _config.homingSwitch) {
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Home limit switch triggered!");
+
+        // 读取当前状态
+        uint32_t statusBefore = motor_readStatus(_icID);
+        int32_t xactualBefore = motor_getPositionMicrosteps(_icID);
+        DEBUG_PRINT(_axisName);
+        DEBUG_PRINT(":Before stop - XACTUAL=");
+        DEBUG_PRINT(xactualBefore);
+        DEBUG_PRINT(" STATUS=0x");
+        Serial.println(statusBefore, HEX);
+
         motor_setVelocityInternal(_icID, 0); // 直接停止
 
-        // 等待完全停止
-        delay(100);
+        // 等待完全停止 - 增加等待时间
+        delay(200);
+
+        // 再次读取状态确认停止
+        int32_t xactualAfterStop = motor_getPositionMicrosteps(_icID);
+        int32_t vactual = motor_getVelocityInternal(_icID);
+        DEBUG_PRINT(_axisName);
+        DEBUG_PRINT(":After stop - XACTUAL=");
+        DEBUG_PRINT(xactualAfterStop);
+        DEBUG_PRINT(" VACTUAL=");
+        DEBUG_PRINTLN(vactual);
 
         int32_t latchedPosition = motor_readLatchPosition(_icID);
         DEBUG_PRINT(_axisName);
@@ -161,10 +180,21 @@ void StepAxis::performHomingSequence() {
 
         // 计算安全位置（离开限位开关）
         int32_t safePosition = latchedPosition;
+        int32_t margin = motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
         if (_config.homingSwitch == RGHT_SW) {
-          safePosition -= motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
+          safePosition -= margin;
+          DEBUG_PRINT(_axisName);
+          DEBUG_PRINT(":RGHT_SW: safePos = latched(");
+          DEBUG_PRINT(latchedPosition);
+          DEBUG_PRINT(") - margin(");
+          DEBUG_PRINT(margin);
+          DEBUG_PRINT(") = ");
+          DEBUG_PRINTLN(safePosition);
         } else {
-          safePosition += motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
+          safePosition += margin;
+          DEBUG_PRINT(_axisName);
+          DEBUG_PRINT(":LEFT_SW: safePos = latched + margin = ");
+          DEBUG_PRINTLN(safePosition);
         }
 
         DEBUG_PRINT(_axisName);

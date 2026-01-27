@@ -86,15 +86,28 @@ typedef struct {
 
 #define MOTOR_IC_COUNT 7
 
-// Cached motion parameters for unit conversion
+// Cached motion parameters for unit conversion and state tracking
 typedef struct {
     uint32_t clockFrequency;
     float    screwPitchMM;
     uint16_t fullStepsPerRev;
     uint16_t microsteps;
     float    stepsPerMM;         // Calculated: (fullStepsPerRev * microsteps) / screwPitchMM
-    int32_t  vmaxInternal;       // Cached VMAX value for restoration after stop
     bool     initialized;
+
+    // 与旧 API velocity_mode 一致的状态跟踪
+    bool     velocity_mode;      // true when in velocity mode, cleared on moveTo
+
+    // 斜坡参数缓存 (与旧 API rampParam[] 一致)
+    uint32_t bow1;               // BOW1 parameter
+    uint32_t bow2;               // BOW2 parameter
+    uint32_t bow3;               // BOW3 parameter
+    uint32_t bow4;               // BOW4 parameter
+    uint32_t amax;               // Maximum acceleration
+    uint32_t dmax;               // Maximum deceleration
+    uint32_t astart;             // Initial acceleration
+    uint32_t dfinal;             // Final deceleration
+    int32_t  vmax;               // Maximum velocity (internal units)
 } MotorParams;
 
 extern MotorParams motorParams[MOTOR_IC_COUNT];

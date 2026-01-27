@@ -33,6 +33,61 @@ MotorParams motorParams[MOTOR_IC_COUNT] = {};
 // Internal Helper Functions
 // ============================================================================
 
+// BOW 参数最大值 (与旧 API BOWMAX 一致)
+#define BOWMAX ((1 << 24) - 1)
+
+// 自动计算 BOW 参数 (与旧 API tmc4361A_adjustBows 完全一致)
+// 公式: BOW = AMAX² / VMAX
+// 目的: 最小化在 AMAX 饱和的时间
+static void motor_adjustBows(uint8_t icID)
+{
+    if (icID >= MOTOR_IC_COUNT || !motorParams[icID].initialized)
+        return;
+
+    // 获取 AMAX 和 VMAX (内部单位)
+    int32_t vmax = motorParams[icID].vmax;
+    uint32_t amax = motorParams[icID].amax;
+
+    if (vmax == 0) {
+        // 避免除以零
+        motorParams[icID].bow1 = 0;
+        motorParams[icID].bow2 = 0;
+        motorParams[icID].bow3 = 0;
+        motorParams[icID].bow4 = 0;
+        return;
+    }
+
+    // 转换为 mm 单位进行计算 (与旧 API 一致)
+    // VMAX 内部单位是 24.8 定点数，需要除以 256
+    float vmax_mm = (float)vmax / 256.0f / motorParams[icID].stepsPerMM;
+
+    // AMAX 内部单位是 22.2 定点数，需要除以 4
+    float amax_mm = (float)amax / 4.0f / motorParams[icID].stepsPerMM;
+
+    // 计算 BOW 值: AMAX² / VMAX
+    float bowval_mm = (amax_mm * amax_mm) / vmax_mm;
+
+    // 转换回内部单位 (微步)
+    int32_t bow = (int32_t)(bowval_mm * motorParams[icID].stepsPerMM);
+    if (bow < 0) bow = -bow;  // abs
+    if (bow > BOWMAX) bow = BOWMAX;
+
+    // 所有 4 个 BOW 参数设为相同值 (与旧 API 一致)
+    motorParams[icID].bow1 = bow;
+    motorParams[icID].bow2 = bow;
+    motorParams[icID].bow3 = bow;
+    motorParams[icID].bow4 = bow;
+
+    Serial.print("motor_adjustBows: icID=");
+    Serial.print(icID);
+    Serial.print(" AMAX=");
+    Serial.print(amax);
+    Serial.print(" VMAX=");
+    Serial.print(vmax);
+    Serial.print(" BOW=");
+    Serial.println(bow);
+}
+
 // Calculate current scale from mA and sense resistor
 static uint8_t calculateCurrentScale(float currentMA, float rSense)
 {
@@ -120,6 +175,7 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     motorParams[icID].microsteps = config->microsteps;
     motorParams[icID].stepsPerMM = (float)(config->fullStepsPerRev * config->microsteps) / config->screwPitchMM;
     motorParams[icID].initialized = true;
+    motorParams[icID].velocity_mode = false;  // 与旧 API tmc4361A_init 一致
 
     // Reset TMC4361A (same as old API)
     tmc4361A_writeRegister(icID, TMC4361A_SW_RESET, 0x52535400);
@@ -149,19 +205,49 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     uint32_t rampMode = config->useSShapedRamp ? 6 : 5;  // Position mode + ramp type
     tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
 
-    // Set velocity and acceleration parameters
-    motor_setMaxVelocity(icID, config->maxVelocityMM);
-    motor_setMaxAcceleration(icID, config->maxAccelerationMM);
+    // ========================================================================
+    // 缓存斜坡参数 (与旧 API rampParam[] 一致)
+    // ========================================================================
 
-    float decel = config->maxDecelerationMM > 0 ? config->maxDecelerationMM : config->maxAccelerationMM;
-    motor_setMaxDeceleration(icID, decel);
+    // 计算并缓存速度/加速度参数
+    int32_t vmax = motor_velocityMMToInternal(icID, config->maxVelocityMM);
+    uint32_t amax = motor_accelMMToInternal(icID, config->maxAccelerationMM);
+    float decelMM = config->maxDecelerationMM > 0 ? config->maxDecelerationMM : config->maxAccelerationMM;
+    uint32_t dmax = motor_accelMMToInternal(icID, decelMM);
+
+    motorParams[icID].vmax = vmax;
+    motorParams[icID].amax = amax;
+    motorParams[icID].dmax = dmax;
+    motorParams[icID].astart = 0;
+    motorParams[icID].dfinal = 0;
+
+    // 写入硬件寄存器
+    tmc4361A_writeRegister(icID, TMC4361A_VMAX, vmax);
+    tmc4361A_writeRegister(icID, TMC4361A_AMAX, amax);
+    tmc4361A_writeRegister(icID, TMC4361A_DMAX, dmax);
 
     // Configure S-shaped ramp if enabled
     if (config->useSShapedRamp) {
-        tmc4361A_writeRegister(icID, TMC4361A_BOW1, config->bow1);
-        tmc4361A_writeRegister(icID, TMC4361A_BOW2, config->bow2);
-        tmc4361A_writeRegister(icID, TMC4361A_BOW3, config->bow3);
-        tmc4361A_writeRegister(icID, TMC4361A_BOW4, config->bow4);
+        // 如果 BOW 参数为 0，自动计算 (与旧 API tmc4361A_adjustBows 一致)
+        if (config->bow1 == 0 && config->bow2 == 0 && config->bow3 == 0 && config->bow4 == 0) {
+            motor_adjustBows(icID);
+        } else {
+            motorParams[icID].bow1 = config->bow1;
+            motorParams[icID].bow2 = config->bow2;
+            motorParams[icID].bow3 = config->bow3;
+            motorParams[icID].bow4 = config->bow4;
+        }
+
+        // 写入 BOW 寄存器
+        tmc4361A_writeRegister(icID, TMC4361A_BOW1, motorParams[icID].bow1);
+        tmc4361A_writeRegister(icID, TMC4361A_BOW2, motorParams[icID].bow2);
+        tmc4361A_writeRegister(icID, TMC4361A_BOW3, motorParams[icID].bow3);
+        tmc4361A_writeRegister(icID, TMC4361A_BOW4, motorParams[icID].bow4);
+    } else {
+        motorParams[icID].bow1 = 0;
+        motorParams[icID].bow2 = 0;
+        motorParams[icID].bow3 = 0;
+        motorParams[icID].bow4 = 0;
     }
 
     // Set VSTART, VSTOP, ASTART, DFINAL (与旧 API sRampInit 一致)
@@ -317,44 +403,70 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
         return;
 
     // Debug: read before
-    int32_t xactual_before = tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
-    int32_t xtarget_before = tmc4361A_readRegister(icID, TMC4361A_XTARGET);
+    uint32_t rampModeBefore = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
 
-    // Ensure position mode
-    uint32_t rampMode = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
-    rampMode |= TMC4361A_RAMP_POSITION;  // Set position mode bit
-    tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
+    // ========================================================================
+    // 与旧 API tmc4361A_moveTo 完全一致的实现
+    // ========================================================================
 
-    // 恢复 VMAX（速度模式停止时可能被设为 0）
-    if (motorParams[icID].vmaxInternal > 0) {
-        tmc4361A_writeRegister(icID, TMC4361A_VMAX, motorParams[icID].vmaxInternal);
+    // 状态恢复: 仅当 velocity_mode == true 时调用 sRampInit
+    // 与旧 API: if(tmc4361A->velocity_mode) { tmc4361A_sRampInit(); velocity_mode = false; }
+    if (motorParams[icID].velocity_mode) {
+        // ====================================================================
+        // sRampInit 等效实现 (与旧 API tmc4361A_sRampInit 完全一致)
+        // ====================================================================
+
+        // 1. RAMPMODE: 使用 setBits 设置位置模式 + S-shaped 斜坡
+        //    旧 API: tmc4361A_setBits(tmc4361A, TMC4361A_RAMPMODE, TMC4361A_RAMP_POSITION | TMC4361A_RAMP_SSHAPE);
+        uint32_t rampMode = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
+        rampMode |= (TMC4361A_RAMP_POSITION | TMC4361A_RAMP_SSHAPE);
+        tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
+
+        // 2. 清除 USE_ASTART_AND_VSTART
+        //    旧 API: tmc4361A_rstBits(tmc4361A, TMC4361A_GENERAL_CONF, TMC4361A_USE_ASTART_AND_VSTART_MASK);
+        uint32_t generalConf = tmc4361A_readRegister(icID, TMC4361A_GENERAL_CONF);
+        generalConf &= ~TMC4361A_USE_ASTART_AND_VSTART_MASK;
+        tmc4361A_writeRegister(icID, TMC4361A_GENERAL_CONF, generalConf);
+
+        // 3. 重写所有斜坡参数 (与旧 API sRampInit 一致)
+        tmc4361A_writeRegister(icID, TMC4361A_BOW1, motorParams[icID].bow1);
+        tmc4361A_writeRegister(icID, TMC4361A_BOW2, motorParams[icID].bow2);
+        tmc4361A_writeRegister(icID, TMC4361A_BOW3, motorParams[icID].bow3);
+        tmc4361A_writeRegister(icID, TMC4361A_BOW4, motorParams[icID].bow4);
+        tmc4361A_writeRegister(icID, TMC4361A_AMAX, motorParams[icID].amax);
+        tmc4361A_writeRegister(icID, TMC4361A_DMAX, motorParams[icID].dmax);
+        tmc4361A_writeRegister(icID, TMC4361A_ASTART, motorParams[icID].astart);
+        tmc4361A_writeRegister(icID, TMC4361A_DFINAL, motorParams[icID].dfinal);
+        tmc4361A_writeRegister(icID, TMC4361A_VMAX, motorParams[icID].vmax);
+
+        // 4. 清除 velocity_mode 标志
+        motorParams[icID].velocity_mode = false;
+
+        Serial.print("motor_moveToMicrosteps: sRampInit executed, RAMPMODE: 0x");
+        Serial.print(rampModeBefore, HEX);
+        Serial.print(" -> 0x");
+        Serial.println(tmc4361A_readRegister(icID, TMC4361A_RAMPMODE), HEX);
     }
 
-    // Clear EVENTS before writing target (与旧 API tmc4361A_moveTo 一致)
-    tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+    // ========================================================================
+    // 写入目标位置 (与旧 API tmc4361A_moveTo 一致)
+    // ========================================================================
 
-    // Set target position
+    // Read events before and after to clear the register
+    tmc4361A_readRegister(icID, TMC4361A_EVENTS);
     tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
-
-    // Clear EVENTS after writing target (与旧 API 一致)
     tmc4361A_readRegister(icID, TMC4361A_EVENTS);
 
-    // Read XACTUAL to refresh (与旧 API 一致)
+    // Read X_ACTUAL to get it to refresh
     tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
 
-    // Debug: read after
-    int32_t xactual_after = tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
-    int32_t xtarget_after = tmc4361A_readRegister(icID, TMC4361A_XTARGET);
-    int32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
-
-    // Output debug info (using SerialUSB since we're in C code)
-    extern void motor_debugPrint(const char* msg, int32_t val);
-    motor_debugPrint("motor_moveToMicrosteps:BEFORE XACTUAL", xactual_before);
-    motor_debugPrint("motor_moveToMicrosteps:BEFORE XTARGET", xtarget_before);
-    motor_debugPrint("motor_moveToMicrosteps:REQUESTED POS", position);
-    motor_debugPrint("motor_moveToMicrosteps:AFTER XACTUAL", xactual_after);
-    motor_debugPrint("motor_moveToMicrosteps:AFTER XTARGET", xtarget_after);
-    motor_debugPrint("motor_moveToMicrosteps:STATUS", status);
+    // Debug output
+    Serial.print("motor_moveToMicrosteps: icID=");
+    Serial.print(icID);
+    Serial.print(" velocity_mode=");
+    Serial.print(motorParams[icID].velocity_mode);
+    Serial.print(" XTARGET=");
+    Serial.println(position);
 }
 
 void motor_rotateVelocity(uint8_t icID, float velocityMM)
@@ -497,8 +609,17 @@ void motor_setMaxVelocity(uint8_t icID, float velocityMM)
         return;
 
     int32_t vel = motor_velocityMMToInternal(icID, velocityMM);
-    motorParams[icID].vmaxInternal = vel;  // 保存用于位置模式恢复
-    tmc4361A_writeRegister(icID, TMC4361A_VMAX, vel);
+    motorParams[icID].vmax = vel;  // 保存用于位置模式恢复 (与旧 API rampParam[VMAX_IDX] 一致)
+
+    // 与旧 API tmc4361A_setMaxSpeed 一致: 自动重新计算 BOW 参数
+    motor_adjustBows(icID);
+
+    // 写入硬件 (sRampInit 等效)
+    tmc4361A_writeRegister(icID, TMC4361A_VMAX, motorParams[icID].vmax);
+    tmc4361A_writeRegister(icID, TMC4361A_BOW1, motorParams[icID].bow1);
+    tmc4361A_writeRegister(icID, TMC4361A_BOW2, motorParams[icID].bow2);
+    tmc4361A_writeRegister(icID, TMC4361A_BOW3, motorParams[icID].bow3);
+    tmc4361A_writeRegister(icID, TMC4361A_BOW4, motorParams[icID].bow4);
 }
 
 void motor_resetRampMode(uint8_t icID)
@@ -532,7 +653,19 @@ void motor_setMaxAcceleration(uint8_t icID, float accelerationMM)
         return;
 
     uint32_t accel = motor_accelMMToInternal(icID, accelerationMM);
-    tmc4361A_writeRegister(icID, TMC4361A_AMAX, accel);
+    motorParams[icID].amax = accel;  // 缓存 (与旧 API rampParam[AMAX_IDX] 一致)
+    motorParams[icID].dmax = accel;  // 与旧 API 一致: DMAX = AMAX
+
+    // 与旧 API tmc4361A_setMaxAcceleration 一致: 自动重新计算 BOW 参数
+    motor_adjustBows(icID);
+
+    // 写入硬件 (sRampInit 等效)
+    tmc4361A_writeRegister(icID, TMC4361A_AMAX, motorParams[icID].amax);
+    tmc4361A_writeRegister(icID, TMC4361A_DMAX, motorParams[icID].dmax);
+    tmc4361A_writeRegister(icID, TMC4361A_BOW1, motorParams[icID].bow1);
+    tmc4361A_writeRegister(icID, TMC4361A_BOW2, motorParams[icID].bow2);
+    tmc4361A_writeRegister(icID, TMC4361A_BOW3, motorParams[icID].bow3);
+    tmc4361A_writeRegister(icID, TMC4361A_BOW4, motorParams[icID].bow4);
 }
 
 void motor_setMaxDeceleration(uint8_t icID, float decelerationMM)
@@ -541,6 +674,7 @@ void motor_setMaxDeceleration(uint8_t icID, float decelerationMM)
         return;
 
     uint32_t decel = motor_accelMMToInternal(icID, decelerationMM);
+    motorParams[icID].dmax = decel;  // 缓存 (与旧 API rampParam[DMAX_IDX] 一致)
     tmc4361A_writeRegister(icID, TMC4361A_DMAX, decel);
 }
 
@@ -791,23 +925,30 @@ void motor_setVelocityInternal(uint8_t icID, int32_t velocityInternal)
     if (icID >= MOTOR_IC_COUNT)
         return;
 
-    // Clear EVENTS register (reading clears it) - matches old API behavior
+    // ========================================================================
+    // 与旧 API tmc4361A_setSpeed 完全一致的实现
+    // ========================================================================
+
+    // 1. 设置 velocity_mode 标志 (与旧 API: tmc4361A->velocity_mode = true)
+    motorParams[icID].velocity_mode = true;
+
+    // 2. Clear EVENTS register (reading clears it)
     tmc4361A_readRegister(icID, TMC4361A_EVENTS);
 
-    // Switch to velocity mode with trapezoid ramp
-    // 重要：S-shaped 模式 (0x2) 需要 BOW 参数才能加速，BOW=0 时电机无法移动
-    // 因此速度模式强制使用梯形斜坡 (0x1)，它只需要 AMAX/DMAX
+    // 3. 清除 POSITION 位和 HOLD 位，保留 S-shaped 位
+    //    旧 API: tmc4361A_rstBits(tmc4361A, TMC4361A_RAMPMODE, TMC4361A_RAMP_POSITION | TMC4361A_RAMP_HOLD);
+    //    如果原来是 0x06 (S-shaped 位置模式)，结果是 0x02 (S-shaped 速度模式)
     uint32_t rampModeBefore = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
-    uint32_t rampMode = 0x01;  // trapezoid velocity mode
+    uint32_t rampMode = rampModeBefore & ~(TMC4361A_RAMP_POSITION | TMC4361A_RAMP_HOLD);
     tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
 
-    // Set velocity directly to VMAX (signed value determines direction)
+    // 4. Set velocity directly to VMAX (signed value determines direction)
     tmc4361A_writeRegister(icID, TMC4361A_VMAX, velocityInternal);
 
     // Debug output
     Serial.print("motor_setVelocityInternal: icID=");
     Serial.print(icID);
-    Serial.print(" RAMPMODE: 0x");
+    Serial.print(" velocity_mode=true RAMPMODE: 0x");
     Serial.print(rampModeBefore, HEX);
     Serial.print(" -> 0x");
     Serial.print(rampMode, HEX);

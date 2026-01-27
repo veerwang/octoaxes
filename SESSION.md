@@ -6,48 +6,94 @@
 
 ## 最新会话
 
-**日期**: 2026-01-23
-**位置**: 修复 Cover 接口超时问题
+**日期**: 2026-01-27
+**位置**: Z 轴运动调试 - 基本移动已验证正常
 
 ### 本次完成
 
-- **定位并修复 Cover 接口阻塞问题**:
-  - 症状：初始化时每个 TMC2660 寄存器写入需要约 3 秒
-  - 根因：新 API 的 `tmc4361A_readWriteCover` 轮询 COVER_DONE 位，但该位从未被设置
-  - 修复：使用与旧 API 相同的简单延时方式（循环 100 次），而非轮询 COVER_DONE
-  - 文件：`tmc/ic/TMC4361A/TMC4361A.cpp`
+#### 1. 新旧 API 一致性修复
 
-- **测试验证**:
-  - ✅ 初始化速度恢复正常（4 轴 < 0.1 秒）
-  - ✅ GET_DATA 命令正常工作
-  - ✅ 限位开关状态正确 (0x0)
-  - ⚠️ 运动命令有超时问题（需进一步调试）
+- **velocity_mode 状态追踪**:
+  - 在 `MotorParams` 结构体添加 `velocity_mode` 字段
+  - `motor_setVelocityInternal()` 设置 `velocity_mode = true`
+  - `motor_moveToMicrosteps()` 检查并清除 velocity_mode
 
-- **清理调试代码**:
-  - 移除 `axis.cpp` 中的详细初始化调试点
-  - 移除 `MotorControl.cpp` 中的 TMC2660 写入调试点
+- **sRampInit 完整实现**:
+  - 旧 API 在从速度模式切换到位置模式时会重新初始化所有斜坡参数
+  - 新 API 现在也实现相同逻辑：重写 BOW1-4, AMAX, DMAX, ASTART, DFINAL, VMAX
 
-### 教训
+- **BOW 参数自动计算**:
+  - 添加 `motor_adjustBows()` 函数
+  - 公式: `BOW = AMAX² / VMAX`
+  - 在初始化和参数变更时自动调用
 
-- 新 API 实现时，应直接参考旧 API 的实现方式，而不是想当然地使用"正确"的方法
-- COVER_DONE 位轮询虽然是数据手册推荐的方式，但在此硬件上不工作，需要使用简单延时
+- **RAMPMODE 一致性**:
+  - 旧 API 使用 `setBits/rstBits` 修改 RAMPMODE
+  - 新 API 原来直接写入，现已修复为使用相同的位操作逻辑
+
+#### 2. 调试工具创建
+
+| 脚本 | 用途 | 风险 |
+|------|------|------|
+| `test_09_debug_registers.py` | 只读寄存器状态 | 无 |
+| `test_10_manual_homing_steps.py` | 单步 homing 控制 | 可控 |
+| `test_11_simple_move.py` | 简单移动测试 | 低 |
+
+#### 3. 关键发现
+
+- **串口协议**: 文本命令需要 `0x55 0xAA` 前缀才能被处理
+- **基本移动功能正常** ✅:
+  ```
+  移动前: XACTUAL=0, Position=0.000mm
+  移动后: XACTUAL=17066, Position=0.100mm
+  ```
+- **问题定位**: 问题在 **homing 流程**，不是基本移动功能
+
+#### 4. 配置调整
+
+- Z 轴 homing 速度: 1 mm/s → 0.3 mm/s (调试用)
+- 文件: `config.h:116`
+
+### 关键文件变更
+
+- `tmc/motion/MotorControl.h` - 添加 velocity_mode 和斜坡参数缓存
+- `tmc/motion/MotorControl.cpp` - 实现 motor_adjustBows(), 修复多个函数
+- `firmware/octoaxes/stepaxis.cpp` - 增强 homing 调试输出
+- `software/tests/test_09_*.py` ~ `test_11_*.py` - 新调试脚本
 
 ### 下次继续
 
-- 调试运动命令超时问题（Z 轴运动后进入 ERROR 状态）
-- 检查运动完成检测逻辑
-- 验证电机是否实际转动
+1. **运行 test_10 单步 homing 调试**
+   - 观察 homing 各阶段的状态变化
+   - 定位电机卡死的具体步骤
+
+2. **检查 homing 流程中的 velocity_mode 处理**
+   - `STATE_HOMING_SEARCH`: 使用 `motor_setVelocityInternal()` 设置速度
+   - `STATE_HOMING_SET_ZERO`: 使用 `motor_moveToMicrosteps()` 移动到安全位置
+   - 确认从速度模式切换到位置模式时的状态是否正确
+
+3. **可能的问题点**
+   - 限位开关触发后的停止逻辑
+   - 安全位置计算
+   - velocity_mode 状态在 homing 中途的变化
 
 ### 备注
 
 - 只有 Z 轴接了实际电机，其他轴未接
 - 测试脚本使用调试协议 (0x55 0xAA + 文本命令)
+- homing 方向: 正方向 (向右限位移动)
+- 安全位置: 限位触发点 - margin (离开限位)
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-01-23 - Cover 接口超时修复
+- 修复 `tmc4361A_readWriteCover` 轮询 COVER_DONE 超时问题
+- 改用与旧 API 相同的简单延时方式
+- 初始化速度恢复正常
 
 ### 2026-01-23 - 系统性新旧 API 行为比对与修复
 - 逐函数对比新旧 API 行为差异
