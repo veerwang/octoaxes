@@ -13,7 +13,7 @@ class AxisManager:
         default_status = {
             "state": "Unknown",
             "position_mm": 0.0,
-            "position_steps": "0",
+            "position_steps": 0,  # 改为整数类型
             "moving": "NO",
             "enabled": "YES",
             "limits": "0x0",
@@ -48,7 +48,10 @@ class AxisManager:
 
         elif content.startswith("Current Position (microsteps):"):
             value = content.split(":", 1)[-1].strip()
-            self.axis_status[axis]["position_steps"] = value
+            try:
+                self.axis_status[axis]["position_steps"] = int(value)
+            except ValueError:
+                self.axis_status[axis]["position_steps"] = 0
 
         elif content.startswith("IS_MOVING:"):
             value = content.split(":", 1)[-1].strip()

@@ -220,8 +220,8 @@ class SerialThread(QThread):
         try:
             if self.ser and hasattr(self.ser, "close"):
                 self.ser.close()
-        except:
-            pass
+        except Exception as e:
+            self._log_debug(f"Failed to close serial port during error handling: {e}")
 
         self._log_debug(
             f"Connection error, retry {self._connection_retries}/{self._max_retries}"
@@ -324,21 +324,23 @@ class SerialThread(QThread):
         self._command_count += 1
         success = False
 
-        binary_data[0] = 2
-        binary_data[-1] = self.crc_calculator.calculate_checksum(binary_data[:-1])
+        # 创建数据副本，避免修改原数组
+        data_to_send = bytearray(binary_data)
+        data_to_send[0] = 0x02  # 二进制命令前缀
+        data_to_send[-1] = self.crc_calculator.calculate_checksum(data_to_send[:-1])
 
         try:
             if self.ser and self._port_open:
                 # 记录二进制数据长度（用于调试）
-                data_length = len(binary_data)
+                data_length = len(data_to_send)
                 self._log_debug(
                     f"Sending binary command #{self._command_count}, length: {data_length}"
                 )
 
-                # 直接发送二进制数据
-                bytes_written = self.ser.write(binary_data)
+                # 发送二进制数据副本
+                bytes_written = self.ser.write(data_to_send)
 
-                if bytes_written == len(binary_data):
+                if bytes_written == len(data_to_send):
                     success = True
                     self._last_send_time = (
                         time.time() * 1000
@@ -348,7 +350,7 @@ class SerialThread(QThread):
                     )
                 else:
                     self._log_debug(
-                        f"Only {bytes_written}/{len(binary_data)} bytes written for binary command"
+                        f"Only {bytes_written}/{len(data_to_send)} bytes written for binary command"
                     )
                     success = False
 
@@ -460,7 +462,8 @@ class SerialThread(QThread):
         # 发射调试信号（可选）
         try:
             self.debug_info.emit(message)
-        except:
+        except RuntimeError:
+            # 信号可能在线程关闭时无效
             pass
 
     def stop(self):

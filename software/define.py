@@ -12,40 +12,81 @@ SCREW_PITCH_W_MM = 1
 
 
 class CMD_SET:
+    # 相对移动命令
     MOVE_X = 0
     MOVE_Y = 1
     MOVE_Z = 2
     MOVE_THETA = 3
     MOVE_W = 4
+
+    # 绝对移动命令
+    MOVETO_X = 6
+    MOVETO_Y = 7
+    MOVETO_Z = 8
+    MOVETO_W = 18
+
+    # 归位命令
     HOME_OR_ZERO = 5
+
+    # 限位设置
+    SET_LIM = 9
+    SET_LIM_SWITCH_POLARITY = 20
+
+    # 照明控制
     TURN_ON_ILLUMINATION = 10
     TURN_OFF_ILLUMINATION = 11
     SET_ILLUMINATION = 12
     SET_ILLUMINATION_LED_MATRIX = 13
+    SET_ILLUMINATION_INTENSITY_FACTOR = 17
+
+    # 硬件配置
     ACK_JOYSTICK_BUTTON_PRESSED = 14
     ANALOG_WRITE_ONBOARD_DAC = 15
     SET_DAC80508_REFDIV_GAIN = 16
-    SET_ILLUMINATION_INTENSITY_FACTOR = 17
-    MOVETO_W = 18
-    MOVETO_X = 6
-    MOVETO_Y = 7
-    MOVETO_Z = 8
-    SET_LIM = 9
-    SET_LIM_SWITCH_POLARITY = 20
     CONFIGURE_STEPPER_DRIVER = 21
     SET_MAX_VELOCITY_ACCELERATION = 22
     SET_LEAD_SCREW_PITCH = 23
     SET_OFFSET_VELOCITY = 24
+
+    # PID 控制
     CONFIGURE_STAGE_PID = 25
     ENABLE_STAGE_PID = 26
     DISABLE_STAGE_PID = 27
-    SET_HOME_SAFETY_MERGIN = 28
     SET_PID_ARGUMENTS = 29
+
+    # 其他
+    SET_HOME_SAFETY_MERGIN = 28
     SEND_HARDWARE_TRIGGER = 30
     SET_STROBE_DELAY = 31
     SET_AXIS_DISABLE_ENABLE = 32
     SET_TRIGGER_MODE = 33
     SET_PIN_LEVEL = 41
+
+    # 初始化和重置
     INITFILTERWHEEL = 253
     INITIALIZE = 254
     RESET = 255
+
+
+# 轴名称到相对移动命令的映射
+# 注意：命令码与轴索引不是简单的加法关系
+AXIS_MOVE_CMD_MAP = {
+    "X": CMD_SET.MOVE_X,      # 0
+    "Y": CMD_SET.MOVE_Y,      # 1
+    "Z": CMD_SET.MOVE_Z,      # 2
+    "W": CMD_SET.MOVE_W,      # 4
+    "E1": CMD_SET.MOVE_W,     # 4 (E1 使用与 W 相同的命令，通过轴索引区分)
+    "E3": CMD_SET.MOVE_Z,     # 2 (E3 使用与 Z 相同的命令，通过轴索引区分)
+    "E4": CMD_SET.MOVE_W,     # 4 (E4 使用与 W 相同的命令，通过轴索引区分)
+}
+
+# 轴名称到绝对移动命令的映射
+AXIS_MOVETO_CMD_MAP = {
+    "X": CMD_SET.MOVETO_X,    # 6
+    "Y": CMD_SET.MOVETO_Y,    # 7
+    "Z": CMD_SET.MOVETO_Z,    # 8
+    "W": CMD_SET.MOVETO_W,    # 18
+    "E1": CMD_SET.MOVETO_W,   # 18
+    "E3": CMD_SET.MOVETO_Z,   # 8
+    "E4": CMD_SET.MOVETO_W,   # 18
+}

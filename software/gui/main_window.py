@@ -3,7 +3,8 @@ import datetime
 import os
 from typing import Optional
 
-from define import *
+from define import CMD_SET, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP
+from define import OBJECTIVE_RATIO, SCREW_PITCH_W_MM, OBJECTIVE_HOLES
 from utils.helpers import int_to_payload
 
 from PyQt5.QtWidgets import (
@@ -348,7 +349,7 @@ class TeensyControlGUI(QMainWindow):
             try:
                 self.log_file.write(f"\n" + "=" * 40 + "\n")
                 self.log_file.write(
-                    f"Log ended at: {datetime.datetime.now().strftime('%Y-%m-d %H:%M:%S')}\n"
+                    f"Log ended at: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                 )
                 self.log_file.close()
                 self.log("Log file closed")
@@ -589,25 +590,31 @@ class TeensyControlGUI(QMainWindow):
             self.startup_timer.start()
 
     def wait_until_idle(self, timeout: float = 10) -> bool:
+        """等待轴回到 IDLE 状态（线程安全）"""
         axis = self.get_current_axis()
         start = time.time()
-        while self.axis_manager.axis_status[axis]["state"] != "IDLE":
+
+        while time.time() - start < timeout:
+            # 使用 get_axis_status 获取状态副本，避免竞态条件
+            status = self.axis_manager.get_axis_status(axis)
+            if status and status.get("state") == "IDLE":
+                return True
+
             QApplication.processEvents()
             time.sleep(0.05)
-            if time.time() - start > timeout:
-                self.log(f"Axis {axis} wait-until-idle timed out after {timeout} s.")
-                return False
-        return True
+
+        self.log(f"Axis {axis} wait-until-idle timed out after {timeout} s.")
+        return False
 
     def send_homing(self):
+        """发送 Homing 命令到当前轴"""
         axis = self.get_current_axis()
         axis_index = int(AXIS_CONFIG[axis]["index"])
+
+        # 使用二进制命令发送 Homing
         self._home_or_zero(axis_index)
-        """
-        command = format_command(axis, "HOMING")
-        if not self.send_command(command):
-            return          # 发送失败直接返回
-        """
+
+        # 更新状态
         self.axis_manager.axis_status[axis]["state"] = "HOMING_INIT"
 
         # 等待轴回到 IDLE（成功或超时）
@@ -668,10 +675,7 @@ class TeensyControlGUI(QMainWindow):
                     )
                     self.pos_label.setText(f"Current Position: {value} mm")
                 if "position_steps" in status:
-                    value = (
-                        int(status["position_steps"])
-                        * AXIS_CONFIG[axis]["movement_sign"]
-                    )
+                    value = status["position_steps"] * AXIS_CONFIG[axis]["movement_sign"]
                     self.steps_label.setText(f"Current Position: {value} microsteps")
 
                 # 更新使能状态（如果从轴状态中获取）
@@ -742,29 +746,63 @@ class TeensyControlGUI(QMainWindow):
         command = format_command(self.get_current_axis(), pack_limit_command(low, high))
         self.send_command(command, f"Sent limits: Low={low} μm, High={high} μm")
 
-    def _move_step_axis_relative_position(self, axis_index, distance):
-        if self.serial_thread is None:
-            return
-        cmd = bytearray(8)
-        payload = int_to_payload(distance, 4)
-        cmd[1] = CMD_SET.MOVE_X + axis_index
-        cmd[2] = payload >> 24
-        cmd[3] = (payload >> 16) & 0xFF
-        cmd[4] = (payload >> 8) & 0xFF
-        cmd[5] = (payload) & 0xFF
-        self.serial_thread.send_binary_command(cmd)
+    def _move_step_axis_relative_position(self, axis_name: str, distance: int) -> bool:
+        """发送相对移动命令
 
-    def _move_step_axis_obsolute_position(self, axis_index, distance):
+        Args:
+            axis_name: 轴名称 (X, Y, Z, W, E1, E3, E4)
+            distance: 移动距离，单位 μm
+
+        Returns:
+            是否发送成功
+        """
         if self.serial_thread is None:
-            return
+            return False
+
+        # 使用命令映射表获取正确的命令码
+        move_cmd = AXIS_MOVE_CMD_MAP.get(axis_name)
+        if move_cmd is None:
+            self.log(f"Unknown axis for move command: {axis_name}")
+            return False
+
         cmd = bytearray(8)
         payload = int_to_payload(distance, 4)
-        cmd[1] = CMD_SET.MOVETO_X + axis_index
+        cmd[1] = move_cmd
         cmd[2] = payload >> 24
         cmd[3] = (payload >> 16) & 0xFF
         cmd[4] = (payload >> 8) & 0xFF
-        cmd[5] = (payload) & 0xFF
-        self.serial_thread.send_binary_command(cmd)
+        cmd[5] = payload & 0xFF
+
+        return self.serial_thread.send_binary_command(cmd)
+
+    def _move_step_axis_absolute_position(self, axis_name: str, position: int) -> bool:
+        """发送绝对移动命令
+
+        Args:
+            axis_name: 轴名称 (X, Y, Z, W, E1, E3, E4)
+            position: 目标位置，单位 μm
+
+        Returns:
+            是否发送成功
+        """
+        if self.serial_thread is None:
+            return False
+
+        # 使用命令映射表获取正确的命令码
+        moveto_cmd = AXIS_MOVETO_CMD_MAP.get(axis_name)
+        if moveto_cmd is None:
+            self.log(f"Unknown axis for moveto command: {axis_name}")
+            return False
+
+        cmd = bytearray(8)
+        payload = int_to_payload(position, 4)
+        cmd[1] = moveto_cmd
+        cmd[2] = payload >> 24
+        cmd[3] = (payload >> 16) & 0xFF
+        cmd[4] = (payload >> 8) & 0xFF
+        cmd[5] = payload & 0xFF
+
+        return self.serial_thread.send_binary_command(cmd)
 
     def _home_or_zero(self, axis_index):
         if self.serial_thread is None:
@@ -775,53 +813,46 @@ class TeensyControlGUI(QMainWindow):
         cmd[3] = 0
         self.serial_thread.send_binary_command(cmd)
 
-    def move_axis(self, is_forward):
+    def move_axis(self, is_forward: bool) -> None:
+        """相对位移移动
+
+        Args:
+            is_forward: True 表示前进方向，False 表示后退方向
+        """
         if not self.is_connected():
             self.log("Not connected to Teensy")
             return
 
-        distance = self.control_panel.get_move_distance()
+        distance = self.control_panel.get_move_distance()  # 单位: μm
         if distance is None:
             self.log("Invalid move distance")
             return
 
+        # 确定移动方向
         value = distance if is_forward else -distance
+
+        # 获取当前轴配置并应用移动符号
         axis = self.get_current_axis()
         value = int(AXIS_CONFIG[axis]["movement_sign"]) * value
-        index = int(AXIS_CONFIG[axis]["index"])
-        self._move_step_axis_relative_position(index, value)
 
+        # 使用二进制命令发送相对移动（传入轴名称而非索引）
+        self._move_step_axis_relative_position(axis, value)
+
+    def moveto_axis(self, pos_um: float) -> None:
+        """绝对位置移动
+
+        Args:
+            pos_um: 目标位置，单位 μm
         """
-        value = int(AXIS_CONFIG[axis]["movement_sign"]) * value
-
-        from utils.helpers import pack_move_command
-
-        base_command = pack_move_command(value)
-        command = format_command(axis, base_command)
-        direction = "Forward" if is_forward else "Backward"
-        self.send_command(command, f"Sent move command ({direction})")
-        """
-
-    def moveto_axis(self, pos_um):
-        """绝对位置移动，单位um"""
         if not self.is_connected():
             self.log("Not connected to Teensy")
             return
 
         axis = self.get_current_axis()
         value = int(AXIS_CONFIG[axis]["movement_sign"]) * int(pos_um)
-        index = int(AXIS_CONFIG[axis]["index"])
-        self._move_step_axis_obsolute_position(index, value)
 
-        """
-        value = int(AXIS_CONFIG[axis]["movement_sign"]) * int(pos_um)
-
-        from utils.helpers import pack_moveto_command
-
-        cmd = format_command(axis, pack_moveto_command(value))
-        
-        self.send_command(cmd, f"Sent absolute move to {pos_um/1000:.3f} mm")
-        """
+        # 使用二进制命令发送绝对移动（传入轴名称而非索引）
+        self._move_step_axis_absolute_position(axis, value)
 
     def move_filtewheel(self, is_next):
         from utils.constants import FILTERWHEEL_DISTANCE
