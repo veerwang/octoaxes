@@ -631,16 +631,18 @@ class TeensyControlGUI(QMainWindow):
         self.move_axis(False)
 
     def previous_position(self):
+        """移动到上一个位置（滤光轮/物镜）"""
         axis = self.get_current_axis()
-        if axis == "E4":
-            self.move_filtewheel(False)
+        if axis in ("W", "E4"):  # W 和 E4 都是滤光轮
+            self.move_filterwheel(False)
         elif axis == "E1":
             self.move_objective(False)
 
     def next_position(self):
+        """移动到下一个位置（滤光轮/物镜）"""
         axis = self.get_current_axis()
-        if axis == "E4":
-            self.move_filtewheel(True)
+        if axis in ("W", "E4"):  # W 和 E4 都是滤光轮
+            self.move_filterwheel(True)
         elif axis == "E1":
             self.move_objective(True)
 
@@ -854,17 +856,30 @@ class TeensyControlGUI(QMainWindow):
         # 使用二进制命令发送绝对移动（传入轴名称而非索引）
         self._move_step_axis_absolute_position(axis, value)
 
-    def move_filtewheel(self, is_next):
+    def move_filterwheel(self, is_next: bool) -> None:
+        """移动滤光轮到下一个/上一个位置
+
+        Args:
+            is_next: True 移动到下一个位置，False 移动到上一个位置
+        """
+        if not self.is_connected():
+            self.log("Not connected to Teensy")
+            return
+
         from utils.constants import FILTERWHEEL_DISTANCE
 
-        distance = int(1000 * FILTERWHEEL_DISTANCE)
-        value = distance if is_next else -distance
-        from utils.helpers import pack_move_command
+        # 计算移动距离（单位：μm）
+        distance_um = int(1000 * FILTERWHEEL_DISTANCE)
+        value = distance_um if is_next else -distance_um
 
-        base_command = pack_move_command(value)
-        command = format_command(self.get_current_axis(), base_command)
+        # 获取当前轴
+        axis = self.get_current_axis()
+
+        # 使用二进制命令发送相对移动
+        self._move_step_axis_relative_position(axis, value)
+
         direction = "Next" if is_next else "Previous"
-        self.send_command(command, f"Sent filter wheel move ({direction})")
+        self.log(f"Filter wheel {axis} move ({direction}): {value} μm")
 
     def move_objective(self, is_next):
         distance_mm = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES
