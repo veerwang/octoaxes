@@ -5,6 +5,7 @@ from typing import Optional
 
 from define import CMD_SET, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP
 from define import OBJECTIVE_RATIO, SCREW_PITCH_W_MM, OBJECTIVE_HOLES
+from define import SQUID_FILTERWHEEL_OFFSET
 from utils.helpers import int_to_payload
 
 from PyQt5.QtWidgets import (
@@ -618,7 +619,15 @@ class TeensyControlGUI(QMainWindow):
         self.axis_manager.axis_status[axis]["state"] = "HOMING_INIT"
 
         # 等待轴回到 IDLE（成功或超时）
-        self.wait_until_idle(15)
+        if not self.wait_until_idle(15):
+            self.log(f"Axis {axis} homing timeout")
+            return
+
+        # 滤光轮 homing 完成后需要移动 offset
+        if axis in ("W", "E4"):
+            offset_um = int(SQUID_FILTERWHEEL_OFFSET * 1000)  # mm -> μm
+            self._move_step_axis_relative_position(axis, offset_um)
+            self.log(f"Filter wheel {axis} moving offset: {offset_um} μm")
 
     def send_reset(self):
         command = format_command(self.get_current_axis(), "RESET")
