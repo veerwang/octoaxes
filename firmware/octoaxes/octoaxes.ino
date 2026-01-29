@@ -72,21 +72,19 @@ bool initializeSystem() {
   motor_initSubsystem();
 
   // 创建轴对象并添加到管理器
-  Axis *xAxis = new StepAxis(Pins::X_AXIS_CS, 0, "X");
-  Axis *yAxis = new StepAxis(Pins::Y_AXIS_CS, 1, "Y");
+  // 轴配置: X(index=1), Y(index=0), Z(index=2), W(index=3)
+  Axis *yAxis = new StepAxis(Pins::Y_AXIS_CS, 0, "Y");
+  Axis *xAxis = new StepAxis(Pins::X_AXIS_CS, 1, "X");
   Axis *zAxis = new StepAxis(Pins::Z_AXIS_CS, 2, "Z");
-  // Axis* wAxis = new FilterWheel(Pins::W_AXIS_CS, 3, "W");
+  Axis *wAxis = new FilterWheel(Pins::W_AXIS_CS, 3, "W");
   // Axis* expand1Axis = new Objectives(Pins::EXPAND1_AXIS_CS, 4, "E1");
   // Axis* expand3Axis = new StepAxis(Pins::EXPAND3_AXIS_CS, 6, "E3");
   // Axis* expand4Axis = new FilterWheel(Pins::EXPAND4_AXIS_CS, 7, "E4");
 
-  Axis *wAxis = new Objectives(Pins::W_AXIS_CS, 3, "W");
-  // 初始化顺序很重要，homing的时候需要通过这个index获取句柄
-  if (!axisManager.addAxis(xAxis) || !axisManager.addAxis(yAxis) ||
+  // 初始化顺序很重要，homing 的时候需要通过这个 index 获取句柄
+  // 按 index 顺序添加: Y(0), X(1), Z(2), W(3)
+  if (!axisManager.addAxis(yAxis) || !axisManager.addAxis(xAxis) ||
       !axisManager.addAxis(zAxis) || !axisManager.addAxis(wAxis)) {
-    // if (!axisManager.addAxis(zAxis)|| !axisManager.addAxis(expand1Axis) ||
-    // !axisManager.addAxis(expand3Axis) || !axisManager.addAxis(expand4Axis) ||
-    // !axisManager.addAxis(wAxis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");
     return false;
   }

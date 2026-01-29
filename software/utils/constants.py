@@ -3,6 +3,7 @@
 """
 
 # 轴配置
+# 轴索引与固件对应: Y(0), X(1), Z(2), W(3)
 AXIS_CONFIG = {
     "X": {
         "display_name": "Step Motor - x_axis",
@@ -10,7 +11,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-80000, 80000),
         "movement_sign": 1,
-        "index": 0,
+        "index": 1,  # X 轴 index=1
     },
     "Y": {
         "display_name": "Step Motor - y_axis",
@@ -18,7 +19,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-120000, 120000),
         "movement_sign": 1,
-        "index": 1,
+        "index": 0,  # Y 轴 index=0
     },
     "Z": {
         "display_name": "Step Motor - z_axis",
