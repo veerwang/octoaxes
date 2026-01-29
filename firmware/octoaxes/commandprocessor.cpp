@@ -54,7 +54,14 @@ void CommandProcessor::handleMoveTheta(const byte *data) {
 }
 
 void CommandProcessor::handleMoveW(const byte *data) {
-  // TODO: 实现 MOVE_W 命令处理
+  int32_t relative_position =
+      int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
+              (uint32_t(data[4]) << 8) + uint32_t(data[5]));
+  Axis *axis = axisManager.findAxisByName("W");
+  if (axis)
+    axis->moveAxis(relative_position);
+
+  DEBUG_PRINTLN("Get MoveW Command");
 }
 
 void CommandProcessor::handleHomeOrZero(const byte *data) {
@@ -140,7 +147,15 @@ void CommandProcessor::handleSetIlluminationIntensityFactor(const byte *data) {
 }
 
 void CommandProcessor::handleMoveToW(const byte *data) {
-  // TODO: 实现 MOVETO_W 命令处理
+  int32_t absolute_position =
+      int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
+              (uint32_t(data[4]) << 8) + uint32_t(data[5]));
+  float absolute_position_float = float(absolute_position) / 1000.0;
+  Axis *axis = axisManager.findAxisByName("W");
+  if (axis)
+    axis->moveToPosition(absolute_position_float);
+
+  DEBUG_PRINTLN("Get MoveToW Command");
 }
 
 void CommandProcessor::handleSetLimSwitchPolarity(const byte *data) {
