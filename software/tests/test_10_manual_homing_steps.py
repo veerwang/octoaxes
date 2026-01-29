@@ -16,10 +16,12 @@ AXIS = "Z"
 STEPS_PER_MM = 170666.67  # 根据实际配置调整
 
 def send_command(ser, cmd, wait=0.3, show=True):
-    """发送命令并读取响应"""
+    """发送命令并读取响应（带协议头）"""
     if show:
         print(f"[TX] {cmd}")
-    ser.write(f"{cmd}\n".encode())
+    # 添加协议头 0x55 0xAA
+    data = b'\x55\xAA' + cmd.encode() + b'\n'
+    ser.write(data)
     time.sleep(wait)
     response = []
     while ser.in_waiting:
