@@ -692,9 +692,11 @@ void motor_setCurrentPositionMicrosteps(uint8_t icID, int32_t position)
     // 与旧 API tmc4361A_setCurrentPosition 行为一致：
     // 1. 先停止电机（设置 VMAX=0）
     // 2. 设置 XACTUAL 和 XTARGET
+    // 3. 设置 velocity_mode=true，下次 moveToMicrosteps 时会恢复 VMAX
     tmc4361A_writeRegister(icID, TMC4361A_VMAX, 0);
     tmc4361A_writeRegister(icID, TMC4361A_XACTUAL, position);
     tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
+    motorParams[icID].velocity_mode = true;
 }
 
 void motor_setRunCurrent(uint8_t icID, float currentMA)

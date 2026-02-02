@@ -38,10 +38,12 @@
 // ============================================================================
 
 const TMC_IC_Config tmc_ic_configs[TMC4361A_IC_COUNT] = {
-    // icID 0: X axis - standard clock
-    { .csPin = PIN_CS_X,  .clockSource = CLOCK_STANDARD },
-    // icID 1: Y axis - standard clock
+    // 注意: 顺序必须与 axisManager.addAxis() 调用顺序一致！
+    // octoaxes.ino 中添加顺序: Y(0), X(1), Z(2), W(3), E1(4), E3(5), E4(6)
+    // icID 0: Y axis - standard clock
     { .csPin = PIN_CS_Y,  .clockSource = CLOCK_STANDARD },
+    // icID 1: X axis - standard clock
+    { .csPin = PIN_CS_X,  .clockSource = CLOCK_STANDARD },
     // icID 2: Z axis - standard clock
     { .csPin = PIN_CS_Z,  .clockSource = CLOCK_STANDARD },
     // icID 3: W axis (Filter wheel 1) - standard clock
