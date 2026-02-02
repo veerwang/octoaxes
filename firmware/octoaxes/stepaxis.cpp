@@ -209,14 +209,16 @@ void StepAxis::performHomingSequence() {
       break;
 
     case STATE_HOMING_SET_ZERO:
-      // 等待移动到安全位置完成
-      if (isMovementComplete() || _checkHomeReachTimeout >= 1000 * 1000) {
+      // 等待移动到安全位置完成（超时为 5 秒 = 5,000,000 微秒）
+      if (isMovementComplete() || _checkHomeReachTimeout >= 5000000) {
         // 设置当前位置为0
         motor_setCurrentPositionMicrosteps(_icID, 0);
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Homing completed! Current position set to 0");
-        if (_checkHomeReachTimeout > 1000 * 1000)
+        if (_checkHomeReachTimeout >= 5000000) {
+          DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Homing Set Current Position to safe position Timeout");
+        }
         // 注意：不自动启用软限位，等待上位机发送 SET_LIMITS 命令设置范围后再启用
         // 如果此时启用软限位但范围未设置（默认为0），会导致电机无法移动
         // enableSoftLimits(true);

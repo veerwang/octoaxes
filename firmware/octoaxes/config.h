@@ -113,7 +113,7 @@ namespace AxisConstDefinition {
 
 		const float HOMING_VELOCITY_X_MM = 10;
 		const float HOMING_VELOCITY_Y_MM = 10;
-		const float HOMING_VELOCITY_Z_MM = 0.3;  // 调试用，原来是 1
+		const float HOMING_VELOCITY_Z_MM = 1;
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
 
