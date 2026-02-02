@@ -689,7 +689,10 @@ void motor_setCurrentPositionMicrosteps(uint8_t icID, int32_t position)
     if (icID >= MOTOR_IC_COUNT)
         return;
 
-    // Set both XACTUAL and XTARGET to avoid movement
+    // 与旧 API tmc4361A_setCurrentPosition 行为一致：
+    // 1. 先停止电机（设置 VMAX=0）
+    // 2. 设置 XACTUAL 和 XTARGET
+    tmc4361A_writeRegister(icID, TMC4361A_VMAX, 0);
     tmc4361A_writeRegister(icID, TMC4361A_XACTUAL, position);
     tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
 }
