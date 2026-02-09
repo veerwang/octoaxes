@@ -93,10 +93,10 @@ static uint8_t calculateCurrentScale(float currentMA, float rSense)
 {
     // TMC2660 formula: I_rms = (CS + 1) / 32 * V_fs / R_sense
     // V_fs = 0.165V (VSENSE=1) or 0.310V (VSENSE=0)
-    // Using VSENSE=1 (low range) for better resolution
-    // CS = (I_rms * R_sense * 32 / 0.165) - 1
+    // DRVCONF 设置 VSENSE=0 (高量程), 对应 V_fs = 0.310V
+    // CS = (I_rms * R_sense * 32 / 0.310) - 1
 
-    float cs = (currentMA / 1000.0f) * rSense * 32.0f / 0.165f - 1.0f;
+    float cs = (currentMA / 1000.0f) * rSense * 32.0f / 0.310f - 1.0f;
 
     if (cs < 0) cs = 0;
     if (cs > 31) cs = 31;
@@ -333,7 +333,7 @@ bool motor_initDriver(uint8_t icID, const MotorConfig *config)
 
     // 4. Configure DRVCONF (旧 API: 0x000E00A1)
     // SDOFF=1: SPI mode (motion control via SPI, not Step/Dir)
-    // VSENSE=0: High sense resistor voltage range
+    // VSENSE=0: High sense resistor voltage range (V_fs=0.310V)
     // RDSEL=2: StallGuard2 value and CoolStep current level in response
     uint32_t drvconf = TMC2660_SET_RDSEL(2) | TMC2660_SET_VSENSE(0) | TMC2660_SET_SDOFF(1) | 0x01;
     tmc2660_writeRegister(icID, TMC2660_DRVCONF, drvconf);

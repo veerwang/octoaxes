@@ -127,7 +127,7 @@ namespace AxisConstDefinition {
 		const float X_MOTOR_RMS_CURRENT_mA = 1000;
 		const float Y_MOTOR_RMS_CURRENT_mA = 1000;
 		const float Z_MOTOR_RMS_CURRENT_mA = 500;
-		const float FILTERWHEEL_MOTOR_RMS_CURRENT_mA = 1900;
+		const float FILTERWHEEL_MOTOR_RMS_CURRENT_mA = 3000;
 		const float OBJECTIVES_MOTOR_RMS_CURRENT_mA = 1000;
 
 		const float X_MOTOR_I_HOLD = 0.25;
