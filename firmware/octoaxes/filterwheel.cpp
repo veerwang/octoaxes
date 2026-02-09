@@ -211,7 +211,9 @@ void FilterWheel::performLeavingHome() {
       DEBUG_PRINT(_axisName);
 
       if (_slowApproach) {
-        // 慢速逼近感应区
+        // 先停车，确保慢速逼近起点一致
+        motor_setVelocityInternal(_icID, 0);
+        delay(100);
         DEBUG_PRINTLN(":Left sensor, slow approach...");
         int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM / 5.0);
         motor_setVelocityInternal(_icID, speedInternal);
@@ -224,11 +226,14 @@ void FilterWheel::performLeavingHome() {
       setState(STATE_HOMING_SEARCH);
     } else {
       // 仍在感应区，继续移出
+      float leaveSpeed = _slowApproach
+        ? _config.homingVelocityMM / 5.0   // 慢速移出，减少过冲
+        : _config.homingVelocityMM;          // 全速移出
       int32_t speedInternal;
       if (_config.homingSwitch == RGHT_SW) {
-        speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        speedInternal = motor_velocityMMToInternal(_icID, leaveSpeed);
       } else {
-        speedInternal = -1 * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        speedInternal = -1 * motor_velocityMMToInternal(_icID, leaveSpeed);
       }
       motor_setVelocityInternal(_icID, speedInternal);
     }
