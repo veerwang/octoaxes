@@ -318,6 +318,15 @@ void motor_setCurrentPosition(uint8_t icID, float positionMM);
 void motor_setCurrentPositionMicrosteps(uint8_t icID, int32_t position);
 
 /**
+ * @brief Set microstep resolution at runtime
+ * Updates STEP_CONF register and cached stepsPerMM.
+ * Caller should recalculate motion parameters (VMAX/AMAX/BOW) after calling this.
+ * @param icID  IC identifier
+ * @param microsteps New microstep resolution (1, 2, 4, ... 256)
+ */
+void motor_setMicrosteps(uint8_t icID, uint16_t microsteps);
+
+/**
  * @brief Set motor run current
  * @param icID  IC identifier
  * @param currentMA Current in mA

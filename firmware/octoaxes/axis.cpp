@@ -414,6 +414,9 @@ bool Axis::handleHoming() {
 bool Axis::handleReset() {
   _isMoving = false;
 
+  // 恢复细分（可能在 homing 中被改变）
+  restoreNormalMicrosteps();
+
   // 清除状态
   readLimitSwitches();
   readSwitchEvent();
@@ -521,6 +524,31 @@ float Axis::getCurrentPositionMM() const {
 // 获取当前位置（微步）(使用新 API)
 int32_t Axis::getCurrentPositionMicrosteps() const {
   return motor_getPositionMicrosteps(_icID);
+}
+
+// Homing 细分切换
+void Axis::switchToHomingMicrosteps() {
+  if (_config.homingMicrostepping != _config.microstepping) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":Switch microsteps for homing: ");
+    DEBUG_PRINT(_config.microstepping);
+    DEBUG_PRINT(" -> ");
+    DEBUG_PRINTLN(_config.homingMicrostepping);
+    motor_setMicrosteps(_icID, _config.homingMicrostepping);
+    setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
+  }
+}
+
+void Axis::restoreNormalMicrosteps() {
+  if (_config.homingMicrostepping != _config.microstepping) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":Restore microsteps after homing: ");
+    DEBUG_PRINT(_config.homingMicrostepping);
+    DEBUG_PRINT(" -> ");
+    DEBUG_PRINTLN(_config.microstepping);
+    motor_setMicrosteps(_icID, _config.microstepping);
+    setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
+  }
 }
 
 // 开始归位

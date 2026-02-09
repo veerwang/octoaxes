@@ -687,6 +687,33 @@ void motor_setCurrentPositionMicrosteps(uint8_t icID, int32_t position)
     motorParams[icID].velocity_mode = true;
 }
 
+void motor_setMicrosteps(uint8_t icID, uint16_t microsteps)
+{
+    if (icID >= MOTOR_IC_COUNT || !motorParams[icID].initialized)
+        return;
+
+    // 更新缓存
+    motorParams[icID].microsteps = microsteps;
+    motorParams[icID].stepsPerMM = (float)(motorParams[icID].fullStepsPerRev * microsteps) / motorParams[icID].screwPitchMM;
+
+    // 计算 MSTEP_PER_FS 值: 256->0, 128->1, ..., 1->8
+    uint16_t mstep = microsteps;
+    uint8_t mstepVal = 0;
+    if (mstep > 0 && (mstep & (mstep - 1)) == 0 && mstep <= 256) {
+        uint8_t bitsSet = 0;
+        while (mstep > 0) {
+            bitsSet++;
+            mstep >>= 1;
+        }
+        mstepVal = 9 - bitsSet;
+    }
+
+    // 组合 STEP_CONF: MSTEP_PER_FS (bit 0-3) + FS_PER_REV (bit 4-15)
+    uint32_t stepConf = (mstepVal & TMC4361A_MSTEP_PER_FS_MASK) |
+                        ((uint32_t)motorParams[icID].fullStepsPerRev << TMC4361A_FS_PER_REV_SHIFT);
+    tmc4361A_writeRegister(icID, TMC4361A_STEP_CONF, stepConf);
+}
+
 void motor_setRunCurrent(uint8_t icID, float currentMA)
 {
     if (icID >= MOTOR_IC_COUNT)

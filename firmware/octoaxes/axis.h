@@ -42,6 +42,7 @@ public:
     float screwPitchMM;
     int fullStepsPerRev;
     int microstepping;
+    int homingMicrostepping;     // homing 时使用的细分，默认 256
     float maxVelocityMM;
     float maxAccelerationMM;
     float homingVelocityMM;
@@ -174,6 +175,10 @@ protected:
   // 保护成员方法，派生类可以访问
   virtual void performHomingSequence() = 0;
   virtual void performLeavingHome() = 0;
+
+  // Homing 细分切换
+  void switchToHomingMicrosteps();
+  void restoreNormalMicrosteps();
 
   virtual void setState(AxisState newState);
   virtual void handleError(const char *errorMsg);

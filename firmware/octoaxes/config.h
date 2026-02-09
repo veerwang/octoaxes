@@ -99,6 +99,13 @@ namespace AxisConstDefinition {
 		const int MICROSTEPPING_FILTERWHEEL = 64;
 		const int MICROSTEPPING_OBJECTIVES = 64;
 
+		// Homing 细分（默认 256）
+		const int HOMING_MICROSTEPPING_X = 256;
+		const int HOMING_MICROSTEPPING_Y = 256;
+		const int HOMING_MICROSTEPPING_Z = 256;
+		const int HOMING_MICROSTEPPING_FILTERWHEEL = 256;
+		const int HOMING_MICROSTEPPING_OBJECTIVES = 256;
+
 		const float MAX_VELOCITY_X_mm = 25;
 		const float MAX_VELOCITY_Y_mm = 25;
 		const float MAX_VELOCITY_Z_mm = 3;
@@ -161,6 +168,7 @@ namespace AxisConfigs {
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_X_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_X,
         .microstepping = AxisConstDefinition::MICROSTEPPING_X,
+        .homingMicrostepping = AxisConstDefinition::HOMING_MICROSTEPPING_X,
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_X_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_X_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_X_MM,
@@ -190,6 +198,7 @@ namespace AxisConfigs {
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_Y_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_Y,
         .microstepping = AxisConstDefinition::MICROSTEPPING_Y,
+        .homingMicrostepping = AxisConstDefinition::HOMING_MICROSTEPPING_Y,
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_Y_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_Y_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_Y_MM,
@@ -219,6 +228,7 @@ namespace AxisConfigs {
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_Z_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_Z,
         .microstepping = AxisConstDefinition::MICROSTEPPING_Z,
+        .homingMicrostepping = AxisConstDefinition::HOMING_MICROSTEPPING_Z,
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_Z_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_Z_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_Z_MM,
@@ -248,6 +258,7 @@ namespace AxisConfigs {
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_FILTER,
         .microstepping = AxisConstDefinition::MICROSTEPPING_FILTERWHEEL,
+        .homingMicrostepping = AxisConstDefinition::HOMING_MICROSTEPPING_FILTERWHEEL,
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_FILTERWHEEL_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_FILTERWHEEL_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_FILTERWHEEL_MM,
@@ -277,6 +288,7 @@ namespace AxisConfigs {
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_OBJECTIVES_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_OBJECTIVES,
         .microstepping = AxisConstDefinition::MICROSTEPPING_OBJECTIVES,
+        .homingMicrostepping = AxisConstDefinition::HOMING_MICROSTEPPING_OBJECTIVES,
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_OBJECTIVES_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_OBJECTIVES_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_OBJECTIVES_MM,
@@ -306,6 +318,7 @@ namespace AxisConfigs {
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_Z_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_Z,
         .microstepping = AxisConstDefinition::MICROSTEPPING_Z,
+        .homingMicrostepping = AxisConstDefinition::HOMING_MICROSTEPPING_Z,
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_Z_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_Z_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_Z_MM,
@@ -335,6 +348,7 @@ namespace AxisConfigs {
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_FILTER,
         .microstepping = AxisConstDefinition::MICROSTEPPING_FILTERWHEEL,
+        .homingMicrostepping = AxisConstDefinition::HOMING_MICROSTEPPING_FILTERWHEEL,
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_FILTERWHEEL_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_FILTERWHEEL_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_FILTERWHEEL_MM,

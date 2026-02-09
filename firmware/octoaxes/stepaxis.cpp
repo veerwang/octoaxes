@@ -115,6 +115,7 @@ bool StepAxis::handleSetLimits(const String& command) {
 
 void StepAxis::performHomingSequence() {
   if (checkTimeout(_homing_timeout_ms)) {
+    restoreNormalMicrosteps();
     handleError("Homing timeout");
     return;
   }
@@ -124,6 +125,7 @@ void StepAxis::performHomingSequence() {
   switch (_currentState) {
     case STATE_HOMING_INIT:
       enableSoftLimits(false);
+      switchToHomingMicrosteps();
 
       if (limit_state & _config.homingSwitch) {
         DEBUG_PRINT(_axisName);
@@ -211,6 +213,8 @@ void StepAxis::performHomingSequence() {
     case STATE_HOMING_SET_ZERO:
       // 等待移动到安全位置完成（超时为 5 秒 = 5,000,000 微秒）
       if (isMovementComplete() || _checkHomeReachTimeout >= 5000000) {
+        // 恢复正常细分
+        restoreNormalMicrosteps();
         // 设置当前位置为0
         motor_setCurrentPositionMicrosteps(_icID, 0);
         DEBUG_PRINT(_axisName);

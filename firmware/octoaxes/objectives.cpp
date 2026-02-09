@@ -53,6 +53,7 @@ bool Objectives::processCommand(const String& command) {
 
 void Objectives::performHomingSequence() {
   if (checkTimeout(_homing_timeout_ms)) {
+    restoreNormalMicrosteps();
     handleError("Homing timeout");
     return;
   }
@@ -62,6 +63,7 @@ void Objectives::performHomingSequence() {
   switch (_currentState) {
     case STATE_HOMING_INIT:
       enableSoftLimits(false);
+      switchToHomingMicrosteps();
 
       if (limit_state == OBSW_SW) {
         DEBUG_PRINT(_axisName);
@@ -94,6 +96,8 @@ void Objectives::performHomingSequence() {
     case STATE_HOMING_SET_ZERO:
       // 等待移动到安全位置完成
       if (isMovementComplete() || _checkHomeReachTimeout >= 500 * 1000) {
+        // 恢复正常细分
+        restoreNormalMicrosteps();
         // 设置当前位置为0
         DEBUG_PRINT(_axisName);
 

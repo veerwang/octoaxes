@@ -138,6 +138,7 @@ bool FilterWheel::isValidFilterPosition(uint8_t filterPosition) const {
 
 void FilterWheel::performHomingSequence() {
   if (checkTimeout(_homing_timeout_ms)) {
+    restoreNormalMicrosteps();
     handleError("Homing timeout");
     return;
   }
@@ -148,6 +149,7 @@ void FilterWheel::performHomingSequence() {
     case STATE_HOMING_INIT:
       enableSoftLimits(false);
       _slowApproach = false;
+      switchToHomingMicrosteps();
       DEBUG_PRINT(_axisName);
       DEBUG_PRINT(":HOMING_INIT limit_state=0x");
       DEBUG_PRINTLNF(limit_state, HEX);
@@ -184,6 +186,8 @@ void FilterWheel::performHomingSequence() {
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Sensor found (slow), homing position locked.");
 
+          // 恢复正常细分
+          restoreNormalMicrosteps();
           motor_setCurrentPositionMicrosteps(_icID, 0);
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Homing completed! Current position set to 0");
