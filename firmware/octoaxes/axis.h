@@ -84,6 +84,7 @@ protected:
   bool _isMoving;
   int32_t _lastPosition; // 上次位置，用于检测是否真正在移动
   int32_t _moveDirection;
+  unsigned long _moveStartMicros; // 移动开始时间 (micros)
 
   // 新增：轴使能状态
   bool _isEnabled;

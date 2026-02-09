@@ -385,18 +385,22 @@ void Axis::checkMovementComplete() {
 // 新增：开始移动 (使用新 API)
 void Axis::startMovement() {
   _isMoving = true;
+  _moveStartMicros = micros();
   _lastPosition = motor_getPositionMicrosteps(_icID);
   setState(STATE_MOVING);
 }
 
 // 新增：完成移动
 void Axis::completeMovement() {
+  unsigned long elapsed = micros() - _moveStartMicros;
   _isMoving = false;
   setState(STATE_IDLE);
 
-  // 可选：发送移动完成通知
+  // 发送移动完成通知（含精确耗时）
   DEBUG_PRINT(_axisName);
-  DEBUG_PRINTLN(":MOVEMENT_COMPLETED");
+  DEBUG_PRINT(":MOVEMENT_COMPLETED:");
+  DEBUG_PRINT(elapsed / 1000);
+  DEBUG_PRINTLN("ms");
 }
 
 bool Axis::handleHoming() {
