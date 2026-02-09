@@ -8,6 +8,7 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
+- [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms
 - [ ] 调试 Z 轴 homing 流程 - 基本移动已正常，问题在 homing
 
 ## 待办
@@ -39,6 +40,12 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### Homing 细分切换功能 (2026-02-09, develop)
+- [x] AxisConfig 新增 homingMicrostepping 字段（默认 256）
+- [x] MotorControl 新增 motor_setMicrosteps() 运行时切换
+- [x] StepAxis/FilterWheel/Objectives homing 中切换和恢复
+- [x] W 轴 6 次连续 homing 测试通过
 
 ### W 轴 FilterWheel homing 两阶段精确定位 (2026-02-09, from master)
 - [x] 排查 W 轴 homing 传感器信号和 limit_state 返回值

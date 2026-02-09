@@ -6,83 +6,57 @@
 
 ## 最新会话
 
-**日期**: 2026-01-27
-**位置**: Z 轴运动调试 - 基本移动已验证正常
+**日期**: 2026-02-09
+**分支**: develop
+**位置**: Homing 细分切换功能
 
 ### 本次完成
 
-#### 1. 新旧 API 一致性修复
+#### 添加 homing 细分切换功能
 
-- **velocity_mode 状态追踪**:
-  - 在 `MotorParams` 结构体添加 `velocity_mode` 字段
-  - `motor_setVelocityInternal()` 设置 `velocity_mode = true`
-  - `motor_moveToMicrosteps()` 检查并清除 velocity_mode
+- **需求**: homing 时使用独立的细分设置（默认 256），完成后恢复原始细分
+- **提交**: `23621c0`
 
-- **sRampInit 完整实现**:
-  - 旧 API 在从速度模式切换到位置模式时会重新初始化所有斜坡参数
-  - 新 API 现在也实现相同逻辑：重写 BOW1-4, AMAX, DMAX, ASTART, DFINAL, VMAX
+**修改文件 (8 个)**:
 
-- **BOW 参数自动计算**:
-  - 添加 `motor_adjustBows()` 函数
-  - 公式: `BOW = AMAX² / VMAX`
-  - 在初始化和参数变更时自动调用
+| 文件 | 修改内容 |
+|------|---------|
+| `axis.h` | AxisConfig 新增 `homingMicrostepping` 字段 + 辅助方法声明 |
+| `axis.cpp` | 实现 `switchToHomingMicrosteps()` / `restoreNormalMicrosteps()` + handleReset 中恢复 |
+| `config.h` | 新增 5 个 `HOMING_MICROSTEPPING_*` 常量（默认 256），7 个轴配置添加字段 |
+| `MotorControl.h` | 声明 `motor_setMicrosteps()` |
+| `MotorControl.cpp` | 实现 `motor_setMicrosteps()` - 更新 STEP_CONF 寄存器和缓存 |
+| `stepaxis.cpp` | homing 开始时切换、完成/超时时恢复 |
+| `filterwheel.cpp` | homing 开始时切换、完成/超时时恢复 |
+| `objectives.cpp` | homing 开始时切换、完成/超时时恢复 |
 
-- **RAMPMODE 一致性**:
-  - 旧 API 使用 `setBits/rstBits` 修改 RAMPMODE
-  - 新 API 原来直接写入，现已修复为使用相同的位操作逻辑
+**W 轴实测验证**:
+- 6 次连续 homing 全部成功
+- 细分切换 64→256 和 256→64 正确
+- VMAX/AMAX 按 4 倍比例正确缩放
+- 后续移动（0.8mm offset、12.5mm 滤光片切换）正常
 
-#### 2. 调试工具创建
+#### W 轴换孔时间基准 (优化前)
 
-| 脚本 | 用途 | 风险 |
-|------|------|------|
-| `test_09_debug_registers.py` | 只读寄存器状态 | 无 |
-| `test_10_manual_homing_steps.py` | 单步 homing 控制 | 可控 |
-| `test_11_simple_move.py` | 简单移动测试 | 低 |
+| 动作 | 耗时 |
+|------|------|
+| 孔间移动 (12.5mm) | 144 ms |
+| Offset 移动 (0.8mm) | 51 ms (平均) |
+| Homing (近处) | 0.7 s |
+| Homing (远处) | 4.4 ~ 6.1 s |
+| **完整换孔周期 (远处)** | **~6.3 s** |
 
-#### 3. 关键发现
+**优化目标: 孔间移动 ≤ 60 ms**
 
-- **串口协议**: 文本命令需要 `0x55 0xAA` 前缀才能被处理
-- **基本移动功能正常** ✅:
-  ```
-  移动前: XACTUAL=0, Position=0.000mm
-  移动后: XACTUAL=17066, Position=0.100mm
-  ```
-- **问题定位**: 问题在 **homing 流程**，不是基本移动功能
-
-#### 4. 配置调整
-
-- Z 轴 homing 速度: 1 mm/s → 0.3 mm/s (调试用)
-- 文件: `config.h:116`
-
-### 关键文件变更
-
-- `tmc/motion/MotorControl.h` - 添加 velocity_mode 和斜坡参数缓存
-- `tmc/motion/MotorControl.cpp` - 实现 motor_adjustBows(), 修复多个函数
-- `firmware/octoaxes/stepaxis.cpp` - 增强 homing 调试输出
-- `software/tests/test_09_*.py` ~ `test_11_*.py` - 新调试脚本
+当前瓶颈在 homing 阶段 (占 97% 时间)，孔移动本身 144ms。
 
 ### 下次继续
 
-1. **运行 test_10 单步 homing 调试**
-   - 观察 homing 各阶段的状态变化
-   - 定位电机卡死的具体步骤
-
-2. **检查 homing 流程中的 velocity_mode 处理**
-   - `STATE_HOMING_SEARCH`: 使用 `motor_setVelocityInternal()` 设置速度
-   - `STATE_HOMING_SET_ZERO`: 使用 `motor_moveToMicrosteps()` 移动到安全位置
-   - 确认从速度模式切换到位置模式时的状态是否正确
-
-3. **可能的问题点**
-   - 限位开关触发后的停止逻辑
-   - 安全位置计算
-   - velocity_mode 状态在 homing 中途的变化
-
-### 备注
-
-- 只有 Z 轴接了实际电机，其他轴未接
-- 测试脚本使用调试协议 (0x55 0xAA + 文本命令)
-- homing 方向: 正方向 (向右限位移动)
-- 安全位置: 限位触发点 - margin (离开限位)
+1. **优化 W 轴换孔时间** - 目标 ≤ 60ms
+2. **调试 Z 轴 homing 流程** - 运行 test_10 单步调试
+3. **去掉 FilterWheel homing debug 打印**
+4. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+5. **上位机兼容性测试**
 
 ---
 
@@ -101,34 +75,16 @@
 - 更新 main.py、widgets.py、main_window.py 使用新主题
 - 版本号更新至 1.2.0
 
-### 2026-01-23 - Cover 接口超时修复
-- 修复 `tmc4361A_readWriteCover` 轮询 COVER_DONE 超时问题
-- 改用与旧 API 相同的简单延时方式
-- 初始化速度恢复正常
+### 2026-01-27 - 新旧 API 一致性修复 + Z 轴运动调试
+- velocity_mode 状态追踪、sRampInit 完整实现、motor_adjustBows()
+- RAMPMODE 位操作修复
+- 创建调试脚本 test_09/10/11
+- 验证 Z 轴基本移动正常，问题定位在 homing 流程
 
-### 2026-01-23 - 系统性新旧 API 行为比对与修复
-- 逐函数对比新旧 API 行为差异
-- 修复 4 个关键函数的实现问题
-- 修复 `motor_enableHomingLimit` 的根本错误
-
-### 2026-01-23 - 硬件测试与位偏移修复
-- 运行测试 01-04，发现 Z 轴限位异常 (0x3)
-- 修复 motor_enableHomingLimit/enableSoftLimits/configStallGuard 位偏移
-- 烧写固件后初始化变慢 - 发现 motor_enableHomingLimit 逻辑完全错误
-
-### 2026-01-23 - 新旧 API 初始化一致性修复
-- 对比新旧 API 芯片初始化过程
-- 发现并修复 TMC4361A 复位操作缺失
-- 修复 CHOPCONF 参数不一致 (0x10345 → 0x100C3)
-
-### 2026-01-22 - TMC4361A 编程文档完成（页 201-224）
-- 完成 TMC4361A 编程指南 v1.5（完整版）
-- 新增章节 27-29（寄存器定义、电气特性、封装信息）
-
-### 2026-01-22 - API替换和风险修复
-- 完成旧API到新MotorControl API的全面替换
-- 修复5个关键风险（限位开关位、速度/加速度转换、EVENTS清除）
-- 提交: `bebac80 阶段7: API替换和风险修复`
+### 2026-01-23 - 系统性修复合集
+- Cover 接口超时修复（延时替代 COVER_DONE 轮询）
+- 新旧 API 行为比对修复 4 个关键函数
+- 硬件测试与位偏移修复
 
 ---
 
