@@ -32,6 +32,7 @@ private:
   uint8_t _filterCount;
   uint8_t _currentFilter;
   float* _filterPositions; // 每个滤光片对应的位置（毫米）
+  bool _slowApproach;      // homing 两阶段标志：false=快速找感应区，true=慢速精确逼近
   
   // 滤光轮特有方法
 	bool handleSetLimits(const String& command) override;

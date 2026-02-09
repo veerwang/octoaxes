@@ -25,7 +25,10 @@
 - [x] 烧写固件并验证 Z 轴限位开关 (2026-01-23) - 限位状态 0x0 正确
 - [x] 验证 Z 轴基本移动功能 (2026-01-27) - MOVETO 命令正常工作
 - [ ] 调试 Z 轴 homing 流程 - 运行 test_10 单步调试
+- [ ] 去掉 FilterWheel homing debug 打印
+- [ ] 修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW + 极性修正）
 - [ ] 上位机兼容性测试
+- [ ] 测试 GUI 黑黄主题效果
 
 ### 代码清理（可选）
 - [ ] 移除兼容层中不再需要的代码
@@ -36,6 +39,11 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### W 轴 FilterWheel homing 两阶段精确定位 (2026-02-09, from master)
+- [x] 排查 W 轴 homing 传感器信号和 limit_state 返回值
+- [x] 重写 FilterWheel homing 为两阶段：快速搜索+慢速逼近
+- [x] 添加 _slowApproach 标志控制两阶段切换
 
 ### 新旧 API 一致性修复 + 运动调试 (2026-01-27)
 - [x] velocity_mode 状态追踪 - 在 MotorParams 添加字段
@@ -97,7 +105,7 @@
 
 <!-- 遇到的问题或阻塞项，需要解决后才能继续 -->
 
-（暂无）
+- W 轴 config.h 中 homingSwitch=LEFT_SW 与实际硬件（RIGHT switch）不匹配，暂不影响功能但 latch 位置不准确
 
 ---
 

@@ -90,6 +90,17 @@
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
 
+### 2026-02-09 - W 轴滤光轮 homing 两阶段精确定位 (master)
+- 重写 FilterWheel homing 为两阶段精确定位（快速搜索+慢速逼近）
+- 添加 `_slowApproach` 标志控制两阶段切换
+- 去掉 STATE_HOMING_SET_ZERO，停车后直接设零
+- 经 10 次连续测试验证稳定
+
+### 2026-02-05 - GUI 黑黄工业风格主题优化 (master)
+- 创建主题系统 `gui/theme.py`（Colors、ButtonStyles、LabelStyles、StatusColors）
+- 更新 main.py、widgets.py、main_window.py 使用新主题
+- 版本号更新至 1.2.0
+
 ### 2026-01-23 - Cover 接口超时修复
 - 修复 `tmc4361A_readWriteCover` 轮询 COVER_DONE 超时问题
 - 改用与旧 API 相同的简单延时方式

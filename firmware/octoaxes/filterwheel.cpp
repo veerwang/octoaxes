@@ -1,10 +1,10 @@
 #include "filterwheel.h"
 #include "build_opt.h"
 
-FilterWheel::FilterWheel(uint8_t csPin, uint8_t axisIndex, const char* axisName, uint8_t filterCount) 
+FilterWheel::FilterWheel(uint8_t csPin, uint8_t axisIndex, const char* axisName, uint8_t filterCount)
   : Axis(csPin, axisIndex, axisName), _filterCount(filterCount), _currentFilter(0) {
   _filterPositions = new float[filterCount];
-  
+
   // 初始化默认位置：等间距分布，假设每个滤光片间隔60度
   for (uint8_t i = 0; i < filterCount; i++) {
     _filterPositions[i] = i * (360.0f / filterCount); // 以角度为单位，实际使用时需要转换为毫米
@@ -14,14 +14,14 @@ FilterWheel::FilterWheel(uint8_t csPin, uint8_t axisIndex, const char* axisName,
 bool FilterWheel::begin(const AxisConfig& config) {
   // 调用基类初始化
   bool result = Axis::begin(config);
-  
+
   if (result) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":FilterWheel with ");
     DEBUG_PRINT(_filterCount);
     DEBUG_PRINTLN(" filters initialized successfully");
   }
-  
+
   return result;
 }
 
@@ -32,25 +32,25 @@ bool FilterWheel::moveToFilter(uint8_t filterPosition) {
     DEBUG_PRINTLN(filterPosition);
     return false;
   }
-  
+
   if (_currentState != STATE_IDLE) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Filter wheel is busy");
     return false;
   }
-  
+
   float targetPosition = getFilterPosition(filterPosition);
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Moving to filter ");
   DEBUG_PRINT(filterPosition);
   DEBUG_PRINT(" at position ");
   DEBUG_PRINTLN(targetPosition);
-  
+
   if (Axis::moveToPosition(targetPosition)) {
     _currentFilter = filterPosition;
     return true;
   }
-  
+
   return false;
 }
 
@@ -65,7 +65,7 @@ uint8_t FilterWheel::getFilterCount() const {
 void FilterWheel::update() {
   // 先调用基类更新
   Axis::update();
-  
+
   // 滤光轮特有的更新逻辑可以在这里添加
   // 例如：检查是否到达目标滤光片位置等
 }
@@ -93,11 +93,11 @@ void FilterWheel::setFilterPositions(const float* positions, uint8_t count) {
   if (count > _filterCount) {
     count = _filterCount;
   }
-  
+
   for (uint8_t i = 0; i < count; i++) {
     _filterPositions[i] = positions[i];
   }
-  
+
   DEBUG_PRINT(_axisName);
   DEBUG_PRINTLN(":Filter positions updated");
 }
@@ -109,16 +109,16 @@ bool FilterWheel::handleMoveToFilter(const String& command) {
     DEBUG_PRINTLN(":MOVE_TO_FILTER ERROR: Invalid format");
     return false;
   }
-  
+
   String filterStr = command.substring(space1 + 1);
   uint8_t filterPosition = (uint8_t)filterStr.toInt();
-  
+
   if (!moveToFilter(filterPosition)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":MOVE_TO_FILTER ERROR: Movement failed");
     return false;
   }
-  
+
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":MOVE_TO_FILTER: Moving to filter ");
   DEBUG_PRINTLN(filterPosition);
@@ -147,16 +147,20 @@ void FilterWheel::performHomingSequence() {
   switch (_currentState) {
     case STATE_HOMING_INIT:
       enableSoftLimits(false);
+      _slowApproach = false;
+      DEBUG_PRINT(_axisName);
+      DEBUG_PRINT(":HOMING_INIT limit_state=0x");
+      DEBUG_PRINTLNF(limit_state, HEX);
 
       if (limit_state == 0x00) {
+        // 已在感应区，先移出
         DEBUG_PRINT(_axisName);
-        DEBUG_PRINTLN(":Already at home position, moving away first...");
+        DEBUG_PRINTLN(":Already at home, moving away first...");
         setState(STATE_LEAVING_HOME);
       } else {
+        // 不在感应区，快速搜索
         DEBUG_PRINT(_axisName);
-        DEBUG_PRINTLN(":Starting homing process...");
-
-        DEBUG_PRINTLN(_config.homingVelocityMM);
+        DEBUG_PRINTLN(":Fast search...");
         int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         motor_setVelocityInternal(_icID, speedInternal);
         setState(STATE_HOMING_SEARCH);
@@ -165,46 +169,25 @@ void FilterWheel::performHomingSequence() {
 
     case STATE_HOMING_SEARCH:
       if (limit_state == 0x00) {
-        DEBUG_PRINT(_axisName);
-        DEBUG_PRINTLN(":Home limit switch triggered!");
+        // 触碰到感应区
+        motor_setVelocityInternal(_icID, 0);  // 停车
+        delay(100);
 
-        int32_t latchedPosition = motor_readLatchPosition(_icID);
-        DEBUG_PRINT(_axisName);
-        DEBUG_PRINT(":Latched position: ");
-        DEBUG_PRINTLN(latchedPosition);
-
-        motor_setCurrentPositionMicrosteps(_icID, latchedPosition);
-
-        _checkHomeReachTimeout = 0;
-
-        setState(STATE_HOMING_SET_ZERO);
-      }
-      break;
-
-    case STATE_HOMING_SET_ZERO:
-      // 等待移动到安全位置完成
-      if (isMovementComplete() || _checkHomeReachTimeout >= 500 * 1000) {
-        // 设置当前位置为0
-        motor_setCurrentPositionMicrosteps(_icID, 0);
-        DEBUG_PRINT(_axisName);
-
-        if (_checkHomeReachTimeout > 500 * 1000)
-          DEBUG_PRINTLN(":Homing Set Current Position to Latched position Timeout");
-
-        DEBUG_PRINTLN(":Homing completed! Current position set to 0");
-
-        setState(STATE_IDLE);
-      } else {
-        // 可选：添加进度显示
-        static unsigned long lastProgressTime = 0;
-        if (millis() - lastProgressTime > 500) {
+        if (!_slowApproach) {
+          // 第一阶段（快速）：找到感应区后，移出再慢速逼近
           DEBUG_PRINT(_axisName);
-          DEBUG_PRINT(":Moving to safe position... Current :");
-          DEBUG_PRINT(getCurrentPositionMicrosteps());
-          DEBUG_PRINT(" microsteps, Target: ");
-          DEBUG_PRINT(motor_getTargetMicrosteps(_icID));
-          DEBUG_PRINTLN(" microsteps");
-          lastProgressTime = millis();
+          DEBUG_PRINTLN(":Sensor found (fast), moving away for slow approach...");
+          _slowApproach = true;
+          setState(STATE_LEAVING_HOME);
+        } else {
+          // 第二阶段（慢速）：精确定位完成
+          DEBUG_PRINT(_axisName);
+          DEBUG_PRINTLN(":Sensor found (slow), homing position locked.");
+
+          motor_setCurrentPositionMicrosteps(_icID, 0);
+          DEBUG_PRINT(_axisName);
+          DEBUG_PRINTLN(":Homing completed! Current position set to 0");
+          setState(STATE_IDLE);
         }
       }
       break;
@@ -224,21 +207,28 @@ void FilterWheel::performLeavingHome() {
 
   if (_currentState == STATE_LEAVING_HOME) {
     if (!(limit_state == 0x00)) {
+      // 已离开感应区
       DEBUG_PRINT(_axisName);
-      DEBUG_PRINTLN(":Left home position, starting homing...");
 
-      // 开始真正的归位搜索
-      int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
-      motor_setVelocityInternal(_icID, speedInternal);
+      if (_slowApproach) {
+        // 慢速逼近感应区
+        DEBUG_PRINTLN(":Left sensor, slow approach...");
+        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM / 5.0);
+        motor_setVelocityInternal(_icID, speedInternal);
+      } else {
+        // 快速搜索感应区
+        DEBUG_PRINTLN(":Left sensor, fast search...");
+        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        motor_setVelocityInternal(_icID, speedInternal);
+      }
       setState(STATE_HOMING_SEARCH);
     } else {
-      // 继续移动离开home位置
-      // 根据限位开关类型设置正确的离开方向
+      // 仍在感应区，继续移出
       int32_t speedInternal;
       if (_config.homingSwitch == RGHT_SW) {
-        speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM); // 向左移动离开右限位
+        speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
       } else {
-        speedInternal = -1 * motor_velocityMMToInternal(_icID, _config.homingVelocityMM); // 向右移动离开左限位
+        speedInternal = -1 * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
       }
       motor_setVelocityInternal(_icID, speedInternal);
     }
