@@ -442,10 +442,6 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
         // 4. 清除 velocity_mode 标志
         motorParams[icID].velocity_mode = false;
 
-        Serial.print("motor_moveToMicrosteps: sRampInit executed, RAMPMODE: 0x");
-        Serial.print(rampModeBefore, HEX);
-        Serial.print(" -> 0x");
-        Serial.println(tmc4361A_readRegister(icID, TMC4361A_RAMPMODE), HEX);
     }
 
     // ========================================================================
@@ -459,14 +455,6 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
 
     // Read X_ACTUAL to get it to refresh
     tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
-
-    // Debug output
-    Serial.print("motor_moveToMicrosteps: icID=");
-    Serial.print(icID);
-    Serial.print(" velocity_mode=");
-    Serial.print(motorParams[icID].velocity_mode);
-    Serial.print(" XTARGET=");
-    Serial.println(position);
 }
 
 void motor_rotateVelocity(uint8_t icID, float velocityMM)
@@ -950,15 +938,6 @@ void motor_setVelocityInternal(uint8_t icID, int32_t velocityInternal)
     // 4. Set velocity directly to VMAX (signed value determines direction)
     tmc4361A_writeRegister(icID, TMC4361A_VMAX, velocityInternal);
 
-    // Debug output
-    Serial.print("motor_setVelocityInternal: icID=");
-    Serial.print(icID);
-    Serial.print(" velocity_mode=true RAMPMODE: 0x");
-    Serial.print(rampModeBefore, HEX);
-    Serial.print(" -> 0x");
-    Serial.print(rampMode, HEX);
-    Serial.print(" VMAX=");
-    Serial.println(velocityInternal);
 }
 
 int32_t motor_readLatchPosition(uint8_t icID)
