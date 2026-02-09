@@ -96,7 +96,7 @@ namespace AxisConstDefinition {
 		const int MICROSTEPPING_X = 256;
 		const int MICROSTEPPING_Y = 256;
 		const int MICROSTEPPING_Z = 256;
-		const int MICROSTEPPING_FILTERWHEEL = 8;
+		const int MICROSTEPPING_FILTERWHEEL = 4;
 		const int MICROSTEPPING_OBJECTIVES = 64;
 
 		// Homing 细分（默认 256）
