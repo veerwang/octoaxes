@@ -6,53 +6,69 @@
 
 ## 最新会话
 
-**日期**: 2026-02-10
+**日期**: 2026-02-10 (会话 2)
 **分支**: develop
-**位置**: W 轴换孔时间优化 + BOW 参数调查
+**位置**: W 轴换孔时间优化 — ASTART/DFINAL 实现 + Homing 竞态修复
 
 ### 本次完成
 
-#### 修复 BOOST_SCALE_VAL 和使能加速 Boost
+#### 1. 实现 ASTART/DFINAL 起始加速度功能
 
-- 追溯旧 API `tmc4361A_cScaleInit`，发现重构时 BOOST_SCALE_VAL 从 255 错写为 128
-- 修正 `MotorControl.cpp` BOOST_SCALE_VAL = 255（与旧 API 一致）
-- 使能 `BOOST_CURRENT_ON_ACC_EN` (bit 2) + `BOOST_CURRENT_AFTER_START_EN` (bit 4)
-- 注：旧 API 也未使能 boost 开关，属于新增功能
+S-ramp 的 BOW 截断（24 位 max=16,777,215）导致电机时间锁死 70ms。尝试梯形斜坡但导致丢步（电机中频共振）。
+最终方案：保持 S-ramp + 使用 ASTART/DFINAL 跳过零加速度启动阶段。
 
-#### 添加详细运动计时和位置验证
+**修改文件：**
+- `axis.h` — AxisConfig 新增 `useSShapedRamp`, `astartMM`, `dfinalMM`
+- `axis.cpp` — 传递 astart/dfinal 到 MotionConfig
+- `MotorControl.h` — MotionConfig 新增 `astartMM`, `dfinalMM`
+- `MotorControl.cpp` — 初始化时启用 `USE_ASTART_AND_VSTART`，计算并缓存 ASTART/DFINAL 寄存器值
+- `config.h` — W_AXIS 和 EXPAND4_AXIS 配置 `astartMM = 150 rev/s²`
 
-- `axis.h` 新增 `_cmdRecvMicros` 字段
-- `axis.cpp` `moveAxis()` 入口记录命令接收时间
-- `axis.cpp` `completeMovement()` 输出三段时间 + 位置误差
-- 格式: `W:DONE: total=Xus prep=Yus motor=Zus pos=N tgt=N err=N`
+#### 2. 修复 sRampInit 清除 USE_ASTART_AND_VSTART
 
-#### W 轴优化轮次 3~7 测试记录
+**问题**: `motor_moveToMicrosteps()` 中的 sRampInit 无条件清除 `USE_ASTART_AND_VSTART` 位，
+导致 homing 完成后首次 moveTo 调用就禁用了 ASTART。
 
-| 轮次 | 细分 | 速度 | 加速度 | 电机时间 | 丢步 | 备注 |
-|------|------|------|--------|---------|------|------|
-| 3 (旧) | 4 | 3.828 | 360 | 57ms | 偶尔 | 细分4共振问题 |
-| 4 | 4 | 3.828 | 330 | 57ms | 偶尔 | 加速度无关 |
-| 5 | 4 | 3.828 | 310 | 57ms | **更频繁** | 确认是共振非力矩 |
-| 6 | 8 | 3.828 | 350 | 70ms | 无 | 细分8消除共振 |
-| 7 | 8 | 3.828 | 370 | 70ms | 无 | |
-| 8 | 8 | 4.2 | 370 | 70ms | 无 | 提速无效 |
-| 9 | 8 | 4.2 | 400 | 70ms | 无 | 提加速度无效 |
+**修复**: sRampInit 根据 `motorParams[icID].astart > 0` 决定保留或清除使能位。
 
-**关键发现:**
-- 细分 4 的丢步是**电机中频共振**导致，非力矩不足
-- 降低加速度反而增加丢步（共振区停留时间更长）
-- 电流已满量程 (CS=31, 实际 2952mA)，提高电流设置无效
-- **70ms 被锁死**: BOW=16777215 (0xFFFFFF, 24位最大值) 被截断
-- 无论速度/加速度如何调整，motor 时间固定在 70ms
-- **下一步需要修复 `motor_adjustBows()` 的 BOW 计算逻辑**
+#### 3. 修复 FilterWheel homing 完成竞态条件
+
+**问题**: homing 完成时 `restoreNormalMicrosteps()` 写 VMAX 到硬件，但 RAMPMODE 仍在速度模式，
+导致电机非预期漂移 ~70 微步。
+
+**根因分析**:
+- 原顺序: `restoreNormalMicrosteps()` → `motor_setCurrentPositionMicrosteps(0)` → VMAX 写入时电机漂移
+- 单纯交换顺序不行: `motor_setCurrentPositionMicrosteps(0)` 设 `velocity_mode=true`，
+  后续 `restoreNormalMicrosteps()` 写高 VMAX → 电机持续旋转
+
+**修复** (`filterwheel.cpp`):
+```cpp
+motor_setCurrentPositionMicrosteps(_icID, 0);  // VMAX=0 停车，设零
+motor_moveToMicrosteps(_icID, 0);              // 触发 sRampInit 切回位置模式
+restoreNormalMicrosteps();                      // 安全恢复细分和 VMAX/AMAX
+```
+
+#### 4. 恢复 AMAX 为 400 rev/s²
+
+梯形斜坡测试时将 AMAX 从 400 降为 200，切回 S-ramp 后忘记恢复。已恢复。
+
+#### 测试结果 (log: motor_control_log_20260210_110921.txt)
+
+| 指标 | 修复前 | 修复后 |
+|------|--------|--------|
+| 12.5mm motor 时间 | 70ms → 64ms | **~62ms** |
+| Homing 后 offset 漂移 | ~70 微步 | **1 微步** |
+| ASTART 持续性 | homing 后失效 | **持续生效** |
+| 位置精度 (24次移动) | — | **全部 err=0** |
 
 #### 当前 W 轴参数
 
 | 参数 | 值 |
 |------|-----|
 | 细分 | 8 |
-| 最大速度 | 4.2 rev/s |
-| 最大加速度 | 400 rev/s² |
+| 最大速度 | 4.2 rev/s (420 mm/s) |
+| 最大加速度 | 400 rev/s² (40,000 mm/s²) |
+| ASTART | 150 rev/s² (15,000 mm/s²) |
 | 电机电流 | 3000 mA (CS=31 满格) |
 | Boost | 使能, 100% |
 | Homing 细分 | 256 |
@@ -63,13 +79,13 @@
 |------|------|------|
 | 串口通信 (往返) | ~6ms | 8% |
 | 命令处理 (prep) | ~1.6ms | 2% |
-| **电机运动 (motor)** | **~70ms** | **90%** |
-| **PC 端到端** | **~78ms** | 100% |
+| **电机运动 (motor)** | **~62ms** | **90%** |
+| **PC 端到端** | **~70ms** | 100% |
 
 ### 下次继续
 
-1. **修复 `motor_adjustBows()` BOW 计算** - BOW 被截断到 0xFFFFFF，导致运动时间锁死 70ms
-2. **调试 Z 轴 homing 流程** - 运行 test_10 单步调试
+1. **W 轴继续优化** — 距 60ms 目标还差 ~2ms，可尝试提高 ASTART (150→200 rev/s²) 或微调速度/加速度
+2. **调试 Z 轴 homing 流程** — 运行 test_10 单步调试
 3. **去掉 FilterWheel homing debug 打印**
 4. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
 5. **上位机兼容性测试**

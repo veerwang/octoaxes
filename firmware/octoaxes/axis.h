@@ -52,6 +52,9 @@ public:
     float homeSafetyPositionMM;
     bool enableStallSensitivity;
     int stallSensitivity;
+    bool useSShapedRamp;         // true=S形斜坡, false=梯形斜坡
+    float astartMM;              // 起始加速度 (mm/s²), 0=不使用
+    float dfinalMM;              // 终止减速度 (mm/s²), 0=同 astart
     uint32_t homing_timeout_ms;
     int8_t homing_direct;
   };

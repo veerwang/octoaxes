@@ -34,6 +34,8 @@ typedef struct {
     float    maxAccelerationMM;  // Maximum acceleration (mm/s²)
     float    maxDecelerationMM;  // Maximum deceleration (mm/s²), 0 = same as accel
     bool     useSShapedRamp;     // Use S-shaped ramp (bow parameters)
+    float    astartMM;           // Initial acceleration (mm/s²), 0 = disabled
+    float    dfinalMM;           // Final deceleration (mm/s²), 0 = same as astart
     uint32_t bow1;               // Bow parameter 1 (for S-shaped ramp)
     uint32_t bow2;               // Bow parameter 2
     uint32_t bow3;               // Bow parameter 3

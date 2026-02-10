@@ -187,9 +187,10 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     }
 
     // Configure GENERAL_CONF
-    // 重要：与旧 API sRampInit 一致，清除 use_astart_and_vstart 位
-    // 旧 API: tmc4361A_rstBits(tmc4361A, TMC4361A_GENERAL_CONF, TMC4361A_USE_ASTART_AND_VSTART_MASK);
-    uint32_t generalConf = 0x00000000;  // use_astart_and_vstart = 0
+    uint32_t generalConf = 0x00000000;
+    if (config->astartMM > 0) {
+        generalConf |= TMC4361A_USE_ASTART_AND_VSTART_MASK;  // 使能 ASTART/DFINAL
+    }
     tmc4361A_writeRegister(icID, TMC4361A_GENERAL_CONF, generalConf);
 
     // Configure SPI_OUT_CONF for TMC2660 SPI mode communication
@@ -218,8 +219,12 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     motorParams[icID].vmax = vmax;
     motorParams[icID].amax = amax;
     motorParams[icID].dmax = dmax;
-    motorParams[icID].astart = 0;
-    motorParams[icID].dfinal = 0;
+    // ASTART / DFINAL: 起始加速度和终止减速度
+    uint32_t astart = config->astartMM > 0 ? motor_accelMMToInternal(icID, config->astartMM) : 0;
+    float dfinalMM = config->dfinalMM > 0 ? config->dfinalMM : config->astartMM;
+    uint32_t dfinal = dfinalMM > 0 ? motor_accelMMToInternal(icID, dfinalMM) : 0;
+    motorParams[icID].astart = astart;
+    motorParams[icID].dfinal = dfinal;
 
     // 写入硬件寄存器
     tmc4361A_writeRegister(icID, TMC4361A_VMAX, vmax);
@@ -250,11 +255,11 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
         motorParams[icID].bow4 = 0;
     }
 
-    // Set VSTART, VSTOP, ASTART, DFINAL (与旧 API sRampInit 一致)
+    // Set VSTART, VSTOP, ASTART, DFINAL
     tmc4361A_writeRegister(icID, TMC4361A_VSTART, 0);
     tmc4361A_writeRegister(icID, TMC4361A_VSTOP, 0);
-    tmc4361A_writeRegister(icID, TMC4361A_ASTART, 0);  // initial acceleration
-    tmc4361A_writeRegister(icID, TMC4361A_DFINAL, 0);  // final deceleration
+    tmc4361A_writeRegister(icID, TMC4361A_ASTART, motorParams[icID].astart);
+    tmc4361A_writeRegister(icID, TMC4361A_DFINAL, motorParams[icID].dfinal);
 
     // ========================================================================
     // 关键配置: 微步和每转步数 (与旧 API tmc4361A_writeMicrosteps/writeSPR 一致)
@@ -424,10 +429,13 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
         rampMode |= (TMC4361A_RAMP_POSITION | TMC4361A_RAMP_SSHAPE);
         tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
 
-        // 2. 清除 USE_ASTART_AND_VSTART
-        //    旧 API: tmc4361A_rstBits(tmc4361A, TMC4361A_GENERAL_CONF, TMC4361A_USE_ASTART_AND_VSTART_MASK);
+        // 2. 恢复 USE_ASTART_AND_VSTART 设置（根据 astart 配置决定）
         uint32_t generalConf = tmc4361A_readRegister(icID, TMC4361A_GENERAL_CONF);
-        generalConf &= ~TMC4361A_USE_ASTART_AND_VSTART_MASK;
+        if (motorParams[icID].astart > 0) {
+            generalConf |= TMC4361A_USE_ASTART_AND_VSTART_MASK;
+        } else {
+            generalConf &= ~TMC4361A_USE_ASTART_AND_VSTART_MASK;
+        }
         tmc4361A_writeRegister(icID, TMC4361A_GENERAL_CONF, generalConf);
 
         // 3. 重写所有斜坡参数 (与旧 API sRampInit 一致)

@@ -186,9 +186,10 @@ void FilterWheel::performHomingSequence() {
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Sensor found (slow), homing position locked.");
 
-          // 恢复正常细分
-          restoreNormalMicrosteps();
-          motor_setCurrentPositionMicrosteps(_icID, 0);
+          // 先停车设零，再切回位置模式，最后恢复细分和运动参数
+          motor_setCurrentPositionMicrosteps(_icID, 0);  // VMAX=0 停车，设零，velocity_mode=true
+          motor_moveToMicrosteps(_icID, 0);              // 触发 sRampInit 切回位置模式（target=0=current，无移动）
+          restoreNormalMicrosteps();                      // 安全恢复细分和 VMAX/AMAX
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Homing completed! Current position set to 0");
           setState(STATE_IDLE);

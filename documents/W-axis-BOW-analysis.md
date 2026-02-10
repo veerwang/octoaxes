@@ -89,10 +89,9 @@ a(t_acc) = BOW × t_acc
 
 ## 解决方案
 
-### 方案: 切换为梯形斜坡 (Trapezoidal Ramp)
+### 方案 A: 梯形斜坡 — 失败
 
-将 W 轴 RAMPMODE 从 6 (S-shaped + Position) 改为 5 (Trapezoidal + Position)，
-绕过 BOW 参数限制，直接使用 AMAX 控制加速度。
+将 RAMPMODE 从 S-shaped 改为 Trapezoidal，理论时间 ~40ms。
 
 梯形斜坡理论时间:
 
@@ -105,17 +104,51 @@ t_const = 129.4 / 6,720 = 19.3ms
 t_total = 10.5 + 19.3 + 10.5 = 40.3ms
 ```
 
-**预计 40ms 电机时间 + 8ms 通信开销 ≈ 48ms，达成 ≤60ms 目标。**
+**结果**: 丢步（电机中频共振），降低加速度到 200 rev/s² 仍然丢步。
+梯形斜坡的加速度阶跃变化激发了电机共振，方案放弃。
 
-### 风险评估
+### 方案 B: S-ramp + ASTART/DFINAL — 成功
 
-- 梯形斜坡的加速度阶跃变化可能增加机械振动
-- microstepping=8 提供阻尼效果，可减轻此影响
-- 需要实测验证是否出现丢步
+保持 S-ramp 平滑性，使用 TMC4361A 的 ASTART 功能跳过零加速度启动阶段。
+
+**原理**: ASTART 设置斜坡起始加速度，电机不再从 a=0 开始，而是从 a=ASTART 开始，
+跳过 jerk-limited 阶段的低加速度部分，缩短总运动时间。
+
+**实现**:
+- `GENERAL_CONF` 使能 `USE_ASTART_AND_VSTART` (bit 0)
+- `ASTART` = 150 rev/s² 对应的内部值
+- `DFINAL` = 同 ASTART（减速末段加速度）
+
+**关键修复**: sRampInit (motor_moveToMicrosteps 中) 原来无条件清除 USE_ASTART_AND_VSTART，
+导致 homing 后 ASTART 失效。修改为根据 `motorParams[icID].astart > 0` 保留使能。
+
+### 方案 B 附加修复: Homing 完成竞态条件
+
+**问题**: homing 完成时 `restoreNormalMicrosteps()` 写 VMAX 到硬件，但 RAMPMODE 仍在速度模式。
+单纯交换调用顺序也不行（motor_setCurrentPositionMicrosteps 设 velocity_mode=true，
+后续写 VMAX 导致电机持续旋转）。
+
+**修复**: 三步序列确保安全
+```cpp
+motor_setCurrentPositionMicrosteps(_icID, 0);  // VMAX=0 停车，设零
+motor_moveToMicrosteps(_icID, 0);              // 触发 sRampInit 切回位置模式
+restoreNormalMicrosteps();                      // 安全恢复细分和 VMAX/AMAX
+```
+
+### 测试结果
+
+| 阶段 | 方案 | motor 时间 | 丢步 |
+|------|------|-----------|------|
+| 基准 (S-ramp, BOW 截断) | — | 70ms | 无 |
+| ASTART=150, AMAX=200 (遗留) | B | 64ms | 无 |
+| ASTART=150, AMAX=400 (修正) | B | **62ms** | 无 |
+
+最终: **70ms → 62ms (-11%)**，24 次 12.5mm 移动全部 err=0。
 
 ## 参考
 
 - TMC4361A S-ramp 6 阶段: BOW1(jerk↑) → AMAX(匀加速) → BOW2(jerk↓) → VMAX(匀速) → BOW3(jerk↓) → DMAX(匀减速) → BOW4(jerk↑)
 - TMC4361A RAMPMODE 寄存器: bit[1:0] = 01(梯形) / 10(S形), bit[2] = 1(位置模式)
 - BOW 寄存器: 24 位无符号, 最大值 16,777,215
+- ASTART/DFINAL: USE_ASTART_AND_VSTART (GENERAL_CONF bit 0) 使能
 - `motor_adjustBows()`: MotorControl.cpp:42-89

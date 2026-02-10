@@ -8,7 +8,7 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-- [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 70ms (细分8, BOW 截断问题待修复)
+- [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 62ms (ASTART 生效, homing 竞态已修复)
 - [ ] 调试 Z 轴 homing 流程 - 基本移动已正常，问题在 homing
 
 ## 待办
@@ -40,6 +40,13 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### W 轴 ASTART + Homing 竞态修复 (2026-02-10, develop)
+- [x] 实现 ASTART/DFINAL 起始加速度功能 (AxisConfig, MotorControl, config.h)
+- [x] 修复 sRampInit 无条件清除 USE_ASTART_AND_VSTART
+- [x] 修复 FilterWheel homing 完成竞态条件 (VMAX 写入导致漂移)
+- [x] 恢复 AMAX 400 rev/s² (梯形测试遗留)
+- [x] 测试验证: motor 时间 70ms→62ms, 24 次移动 err=0
 
 ### Homing 细分切换功能 (2026-02-09, develop)
 - [x] AxisConfig 新增 homingMicrostepping 字段（默认 256）
