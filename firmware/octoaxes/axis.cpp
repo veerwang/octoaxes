@@ -301,6 +301,7 @@ int32_t Axis::hexStringToInt32(String hex) {
 }
 
 bool Axis::moveAxis(int32_t value) {
+  _cmdRecvMicros = micros();
   float positionMM = float(value) / 1000.0f;
   positionMM = 1 * positionMM;
 
@@ -392,15 +393,29 @@ void Axis::startMovement() {
 
 // 新增：完成移动
 void Axis::completeMovement() {
-  unsigned long elapsed = micros() - _moveStartMicros;
+  unsigned long now = micros();
+  unsigned long motorTime = now - _moveStartMicros;
+  unsigned long totalTime = now - _cmdRecvMicros;
+  unsigned long prepTime = _moveStartMicros - _cmdRecvMicros;
+  int32_t endPos = motor_getPositionMicrosteps(_icID);
+  int32_t targetPos = motor_getTargetMicrosteps(_icID);
   _isMoving = false;
   setState(STATE_IDLE);
 
-  // 发送移动完成通知（含精确耗时）
+  // 格式: DONE: total=Xus prep=Yus motor=Zus pos=N tgt=N err=N
   DEBUG_PRINT(_axisName);
-  DEBUG_PRINT(":MOVEMENT_COMPLETED:");
-  DEBUG_PRINT(elapsed / 1000);
-  DEBUG_PRINTLN("ms");
+  DEBUG_PRINT(":DONE: total=");
+  DEBUG_PRINT(totalTime);
+  DEBUG_PRINT("us prep=");
+  DEBUG_PRINT(prepTime);
+  DEBUG_PRINT("us motor=");
+  DEBUG_PRINT(motorTime);
+  DEBUG_PRINT("us pos=");
+  DEBUG_PRINT(endPos);
+  DEBUG_PRINT(" tgt=");
+  DEBUG_PRINT(targetPos);
+  DEBUG_PRINT(" err=");
+  DEBUG_PRINTLN(endPos - targetPos);
 }
 
 bool Axis::handleHoming() {

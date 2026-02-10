@@ -96,7 +96,7 @@ namespace AxisConstDefinition {
 		const int MICROSTEPPING_X = 256;
 		const int MICROSTEPPING_Y = 256;
 		const int MICROSTEPPING_Z = 256;
-		const int MICROSTEPPING_FILTERWHEEL = 4;
+		const int MICROSTEPPING_FILTERWHEEL = 8;
 		const int MICROSTEPPING_OBJECTIVES = 64;
 
 		// Homing 细分（默认 256）
@@ -109,13 +109,13 @@ namespace AxisConstDefinition {
 		const float MAX_VELOCITY_X_mm = 25;
 		const float MAX_VELOCITY_Y_mm = 25;
 		const float MAX_VELOCITY_Z_mm = 3;
-		const float MAX_VELOCITY_FILTERWHEEL_mm = 3.828 * SCREW_PITCH_FILTERWHEEL_MM;
+		const float MAX_VELOCITY_FILTERWHEEL_mm = 4.2 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float MAX_VELOCITY_OBJECTIVES_mm = 0.5 * SCREW_PITCH_OBJECTIVES_MM;
 
 		const float MAX_ACCELERATION_X_mm = 500;
 		const float MAX_ACCELERATION_Y_mm = 500;
 		const float MAX_ACCELERATION_Z_mm = 20;
-		const float MAX_ACCELERATION_FILTERWHEEL_mm = 360 * SCREW_PITCH_FILTERWHEEL_MM;
+		const float MAX_ACCELERATION_FILTERWHEEL_mm = 400 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 200 * SCREW_PITCH_OBJECTIVES_MM;
 
 		const float HOMING_VELOCITY_X_MM = 10;

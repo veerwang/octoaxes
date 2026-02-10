@@ -282,18 +282,20 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     // 关键配置: 电流缩放 (与旧 API tmc4361A_cScaleInit 一致)
     // ========================================================================
 
-    // SCALE_VALUES: 使用默认值 (hold=128, drv1=255, drv2=255, boost=128)
-    // 这些值对应旧 API 的 0.5, 1.0, 1.0, 0.5 缩放系数
+    // SCALE_VALUES: 与旧 API tmc4361A_tmc2660_config() 调用参数一致
+    // 旧 API 传入: hold=0.5, drv2=1.0, drv1=1.0, boost=1.0
     uint32_t scaleValues = (128 << TMC4361A_HOLD_SCALE_VAL_SHIFT) |   // hold = 50%
                            (255 << TMC4361A_DRV2_SCALE_VAL_SHIFT) |   // drv2 = 100%
                            (255 << TMC4361A_DRV1_SCALE_VAL_SHIFT) |   // drv1 = 100%
-                           (128 << TMC4361A_BOOST_SCALE_VAL_SHIFT);   // boost = 50%
+                           (255 << TMC4361A_BOOST_SCALE_VAL_SHIFT);   // boost = 100%
     tmc4361A_writeRegister(icID, TMC4361A_SCALE_VALUES, scaleValues);
 
-    // CURRENT_CONF: 使能驱动电流缩放和保持电流缩放
+    // CURRENT_CONF: 使能驱动电流缩放、保持电流缩放和加速boost
     uint32_t currentConf = tmc4361A_readRegister(icID, TMC4361A_CURRENT_CONF);
-    currentConf |= TMC4361A_DRIVE_CURRENT_SCALE_EN_MASK;  // bit 1
-    currentConf |= TMC4361A_HOLD_CURRENT_SCALE_EN_MASK;   // bit 0
+    currentConf |= TMC4361A_DRIVE_CURRENT_SCALE_EN_MASK;       // bit 1
+    currentConf |= TMC4361A_HOLD_CURRENT_SCALE_EN_MASK;        // bit 0
+    currentConf |= TMC4361A_BOOST_CURRENT_ON_ACC_EN_MASK;      // bit 2 - 加速段使用boost电流
+    currentConf |= TMC4361A_BOOST_CURRENT_AFTER_START_EN_MASK;  // bit 4 - 启动后使用boost电流
     tmc4361A_writeRegister(icID, TMC4361A_CURRENT_CONF, currentConf);
 
     return true;
