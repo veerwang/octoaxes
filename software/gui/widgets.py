@@ -155,6 +155,7 @@ class ControlPanel(QGroupBox):
     backward_clicked = pyqtSignal()
     previous_clicked = pyqtSignal()
     next_clicked = pyqtSignal()
+    test_clicked = pyqtSignal()
     move_absolute_clicked = pyqtSignal(float)  # 单位 um，无论轴类型都统一为um
 
     enable_toggled = pyqtSignal(bool)  # 新增：使能状态切换信号
@@ -327,6 +328,10 @@ class ControlPanel(QGroupBox):
         self.next_btn = QPushButton("Next Position")
         self.next_btn.clicked.connect(self.emit_next)
         filter_btn_layout.addWidget(self.next_btn)
+
+        self.test_btn = QPushButton("Test")
+        self.test_btn.clicked.connect(self.emit_test)
+        filter_btn_layout.addWidget(self.test_btn)
         layout.addLayout(filter_btn_layout)
 
         layout.addStretch()
@@ -445,6 +450,11 @@ class ControlPanel(QGroupBox):
         """发射下一个位置信号"""
         if not self.is_switching and self.axis_enabled:
             self.next_clicked.emit()
+
+    def emit_test(self):
+        """发射测试信号"""
+        if not self.is_switching and self.axis_enabled:
+            self.test_clicked.emit()
 
     def emit_absolute_move(self):
         """发射绝对位置移动信号（单位 um）"""

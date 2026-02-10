@@ -151,6 +151,7 @@ class TeensyControlGUI(QMainWindow):
         self.control_panel.backward_clicked.connect(self.move_backward)
         self.control_panel.previous_clicked.connect(self.previous_position)
         self.control_panel.next_clicked.connect(self.next_position)
+        self.control_panel.test_clicked.connect(self.run_w_test)
         self.control_panel.enable_toggled.connect(self.toggle_axis_enable)  # 新增
         self.control_panel.axis_changed.connect(self.on_axis_changed)
         self.control_panel.move_absolute_clicked.connect(self.moveto_axis)
@@ -654,6 +655,45 @@ class TeensyControlGUI(QMainWindow):
             self.move_filterwheel(True)
         elif axis == "E1":
             self.move_objective(True)
+
+    def run_w_test(self):
+        """W轴自动测试: homing → next×7 → previous×7"""
+        import threading
+
+        def _test_worker():
+            self.log("=== W Test Start ===")
+
+            # 1. Homing
+            self.log("W Test: Homing...")
+            self.send_homing()
+
+            # 等待 homing + offset 完成
+            time.sleep(1.0)
+            if not self.wait_until_idle(15):
+                self.log("W Test: Homing timeout, abort.")
+                return
+
+            # 2. Next x 7
+            for i in range(7):
+                time.sleep(0.5)
+                self.log(f"W Test: Next {i+1}/7")
+                self.move_filterwheel(True)
+                if not self.wait_until_idle(5):
+                    self.log(f"W Test: Next {i+1} timeout, abort.")
+                    return
+
+            # 3. Previous x 7
+            for i in range(7):
+                time.sleep(0.5)
+                self.log(f"W Test: Previous {i+1}/7")
+                self.move_filterwheel(False)
+                if not self.wait_until_idle(5):
+                    self.log(f"W Test: Previous {i+1} timeout, abort.")
+                    return
+
+            self.log("=== W Test Done ===")
+
+        threading.Thread(target=_test_worker, daemon=True).start()
 
     # ====== 数据处理相关 ======
     def handle_received_data(self, data):
