@@ -278,7 +278,7 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 150 * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 起始加速度 150 rev/s²
+        .astartMM = 180 * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 起始加速度 180 rev/s²
         .dfinalMM = 0,                                   // 同 astart
         .homing_timeout_ms = 80000,
 				.homing_direct = 1
@@ -377,7 +377,7 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 150 * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 起始加速度 150 rev/s²
+        .astartMM = 180 * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 起始加速度 180 rev/s²
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
 				.homing_direct = 1
