@@ -78,7 +78,7 @@ namespace AxisConstDefinition {
 		const float R_sense_xy = 0.22;
 		const float R_sense_z = 0.43;
 		const float R_sense_objective = 0.22;
-		const float R_sense_filter = 0.105;
+		const float R_sense_filter = 0.1;
 
 		const int FULLSTEPS_PER_REV_X = 200;
 		const int FULLSTEPS_PER_REV_Y = 200;
@@ -127,7 +127,7 @@ namespace AxisConstDefinition {
 		const float X_MOTOR_RMS_CURRENT_mA = 1000;
 		const float Y_MOTOR_RMS_CURRENT_mA = 1000;
 		const float Z_MOTOR_RMS_CURRENT_mA = 500;
-		const float FILTERWHEEL_MOTOR_RMS_CURRENT_mA = 3000;
+		const float FILTERWHEEL_MOTOR_RMS_CURRENT_mA = 3100;
 		const float OBJECTIVES_MOTOR_RMS_CURRENT_mA = 1000;
 
 		const float X_MOTOR_I_HOLD = 0.25;
