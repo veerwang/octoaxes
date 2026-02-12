@@ -88,14 +88,16 @@ static void motor_adjustBows(uint8_t icID)
     Serial.println(bow);
 }
 
-// Calculate current scale from mA and sense resistor
+// Calculate current scale from peak current (mA) and sense resistor
+// TMC2660 公式:
+//   I_peak = (CS + 1) / 32 × V_FS / R_sense
+//   I_rms  = I_peak / √2
+// VSENSE=0 → V_FS = 0.310V; VSENSE=1 → V_FS = 0.165V
+// 本项目 DRVCONF 设置 VSENSE=0 (高量程)
+// 芯片绝对上限: 4A 峰值 (2.8A RMS), CS 范围 0~31
 static uint8_t calculateCurrentScale(float currentMA, float rSense)
 {
-    // TMC2660 formula: I_rms = (CS + 1) / 32 * V_fs / R_sense
-    // V_fs = 0.165V (VSENSE=1) or 0.310V (VSENSE=0)
-    // DRVCONF 设置 VSENSE=0 (高量程), 对应 V_fs = 0.310V
-    // CS = (I_rms * R_sense * 32 / 0.310) - 1
-
+    // CS = (I_peak × R_sense × 32 / V_FS) - 1
     float cs = (currentMA / 1000.0f) * rSense * 32.0f / 0.310f - 1.0f;
 
     if (cs < 0) cs = 0;

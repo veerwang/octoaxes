@@ -46,7 +46,7 @@ public:
     float maxVelocityMM;
     float maxAccelerationMM;
     float homingVelocityMM;
-    float motorCurrentMA;
+    float motorCurrentMA;           // 峰值电流 (mA), I_rms = I_peak / √2
     float holdCurrent;
     float homeSafetyMarginMM;
     float homeSafetyPositionMM;

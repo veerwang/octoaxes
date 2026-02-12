@@ -47,7 +47,7 @@ typedef struct {
  */
 typedef struct {
     float    rSense;             // Sense resistor value (Ohms)
-    float    runCurrentMA;       // Run current (mA)
+    float    runCurrentMA;       // Peak run current (mA), NOT RMS
     float    holdCurrentRatio;   // Hold current as ratio of run (0.0-1.0)
     uint8_t  microstepRes;       // Microstep resolution (0=256, 1=128, ... 8=1)
     bool     interpolation;      // Enable 256 microstep interpolation

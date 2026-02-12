@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QCheckBox,
     QStackedWidget,
+    QSpinBox,
 )
 from PyQt5.QtCore import pyqtSignal, Qt, QTimer
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont
@@ -328,6 +329,17 @@ class ControlPanel(QGroupBox):
         self.next_btn = QPushButton("Next Position")
         self.next_btn.clicked.connect(self.emit_next)
         filter_btn_layout.addWidget(self.next_btn)
+
+        filter_btn_layout.addStretch()
+
+        rounds_label = QLabel("Rounds:")
+        filter_btn_layout.addWidget(rounds_label)
+
+        self.test_rounds_spin = QSpinBox()
+        self.test_rounds_spin.setRange(1, 10)
+        self.test_rounds_spin.setValue(2)
+        self.test_rounds_spin.setMinimumWidth(50)
+        filter_btn_layout.addWidget(self.test_rounds_spin)
 
         self.test_btn = QPushButton("Test")
         self.test_btn.clicked.connect(self.emit_test)

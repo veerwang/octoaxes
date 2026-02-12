@@ -657,11 +657,13 @@ class TeensyControlGUI(QMainWindow):
             self.move_objective(True)
 
     def run_w_test(self):
-        """W轴自动测试: homing → (next×7 → previous×7) ×2"""
+        """W轴自动测试: homing → (next×7 → previous×7) × N 回合"""
         import threading
 
+        rounds = self.control_panel.test_rounds_spin.value()
+
         def _test_worker():
-            self.log("=== W Test Start ===")
+            self.log(f"=== W Test Start ({rounds} rounds) ===")
 
             # 1. Homing
             self.log("W Test: Homing...")
@@ -673,9 +675,9 @@ class TeensyControlGUI(QMainWindow):
                 self.log("W Test: Homing timeout, abort.")
                 return
 
-            # 2. 正转+反转 × 2 回合
-            for r in range(2):
-                self.log(f"W Test: Round {r+1}/2")
+            # 2. 正转+反转 × N 回合
+            for r in range(rounds):
+                self.log(f"W Test: Round {r+1}/{rounds}")
 
                 for i in range(7):
                     time.sleep(0.5)
@@ -693,7 +695,7 @@ class TeensyControlGUI(QMainWindow):
                         self.log(f"W Test: R{r+1} Previous {i+1} timeout, abort.")
                         return
 
-            self.log("=== W Test Done ===")
+            self.log(f"=== W Test Done ({rounds} rounds) ===")
 
         threading.Thread(target=_test_worker, daemon=True).start()
 

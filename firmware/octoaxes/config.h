@@ -124,11 +124,15 @@ namespace AxisConstDefinition {
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
 
-		const float X_MOTOR_RMS_CURRENT_mA = 1000;
-		const float Y_MOTOR_RMS_CURRENT_mA = 1000;
-		const float Z_MOTOR_RMS_CURRENT_mA = 500;
-		const float FILTERWHEEL_MOTOR_RMS_CURRENT_mA = 3100;
-		const float OBJECTIVES_MOTOR_RMS_CURRENT_mA = 1000;
+		// 电机电流设置 (mA) — 峰值电流，非 RMS
+		// TMC2660 公式: I_peak = (CS+1)/32 × V_FS/R_sense, I_rms = I_peak/√2
+		// CS 范围 0~31，超出会被 clamp，实际峰值受 R_sense 限制
+		// 芯片绝对上限: 4A 峰值 (2.8A RMS)
+		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
+		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
+		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // R=0.43Ω → CS=21, 实际 0.47A
+		const float FILTERWHEEL_MOTOR_PEAK_CURRENT_mA = 3100; // R=0.10Ω → CS=31(满), 实际 3.1A
+		const float OBJECTIVES_MOTOR_PEAK_CURRENT_mA = 1000;  // R=0.22Ω → CS=9, 实际 0.97A
 
 		const float X_MOTOR_I_HOLD = 0.25;
 		const float Y_MOTOR_I_HOLD = 0.25;
@@ -172,7 +176,7 @@ namespace AxisConfigs {
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_X_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_X_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_X_MM,
-        .motorCurrentMA = AxisConstDefinition::X_MOTOR_RMS_CURRENT_mA,
+        .motorCurrentMA = AxisConstDefinition::X_MOTOR_PEAK_CURRENT_mA,
         .holdCurrent = AxisConstDefinition::X_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::X_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::X_SAFEPOSITION,
@@ -205,7 +209,7 @@ namespace AxisConfigs {
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_Y_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_Y_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_Y_MM,
-        .motorCurrentMA = AxisConstDefinition::Y_MOTOR_RMS_CURRENT_mA,
+        .motorCurrentMA = AxisConstDefinition::Y_MOTOR_PEAK_CURRENT_mA,
         .holdCurrent = AxisConstDefinition::Y_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::Y_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::Y_SAFEPOSITION,
@@ -238,7 +242,7 @@ namespace AxisConfigs {
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_Z_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_Z_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_Z_MM,
-        .motorCurrentMA = AxisConstDefinition::Z_MOTOR_RMS_CURRENT_mA,
+        .motorCurrentMA = AxisConstDefinition::Z_MOTOR_PEAK_CURRENT_mA,
         .holdCurrent = AxisConstDefinition::Z_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::Z_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::Z_SAFEPOSITION,
@@ -271,7 +275,7 @@ namespace AxisConfigs {
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_FILTERWHEEL_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_FILTERWHEEL_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_FILTERWHEEL_MM,
-        .motorCurrentMA = AxisConstDefinition::FILTERWHEEL_MOTOR_RMS_CURRENT_mA,
+        .motorCurrentMA = AxisConstDefinition::FILTERWHEEL_MOTOR_PEAK_CURRENT_mA,
         .holdCurrent = AxisConstDefinition::FILTERWHEEL_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::FILTERWHEEL_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::FILTERWHEEL_SAFEPOSITION,
@@ -304,7 +308,7 @@ namespace AxisConfigs {
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_OBJECTIVES_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_OBJECTIVES_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_OBJECTIVES_MM,
-        .motorCurrentMA = AxisConstDefinition::OBJECTIVES_MOTOR_RMS_CURRENT_mA,
+        .motorCurrentMA = AxisConstDefinition::OBJECTIVES_MOTOR_PEAK_CURRENT_mA,
         .holdCurrent = AxisConstDefinition::OBJECTIVES_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::OBJECTIVES_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::OBJECTIVES_SAFEPOSITION,
@@ -337,7 +341,7 @@ namespace AxisConfigs {
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_Z_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_Z_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_Z_MM,
-        .motorCurrentMA = AxisConstDefinition::Z_MOTOR_RMS_CURRENT_mA,
+        .motorCurrentMA = AxisConstDefinition::Z_MOTOR_PEAK_CURRENT_mA,
         .holdCurrent = AxisConstDefinition::Z_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::Z_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::Z_SAFEPOSITION,
@@ -370,7 +374,7 @@ namespace AxisConfigs {
         .maxVelocityMM = AxisConstDefinition::MAX_VELOCITY_FILTERWHEEL_mm,
         .maxAccelerationMM = AxisConstDefinition::MAX_ACCELERATION_FILTERWHEEL_mm,
         .homingVelocityMM = AxisConstDefinition::HOMING_VELOCITY_FILTERWHEEL_MM,
-        .motorCurrentMA = AxisConstDefinition::FILTERWHEEL_MOTOR_RMS_CURRENT_mA,
+        .motorCurrentMA = AxisConstDefinition::FILTERWHEEL_MOTOR_PEAK_CURRENT_mA,
         .holdCurrent = AxisConstDefinition::FILTERWHEEL_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::FILTERWHEEL_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::FILTERWHEEL_SAFEPOSITION,
