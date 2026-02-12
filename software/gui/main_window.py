@@ -657,7 +657,7 @@ class TeensyControlGUI(QMainWindow):
             self.move_objective(True)
 
     def run_w_test(self):
-        """W轴自动测试: homing → next×7 → previous×7"""
+        """W轴自动测试: homing → (next×7 → previous×7) ×2"""
         import threading
 
         def _test_worker():
@@ -673,23 +673,25 @@ class TeensyControlGUI(QMainWindow):
                 self.log("W Test: Homing timeout, abort.")
                 return
 
-            # 2. Next x 7
-            for i in range(7):
-                time.sleep(0.5)
-                self.log(f"W Test: Next {i+1}/7")
-                self.move_filterwheel(True)
-                if not self.wait_until_idle(5):
-                    self.log(f"W Test: Next {i+1} timeout, abort.")
-                    return
+            # 2. 正转+反转 × 2 回合
+            for r in range(2):
+                self.log(f"W Test: Round {r+1}/2")
 
-            # 3. Previous x 7
-            for i in range(7):
-                time.sleep(0.5)
-                self.log(f"W Test: Previous {i+1}/7")
-                self.move_filterwheel(False)
-                if not self.wait_until_idle(5):
-                    self.log(f"W Test: Previous {i+1} timeout, abort.")
-                    return
+                for i in range(7):
+                    time.sleep(0.5)
+                    self.log(f"W Test: R{r+1} Next {i+1}/7")
+                    self.move_filterwheel(True)
+                    if not self.wait_until_idle(5):
+                        self.log(f"W Test: R{r+1} Next {i+1} timeout, abort.")
+                        return
+
+                for i in range(7):
+                    time.sleep(0.5)
+                    self.log(f"W Test: R{r+1} Previous {i+1}/7")
+                    self.move_filterwheel(False)
+                    if not self.wait_until_idle(5):
+                        self.log(f"W Test: R{r+1} Previous {i+1} timeout, abort.")
+                        return
 
             self.log("=== W Test Done ===")
 

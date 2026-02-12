@@ -6,105 +6,62 @@
 
 ## 最新会话
 
-**日期**: 2026-02-10 (会话 2)
+**日期**: 2026-02-12
 **分支**: develop
-**位置**: W 轴换孔时间优化 — ASTART/DFINAL 实现 + Homing 竞态修复
+**位置**: GUI Test 按钮升级 + TMC2660 电流公式勘误
 
 ### 本次完成
 
-#### 1. 实现 ASTART/DFINAL 起始加速度功能
+#### 1. GUI Test 按钮升级为 2 回合
 
-S-ramp 的 BOW 截断（24 位 max=16,777,215）导致电机时间锁死 70ms。尝试梯形斜坡但导致丢步（电机中频共振）。
-最终方案：保持 S-ramp + 使用 ASTART/DFINAL 跳过零加速度启动阶段。
+W 轴自动测试从 1 回合改为 2 回合：`Homing → (Next×7 → Previous×7) × 2`
 
-**修改文件：**
-- `axis.h` — AxisConfig 新增 `useSShapedRamp`, `astartMM`, `dfinalMM`
-- `axis.cpp` — 传递 astart/dfinal 到 MotionConfig
-- `MotorControl.h` — MotionConfig 新增 `astartMM`, `dfinalMM`
-- `MotorControl.cpp` — 初始化时启用 `USE_ASTART_AND_VSTART`，计算并缓存 ASTART/DFINAL 寄存器值
-- `config.h` — W_AXIS 和 EXPAND4_AXIS 配置 `astartMM = 150 rev/s²`
+**修改文件：** `software/gui/main_window.py` — `run_w_test()` 方法
 
-#### 2. 修复 sRampInit 清除 USE_ASTART_AND_VSTART
+#### 2. TMC2660 电流公式勘误
 
-**问题**: `motor_moveToMicrosteps()` 中的 sRampInit 无条件清除 `USE_ASTART_AND_VSTART` 位，
-导致 homing 完成后首次 moveTo 调用就禁用了 ASTART。
+通过实测确认 W 轴峰值电流为 3.1A，发现代码注释中电流公式有误。
 
-**修复**: sRampInit 根据 `motorParams[icID].astart > 0` 决定保留或清除使能位。
-
-#### 3. 修复 FilterWheel homing 完成竞态条件
-
-**问题**: homing 完成时 `restoreNormalMicrosteps()` 写 VMAX 到硬件，但 RAMPMODE 仍在速度模式，
-导致电机非预期漂移 ~70 微步。
-
-**根因分析**:
-- 原顺序: `restoreNormalMicrosteps()` → `motor_setCurrentPositionMicrosteps(0)` → VMAX 写入时电机漂移
-- 单纯交换顺序不行: `motor_setCurrentPositionMicrosteps(0)` 设 `velocity_mode=true`，
-  后续 `restoreNormalMicrosteps()` 写高 VMAX → 电机持续旋转
-
-**修复** (`filterwheel.cpp`):
-```cpp
-motor_setCurrentPositionMicrosteps(_icID, 0);  // VMAX=0 停车，设零
-motor_moveToMicrosteps(_icID, 0);              // 触发 sRampInit 切回位置模式
-restoreNormalMicrosteps();                      // 安全恢复细分和 VMAX/AMAX
+**数据手册原文（TMC2660C_Programming_Reference.md §6.1）：**
+```
+I_RMS  = (CS + 1) / 32 × V_FS / R_SENSE × 1/√2
+I_PEAK = (CS + 1) / 32 × V_FS / R_SENSE
 ```
 
-#### 4. 恢复 AMAX 为 400 rev/s²
+**代码注释错误（MotorControl.cpp:94）：**
+```
+// 错误: I_rms = (CS + 1) / 32 * V_fs / R_sense  ← 漏掉 1/√2
+```
 
-梯形斜坡测试时将 AMAX 从 400 降为 200，切回 S-ramp 后忘记恢复。已恢复。
+该公式实际算出的是 **峰值电流**，不是 RMS。变量名 `MOTOR_RMS_CURRENT_mA` 同样有误导。
 
-#### 测试结果 (log: motor_control_log_20260210_110921.txt)
+**W 轴实际电流（CS=31, R_sense=0.1Ω, VSENSE=0）：**
 
-| 指标 | 修复前 | 修复后 |
-|------|--------|--------|
-| 12.5mm motor 时间 | 70ms → 64ms | **~62ms** |
-| Homing 后 offset 漂移 | ~70 微步 | **1 微步** |
-| ASTART 持续性 | homing 后失效 | **持续生效** |
-| 位置精度 (24次移动) | — | **全部 err=0** |
-
-#### 当前 W 轴参数
-
-| 参数 | 值 |
-|------|-----|
-| 细分 | 8 |
-| 最大速度 | 4.2 rev/s (420 mm/s) |
-| 最大加速度 | 400 rev/s² (40,000 mm/s²) |
-| ASTART | 180 rev/s² (18,000 mm/s²) |
-| 电机电流 | 3000 mA (CS=31 满格) |
-| Boost | 使能, 100% |
-| Homing 细分 | 256 |
-
-#### 时间拆解 (12.5mm 移动)
-
-| 阶段 | 耗时 | 占比 |
-|------|------|------|
-| 串口通信 (往返) | ~6ms | 8% |
-| 命令处理 (prep) | ~1.6ms | 2% |
-| **电机运动 (motor)** | **~61.3ms** | **89%** |
-| **PC 端到端** | **~69ms** | 100% |
-
-#### ASTART 调参记录
-
-| ASTART | motor 时间 | 稳定性 | offset 0.8mm | 丢步 |
-|--------|-----------|--------|-------------|------|
-| 150 | 62,146 ±1µs | 极稳定 | 11.4ms | 无 |
-| **180** | **61,268 ±2µs** | **稳定** | **9.6ms** | **无** |
-| 200 | 57,770~61,270µs | 三档波动 | 78.8ms (退化) | 无 |
-
-选定 ASTART=180，兼顾速度和稳定性。BOW 截断为硬约束，motor 时间已接近极限。
+| | 值 |
+|---|---|
+| 峰值电流 | 3.1A（实测吻合） |
+| RMS 电流 | 2.19A |
 
 ### 下次继续
 
-1. **W 轴进一步优化（可选）** — 距 60ms 还差 ~1.3ms，可从减少 prep 时间 (1.6ms) 或通信开销入手
-2. **调试 Z 轴 homing 流程** — 运行 test_10 单步调试
-3. **去掉 FilterWheel homing debug 打印**
-4. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-5. **上位机兼容性测试**
+1. **修正 calculateCurrentScale 注释和变量名** — 区分峰值 vs RMS
+2. **W 轴进一步优化（可选）** — 距 60ms 还差 ~1.3ms
+3. **调试 Z 轴 homing 流程** — 运行 test_10 单步调试
+4. **去掉 FilterWheel homing debug 打印**
+5. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+6. **上位机兼容性测试**
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-10 - W 轴 ASTART/DFINAL + Homing 竞态修复 (develop)
+- 实现 ASTART/DFINAL 起始加速度（S-ramp + 跳过零加速度启动）
+- 修复 sRampInit 清除 USE_ASTART_AND_VSTART
+- 修复 FilterWheel homing 竞态条件（VMAX 写入导致 ~70 微步漂移）
+- motor 时间 70ms→61.3ms，24 次移动 err=0
 
 ### 2026-02-09 - W 轴滤光轮 homing 两阶段精确定位 (master)
 - 重写 FilterWheel homing 为两阶段精确定位（快速搜索+慢速逼近）
