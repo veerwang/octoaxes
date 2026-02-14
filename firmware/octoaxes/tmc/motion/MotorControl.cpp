@@ -11,6 +11,7 @@
 #include "../ic/TMC2660/TMC2660.h"
 #include "../hal/TMC_SPI.h"
 #include <Arduino.h>
+#include "../../build_opt.h"
 
 // ============================================================================
 // Debug Helper
@@ -18,9 +19,9 @@
 
 extern "C" void motor_debugPrint(const char* msg, int32_t val)
 {
-    SerialUSB.print(msg);
-    SerialUSB.print(":");
-    SerialUSB.println(val);
+    DEBUG_PRINT(msg);
+    DEBUG_PRINT(":");
+    DEBUG_PRINTLN(val);
 }
 
 // ============================================================================
@@ -78,14 +79,14 @@ static void motor_adjustBows(uint8_t icID)
     motorParams[icID].bow3 = bow;
     motorParams[icID].bow4 = bow;
 
-    Serial.print("motor_adjustBows: icID=");
-    Serial.print(icID);
-    Serial.print(" AMAX=");
-    Serial.print(amax);
-    Serial.print(" VMAX=");
-    Serial.print(vmax);
-    Serial.print(" BOW=");
-    Serial.println(bow);
+    DEBUG_PRINT("motor_adjustBows: icID=");
+    DEBUG_PRINT(icID);
+    DEBUG_PRINT(" AMAX=");
+    DEBUG_PRINT(amax);
+    DEBUG_PRINT(" VMAX=");
+    DEBUG_PRINT(vmax);
+    DEBUG_PRINT(" BOW=");
+    DEBUG_PRINTLN(bow);
 }
 
 // Calculate current scale from peak current (mA) and sense resistor
@@ -411,9 +412,6 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
     if (icID >= MOTOR_IC_COUNT)
         return;
 
-    // Debug: read before
-    uint32_t rampModeBefore = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
-
     // ========================================================================
     // 与旧 API tmc4361A_moveTo 完全一致的实现
     // ========================================================================
@@ -639,12 +637,12 @@ void motor_resetRampMode(uint8_t icID)
     uint32_t rampModeAfter = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
 
     // 调试输出
-    Serial.print("motor_resetRampMode: icID=");
-    Serial.print(icID);
-    Serial.print(" RAMPMODE: 0x");
-    Serial.print(rampModeBefore, HEX);
-    Serial.print(" -> 0x");
-    Serial.println(rampModeAfter, HEX);
+    DEBUG_PRINT("motor_resetRampMode: icID=");
+    DEBUG_PRINT(icID);
+    DEBUG_PRINT(" RAMPMODE: 0x");
+    DEBUG_PRINTF(rampModeBefore, HEX);
+    DEBUG_PRINT(" -> 0x");
+    DEBUG_PRINTLNF(rampModeAfter, HEX);
 }
 
 void motor_setMaxAcceleration(uint8_t icID, float accelerationMM)

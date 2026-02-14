@@ -33,6 +33,9 @@
 
 ### 代码清理（可选）
 - [x] 修正 calculateCurrentScale 注释和变量名（峰值 vs RMS 区分）(2026-02-12)
+- [x] MotorControl.cpp debug 打印统一使用 DEBUG 宏 (2026-02-14)
+- [x] motor_moveToMicrosteps 移除未使用的 rampModeBefore 变量 (2026-02-14)
+- [x] CommandProcessor 27 个空桩函数添加 NOT_IMPLEMENTED 日志 (2026-02-14)
 - [ ] 移除兼容层中不再需要的代码
 - [ ] 清理注释和文档
 
