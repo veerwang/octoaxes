@@ -9,7 +9,6 @@
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
-- [ ] 调试 Z 轴 homing 流程 - 基本移动已正常，问题在 homing
 
 ## 待办
 
@@ -25,7 +24,8 @@
 - [x] 修复 Cover 接口超时问题 (2026-01-23) - 使用延时替代 COVER_DONE 轮询
 - [x] 烧写固件并验证 Z 轴限位开关 (2026-01-23) - 限位状态 0x0 正确
 - [x] 验证 Z 轴基本移动功能 (2026-01-27) - MOVETO 命令正常工作
-- [ ] 调试 Z 轴 homing 流程 - 运行 test_10 单步调试
+- [x] 调试 Z 轴 homing 流程 (2026-02-25) - 修复 SOFT_STOP_EN 导致停车失败
+- [ ] 去掉 StepAxis homing debug 打印（确认稳定后）
 - [ ] 去掉 FilterWheel homing debug 打印
 - [ ] 修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW + 极性修正）
 - [ ] 上位机兼容性测试
@@ -44,6 +44,14 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### Z 轴 homing 停车失败修复 (2026-02-25, develop)
+- [x] 定位根因: motor_configLimitSwitches() 多设 SOFT_STOP_EN (bit 5)，master 无此位
+- [x] SOFT_STOP_EN 导致 TMC4361A 内部软停车状态机锁定寄存器写入
+- [x] 修复: 移除 SOFT_STOP_EN，与 master 保持一致（硬停车）
+- [x] 新增 motor_setHardwareStopEnable() API（备用）
+- [x] 添加 StepAxis homing 搜索阶段周期性 debug 打印
+- [x] 硬件验证: homing 正常完成，停车、latch、安全位置移动均正确
 
 ### W 轴 ASTART + Homing 竞态修复 (2026-02-10, develop)
 - [x] 实现 ASTART/DFINAL 起始加速度功能 (AxisConfig, MotorControl, config.h)

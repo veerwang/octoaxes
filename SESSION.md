@@ -6,39 +6,40 @@
 
 ## 最新会话
 
-**日期**: 2026-02-14
+**日期**: 2026-02-25
 **分支**: develop
-**位置**: 固件代码清理（无硬件测试，纯编译验证）
+**位置**: Z 轴 homing 调试（硬件测试）
 
 ### 本次完成
 
-#### 1. MotorControl.cpp debug 打印统一使用 DEBUG 宏
+#### 1. 修复 Z 轴 homing 停车失败 (核心 Bug)
 
-- 添加 `#include "../../build_opt.h"`
-- `motor_debugPrint`: `SerialUSB.print` → `DEBUG_PRINT`/`DEBUG_PRINTLN`
-- `motor_adjustBows`: `Serial.print` → `DEBUG_PRINT`/`DEBUG_PRINTLN` (8 行)
-- `motor_resetRampMode`: `Serial.print` → `DEBUG_PRINT`/`DEBUG_PRINTF`/`DEBUG_PRINTLNF` (6 行)
+**现象**: Z 轴 homing 搜索到传感器后，电机不停车，继续全速运行，最终超时。
 
-**效果**: Release 编译时这些打印完全消除（零开销），Debug 时正常输出。
+**根因**: `motor_configLimitSwitches()` 中多设了 `SOFT_STOP_EN` (REFERENCE_CONF bit 5)，
+master 分支旧 API `tmc4361A_enableLimitSwitch()` 没有此位。
+`SOFT_STOP_EN=1` 导致限位开关触发时 TMC4361A 进入内部软停车状态机，
+锁定 RAMPMODE/VMAX/XTARGET 写入，使后续停车命令被忽略。
 
-#### 2. motor_moveToMicrosteps 移除未使用变量
+**修复**: 移除 `SOFT_STOP_EN`，与 master 保持一致（硬停车）。
 
-- 移除 `uint32_t rampModeBefore` 及其关联的 SPI 读取
-- 消除编译器 `-Wunused-variable` 警告
+**验证**: 硬件测试 homing 正常完成，停车、latch、安全位置移动均正确。
 
-#### 3. CommandProcessor 空桩函数添加 NOT_IMPLEMENTED 日志
+#### 2. 新增 motor_setHardwareStopEnable() API
 
-- 27 个空函数体添加 `DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: <命令名>")`
-- 上位机发送未实现的命令时，Debug 固件会打印具体是哪个命令，便于排查
+- 控制 REFERENCE_CONF 中 STOP_LEFT_EN / STOP_RIGHT_EN 位
+- 可在运行时动态启用/禁用硬件限位停车（备用）
 
-#### 编译验证
+#### 3. StepAxis homing 搜索阶段添加周期性 debug 打印
 
-- `pio run` (Release): SUCCESS, code=61848 bytes
-- `pio run -e teensy41_debug` (Debug): SUCCESS, code=61888 bytes (+40 bytes 字符串开销)
+- 每 200ms 输出 limit_state、STATUS、XACTUAL、VACTUAL
+- 便于排查 homing 过程中的问题
+
+**提交**: `5652bc3`
 
 ### 下次继续
 
-1. **调试 Z 轴 homing 流程** — 运行 test_10 单步调试（需硬件）
+1. **去掉 StepAxis homing debug 打印**（确认稳定后）
 2. **去掉 FilterWheel homing debug 打印**（需硬件验证 homing 稳定后）
 3. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正，需硬件验证）
 4. **W 轴进一步优化（可选）** — 距 60ms 还差 ~1.3ms
@@ -52,10 +53,14 @@
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
 
+### 2026-02-14 - 固件代码清理 (develop)
+- MotorControl.cpp debug 打印统一 DEBUG 宏
+- motor_moveToMicrosteps 移除未使用变量
+- CommandProcessor 27 个空桩函数添加 NOT_IMPLEMENTED 日志
+
 ### 2026-02-12 - GUI Test 按钮升级 + TMC2660 电流公式勘误
 - GUI Test 按钮从 1 回合改为 2 回合
 - TMC2660 电流公式勘误：变量名 RMS→PEAK，注释修正
-- 修正 calculateCurrentScale 注释和变量名
 
 ### 2026-02-10 - W 轴 ASTART/DFINAL + Homing 竞态修复 (develop)
 - 实现 ASTART/DFINAL 起始加速度（S-ramp + 跳过零加速度启动）
@@ -68,11 +73,6 @@
 - 添加 `_slowApproach` 标志控制两阶段切换
 - 去掉 STATE_HOMING_SET_ZERO，停车后直接设零
 - 经 10 次连续测试验证稳定
-
-### 2026-02-05 - GUI 黑黄工业风格主题优化 (master)
-- 创建主题系统 `gui/theme.py`（Colors、ButtonStyles、LabelStyles、StatusColors）
-- 更新 main.py、widgets.py、main_window.py 使用新主题
-- 版本号更新至 1.2.0
 
 ### 2026-01-27 - 新旧 API 一致性修复 + Z 轴运动调试
 - velocity_mode 状态追踪、sRampInit 完整实现、motor_adjustBows()
