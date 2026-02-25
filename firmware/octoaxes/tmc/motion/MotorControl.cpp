@@ -384,8 +384,32 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
         refConf |= TMC4361A_LATCH_X_ON_ACTIVE_R_MASK;  // bit 13
     }
 
-    // Soft stop enable
-    refConf |= TMC4361A_SOFT_STOP_EN_MASK;  // bit 5
+    // 注意：不设 SOFT_STOP_EN (bit 5)
+    // SOFT_STOP_EN=1 会使限位触发时芯片进入内部软停车状态机，
+    // 锁定 RAMPMODE/VMAX/XTARGET 写入，导致 homing 停车失败。
+    // 与 master 分支旧 API (tmc4361A_enableLimitSwitch) 保持一致：硬停车。
+
+    tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
+}
+
+void motor_setHardwareStopEnable(uint8_t icID, uint8_t side, bool enable)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
+
+    uint32_t mask = 0;
+    if (side & 0x01)  // LEFT_SW
+        mask |= TMC4361A_STOP_LEFT_EN_MASK;
+    if (side & 0x02)  // RGHT_SW
+        mask |= TMC4361A_STOP_RIGHT_EN_MASK;
+
+    if (enable) {
+        refConf |= mask;
+    } else {
+        refConf &= ~mask;
+    }
 
     tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
 }

@@ -155,6 +155,18 @@ bool motor_initDriver(uint8_t icID, const MotorConfig *config);
  */
 void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config);
 
+/**
+ * @brief Enable/disable hardware stop on a specific limit switch
+ * @param icID   IC identifier
+ * @param side   LEFT_SW (0x01) or RGHT_SW (0x02)
+ * @param enable true = enable hardware stop, false = disable
+ *
+ * Used during homing to prevent TMC4361A hardware stop from locking out
+ * subsequent motion commands. STATUS register STOPL/STOPR_ACTIVE_F bits
+ * still reflect pin state regardless of this setting.
+ */
+void motor_setHardwareStopEnable(uint8_t icID, uint8_t side, bool enable);
+
 // ============================================================================
 // Motion Control API
 // ============================================================================
