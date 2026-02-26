@@ -399,8 +399,9 @@ void set_illumination_led_matrix(int source, uint8_t r, uint8_t g, uint8_t b)
     led_matrix_r = r;
     led_matrix_g = g;
     led_matrix_b = b;
-    if (illumination_is_on)
-        turn_on_illumination();
+    // 直接驱动矩阵，不依赖 illumination_is_on（与旧 Squid 行为一致）
+    turn_on_LED_matrix_pattern(source, r, g, b);
+    illumination_is_on = true;
 }
 
 // =============================================================================
