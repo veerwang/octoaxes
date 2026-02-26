@@ -8,7 +8,7 @@
 
 **日期**: 2026-02-26
 **分支**: develop
-**位置**: 照明系统移植（Squid → Octoaxes）
+**位置**: 照明系统移植 + 上位机照明控制面板
 
 ### 本次完成
 
@@ -48,14 +48,28 @@
 - LED矩阵：APA102，data=26, clock=27，BGR 顺序，FastLED 驱动
 - DAC：DAC80508，CS=pin33，`illumination_intensity_factor`（默认0.6）缩放
 
+#### 2. 上位机照明控制面板
+
+在 PyQt5 上位机中新增 `IlluminationPanel` 组件（右侧面板，轴状态表格下方）：
+
+- 5个 TTL 端口行（D1-D5）：强度滑条(0-100%) + ON/OFF 切换按钮
+- LED 矩阵：图案下拉(9种) + R/G/B 滑条 + 颜色实时预览 + Set/Clear 按钮
+- 全局强度因子滑条(0-100%) + Apply 按钮 + 红色 All OFF 一键关闭
+- 完成多次布局修复（字体传播/按钮宽度/百分比截断/All OFF字号）
+
+**提交**：`17f17a0` → `57bbb3d`（5次提交）
+
+#### 3. 照明系统测试脚本
+
+新增 `software/tests/test_illumination.py`：交互式硬件验证脚本，覆盖所有照明命令。
+
 ### 下次继续
 
-1. **硬件测试照明系统**（上电验证各端口 TTL 开关 + DAC 输出 + LED 矩阵图案）
-2. **上位机兼容性测试**（用 Python 软件发送照明命令验证协议）
-3. **去掉 StepAxis homing debug 打印**（确认稳定后）
-4. **去掉 FilterWheel homing debug 打印**（需硬件验证 homing 稳定后）
-5. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-6. **后续移植批次**：motion 命令（unit bug 修复 + HomeOrZero axis mapping 修复）
+1. **硬件测试照明系统**（上电验证各端口 TTL + DAC + LED 矩阵）
+2. **去掉 StepAxis homing debug 打印**（确认稳定后）
+3. **去掉 FilterWheel homing debug 打印**（需硬件验证后）
+4. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+5. **后续移植批次**：motion 命令（unit bug 修复 + HomeOrZero axis mapping 修复）
 
 ---
 
