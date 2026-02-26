@@ -2,7 +2,20 @@
 #include "axesmrg.h"
 #include "build_opt.h"
 #include "commandprocessor.h"
+#include "trigger.h"
 #include <stdarg.h>
+
+// 协议状态字节
+static const uint8_t STATUS_COMPLETED    = 0;
+static const uint8_t STATUS_IN_PROGRESS  = 1;
+static const uint8_t STATUS_CRC_ERROR    = 2;
+
+// 固件版本（byte[22]：高半字节=主版本，低半字节=次版本）
+static const uint8_t FIRMWARE_VERSION_MAJOR = 1;
+static const uint8_t FIRMWARE_VERSION_MINOR = 7;
+
+// 位置上报周期（10ms，与旧 Squid 一致）
+static const uint32_t INTERVAL_SEND_POS_US = 10000;
 
 static const uint8_t CRC_TABLE[256] = {
     0x00, 0x07, 0x0E, 0x09, 0x1C, 0x1B, 0x12, 0x15, 0x38, 0x3F, 0x36, 0x31,
@@ -116,7 +129,7 @@ bool SerialProtocolHandler::checkForCommand() {
 
 void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
                                          int32_t x_pos, int32_t y_pos,
-                                         int32_t z_pos,
+                                         int32_t z_pos, int32_t w_pos,
                                          bool joystick_button_pressed) {
   byte buffer_tx[MSG_LENGTH];
   memset(buffer_tx, 0, MSG_LENGTH);
@@ -124,34 +137,85 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
   buffer_tx[0] = cmd_id;
   buffer_tx[1] = status;
 
-  // 填充位置数据
+  // X 轴位置 (bytes 2-5)
   buffer_tx[2] = byte(x_pos >> 24);
   buffer_tx[3] = byte((x_pos >> 16) & 0xFF);
   buffer_tx[4] = byte((x_pos >> 8) & 0xFF);
   buffer_tx[5] = byte(x_pos & 0xFF);
 
+  // Y 轴位置 (bytes 6-9)
   buffer_tx[6] = byte(y_pos >> 24);
   buffer_tx[7] = byte((y_pos >> 16) & 0xFF);
   buffer_tx[8] = byte((y_pos >> 8) & 0xFF);
   buffer_tx[9] = byte(y_pos & 0xFF);
 
+  // Z 轴位置 (bytes 10-13)
   buffer_tx[10] = byte(z_pos >> 24);
   buffer_tx[11] = byte((z_pos >> 16) & 0xFF);
   buffer_tx[12] = byte((z_pos >> 8) & 0xFF);
   buffer_tx[13] = byte(z_pos & 0xFF);
 
-  // 设置摇杆按钮状态位
-  static const int BIT_POS_JOYSTICK_BUTTON = 0;
-  buffer_tx[18] &= ~(1 << BIT_POS_JOYSTICK_BUTTON);
-  buffer_tx[18] =
-      buffer_tx[18] | (joystick_button_pressed << BIT_POS_JOYSTICK_BUTTON);
+  // W 轴位置 (bytes 14-17)
+  buffer_tx[14] = byte(w_pos >> 24);
+  buffer_tx[15] = byte((w_pos >> 16) & 0xFF);
+  buffer_tx[16] = byte((w_pos >> 8) & 0xFF);
+  buffer_tx[17] = byte(w_pos & 0xFF);
 
-  // 计算校验和
+  // 状态位 byte[18]：bit0 = 摇杆按钮
+  static const int BIT_POS_JOYSTICK_BUTTON = 0;
+  buffer_tx[18] = (joystick_button_pressed ? (1 << BIT_POS_JOYSTICK_BUTTON) : 0);
+
+  // 固件版本 byte[22]：高半字节=主版本，低半字节=次版本
+  buffer_tx[22] = (FIRMWARE_VERSION_MAJOR << 4) | (FIRMWARE_VERSION_MINOR & 0x0F);
+
+  // CRC-8-CCITT 校验（对 byte[0..22] 计算）
   uint8_t checksum = crc8ccitt(buffer_tx, MSG_LENGTH - 1);
   buffer_tx[MSG_LENGTH - 1] = checksum;
 
-  // 发送响应
   SerialUSB.write(buffer_tx, MSG_LENGTH);
+}
+
+void SerialProtocolHandler::send_position_update() {
+  if (_us_since_last_pos_update < INTERVAL_SEND_POS_US)
+    return;
+  _us_since_last_pos_update = 0;
+
+  // 读取各轴位置（微步，与旧 Squid tmc4361A_currentPosition 一致）
+  Axis *xAxis = axisManager.findAxisByName("X");
+  Axis *yAxis = axisManager.findAxisByName("Y");
+  Axis *zAxis = axisManager.findAxisByName("Z");
+  Axis *wAxis = axisManager.findAxisByName("W");
+
+  int32_t x_pos = xAxis ? xAxis->getCurrentPositionMicrosteps() : 0;
+  int32_t y_pos = yAxis ? yAxis->getCurrentPositionMicrosteps() : 0;
+  int32_t z_pos = zAxis ? zAxis->getCurrentPositionMicrosteps() : 0;
+  int32_t w_pos = wAxis ? wAxis->getCurrentPositionMicrosteps() : 0;
+
+  // 判断是否有轴在运动中
+  bool any_moving = false;
+  uint8_t count = axisManager.getAxisCount();
+  for (uint8_t i = 0; i < count; i++) {
+    Axis *axis = axisManager.getAxis(i);
+    if (axis && (axis->isMoving() || axis->isHomingInProgress())) {
+      any_moving = true;
+      break;
+    }
+  }
+
+  // 摇杆按钮失效安全：超过 1000ms 未 ACK 则自动清除
+  if (joystick_button_pressed &&
+      millis() - joystick_button_pressed_timestamp > 1000) {
+    joystick_button_pressed = false;
+  }
+
+  uint8_t status;
+  if (checksum_error)
+    status = STATUS_CRC_ERROR;
+  else
+    status = any_moving ? STATUS_IN_PROGRESS : STATUS_COMPLETED;
+
+  sendResponse(cmd_id, status, x_pos, y_pos, z_pos, w_pos,
+               joystick_button_pressed);
 }
 
 void SerialProtocolHandler::processSerialCommands() {

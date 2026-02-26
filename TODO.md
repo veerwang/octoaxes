@@ -39,7 +39,9 @@
 - [x] 照明系统移植 (2026-02-26) - illumination.h/cpp + 11 个 handler
 - [x] 相机触发系统移植 (2026-02-26) - trigger.h/cpp + 6 个 handler
 - [x] 优先级 3 运动配置命令移植 (2026-02-26) - SET_LIM/POLARITY/DRIVER/PITCH/MARGIN 5 个 handler
-- [ ] motion 命令移植（unit bug 修复 + HomeOrZero axis mapping 修复）
+- [x] 响应机制实现 (2026-02-26) - send_position_update() 10ms 周期上报，W 轴位置 + 固件版本
+- [x] INITFILTERWHEEL(253) / INITFILTERWHEEL_W2(252) 实现 (2026-02-26)
+- [x] motion 命令移植完成 (2026-02-26) - HomeOrZero 轴映射修复，enable/disable 二进制协议
 - [ ] 旧上位机兼容性验证（Squid Python configure_actuators → Octoaxes 固件）
 
 ### 代码清理（可选）

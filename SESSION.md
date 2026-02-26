@@ -6,72 +6,54 @@
 
 ## 最新会话
 
-**日期**: 2026-02-26（续 2）
+**日期**: 2026-02-26（续 3）
 **分支**: develop
-**位置**: 运动配置命令移植 + 兼容性目标文档化 + 命令层 Bug 修复 + 二进制协议迁移 + 速度/加速度功能实现
+**位置**: 响应机制实现 + INITFILTERWHEEL + migration guide 收尾
 
 ### 本次完成
 
-#### 1. 优先级 3 运动配置命令实现（5 个）
+#### 1. 响应机制（方案 A，与旧 Squid 完全兼容）
 
-Axis 类新增运行时配置方法：`setOneSoftLimit`、`setLeadScrewPitch`、`configureDriver`、`setHomeSafetyMargin`、`getIcID`/`getConfig`/`getMutableConfig`。
+`serial.cpp`：
+- `sendResponse()` 新增 `w_pos` 参数，补全 byte[14-17]（W 轴位置）+ byte[22]（固件版本 v1.7）
+- 新增 `send_position_update()`：10ms 周期（`elapsedMicros`），读 X/Y/Z/W 微步位置，自动判断 IN_PROGRESS/COMPLETED/CRC_ERROR
+- 摇杆按钮失效安全：超过 1000ms 未 ACK 自动清除
 
-CommandProcessor 实现 5 个 handler（对照旧架构 `stage_commands.cpp` 逐函数移植）：
-- **SET_LIM(9)** — LIM_CODE→轴+方向，逐侧设置虚拟限位+使能
-- **SET_LIM_SWITCH_POLARITY(20)** — 更新 config 极性，DISABLED=2 忽略
-- **CONFIGURE_STEPPER_DRIVER(21)** — 微步(0→1,>128→256) + 电流 + motor_initDriver 重配
-- **SET_LEAD_SCREW_PITCH(23)** — 更新 screwPitchMM + stepsPerMM 缓存
-- **SET_HOME_SAFETY_MERGIN(28)** — 更新裕量 + 重调 motor_enableHomingLimit
+`octoaxes.ino loop()`：新增 `serialProtocol.send_position_update()` 调用。
 
-编译通过。
+**状态字节协议**：0=COMPLETED, 1=IN_PROGRESS（任意轴 isMoving/isHomingInProgress），2=CRC_ERROR
 
-#### 2. 兼容性目标文档化
+#### 2. INITFILTERWHEEL / INITFILTERWHEEL_W2 实现
 
-迁移指南新增第 0 节「兼容性目标」：
-- 核心原则：旧 Squid Python 上位机（`microcontroller.py`）不改一行代码，换固件即可工作
-- 列出旧上位机 6 个关键方法的参数编码对照表
-- 定义最终验证流程：`configure_actuators()` → homing → 运动 → 软限位
+- `handleInitFilterWheel(253)` — `findAxisByName("W")->startHoming()`，触发滤光轮延迟初始化
+- `handleInitFilterWheelW2(252)` — W2 未启用时 no-op
 
-#### 3. HOME_OR_ZERO 轴值编码修复（b3878b6）
+#### 3. migration guide 收尾
 
-**根因**：上位机 `send_homing()` 用 `AXIS_CONFIG[axis]["index"]`（固件内部数组索引 X=1/Y=0/Z=2/W=3）作为 `cmd[2]`，而固件 `handleHomeOrZero` 期望协议轴值（X=0/Y=1/Z=2/W=5）→ X/Y 归位互换，W 轴无效。
-
-**修复**：
-- `define.py`：新增 `class AXIS` 协议常量（对齐旧 Squid `_def.py`），X=0/Y=1/Z=2/XY=4/W=5/W2=6
-- `main_window.py`：`send_homing()` 改用 `AXIS.X/Y/Z/W`
-
-#### 4. enable/disable 轴迁移到二进制协议（5cd4359）
-
-旧实现走 ASCII 调试协议（`"X:ENABLE"`），改为标准二进制命令 `SET_AXIS_DISABLE_ENABLE(cmd=32)`：
-- `cmd[2]` = 协议轴值，`cmd[3]` = 1(使能)/0(禁用)
-- 新增 `_set_axis_enable(axis_name, enable)` 辅助函数
-
-#### 5. 速度/加速度设置功能（a3f134b）
-
-固件 `handleSetMaxVelocityAcceleration` 已实现，本次完成上位机：
-- `constants.py`：X/Y/Z 添加 `default_velocity`/`default_acceleration`（与 config.h 一致）
-- `widgets.py`：普通轴页面新增 Vel/Acc 输入行 + Apply 按钮，切换轴时自动加载默认值
-- `main_window.py`：新增 `_set_max_velocity_acceleration()` 辅助函数，编码 uint16 发送二进制命令
-
-**协议编码**：`cmd[3:4]` = vel × 100，`cmd[5:6]` = acc × 10（uint16 大端序）
-
-**覆盖范围**：X/Y/Z 完整支持；W 轴固件支持但 UI 暂不处理（acc 默认值会溢出 uint16）；E3/E1/E4 无协议轴值不支持
+- 第 0 步（响应机制）、优先级 4（Homing/INITFILTERWHEEL）标注 ✅
+- 第 6 节更新为「已完成，方案 A」
+- migration guide 核心命令全部实现，协议层就绪
 
 ### 下次继续
 
-1. **旧上位机兼容性验证**（用 Squid Python 连接 Octoaxes 固件，跑 configure_actuators）
-2. **硬件验证 homing 修复**（X/Y 归位是否正确，不再互换）
+1. **旧上位机兼容性验证**（用 Squid Python 连接 Octoaxes 固件，跑 `configure_actuators()`）
+2. **硬件验证 homing 修复**（X/Y 归位不再互换）
 3. **硬件验证速度/加速度设置**（Z 轴调速测试）
-4. **硬件验证 TTL 端口 + DAC**（D1-D5 通断 + DAC80508 模拟强度）
-5. **响应机制决策**（10ms 周期上报 vs 命令-响应，上位机依赖哪种？）
-6. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-7. **去掉 homing debug 打印**（确认稳定后）
+4. **硬件验证 TTL 端口 + DAC**
+5. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+6. **去掉 homing debug 打印**（确认稳定后）
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-26 - 响应机制 + INITFILTERWHEEL + 命令层 Bug 修复 (develop)
+- sendResponse() 补全 W 轴位置 + 固件版本，send_position_update() 10ms 周期上报
+- handleInitFilterWheel(253) / handleInitFilterWheelW2(252) 实现
+- HOME_OR_ZERO 轴值修复、enable/disable 二进制协议、Vel/Acc UI 功能
+- migration guide 核心命令全部完成，协议层就绪
 
 ### 2026-02-26 - 相机触发系统移植 + 上位机 UI 标签化重构 (develop)
 - 新建 trigger.h/cpp：4 路相机触发脉冲 + 频闪定时器 ISR

@@ -146,6 +146,9 @@ void loop() {
   // 处理串口调试命令
   serialProtocol.processSerialCommands();
 
+  // 10ms 周期位置上报（与旧 Squid 协议兼容）
+  serialProtocol.send_position_update();
+
   // 更新所有轴状态机
   axisManager.updateAll();
 }

@@ -244,21 +244,30 @@ bool is_homing_XY;
 
 ---
 
-## 6. 响应机制决策
+## 6. 响应机制决策 ✅ 已完成（2026-02-26）
 
 旧架构：10ms 周期 `send_position_update()`，在 `loop()` 中持续调用，无论是否有命令。
 
-新架构：`sendResponse()` 已实现但未被调用。
+新架构：**采用方案 A**（与旧 Squid 完全兼容）。
 
-**待决定**：上位机期望哪种模式？
-- **方案 A**（推荐，与旧兼容）：保留周期上报，上位机轮询状态
-- **方案 B**：每条命令立即返回，命令完成时再发 COMPLETED
+- `serial.cpp` 新增 `send_position_update()`，10ms 周期（`elapsedMicros` 计时）
+- `sendResponse()` 更新：新增 `w_pos` 参数，填充 byte[14-17]（W轴）+ byte[22]（固件版本）
+- `octoaxes.ino loop()` 调用 `serialProtocol.send_position_update()`
+- 状态字节逻辑：0=COMPLETED, 1=IN_PROGRESS（任意轴运动中）, 2=CRC_ERROR
 
 ---
 
 ## 7. 移植顺序（建议）
 
-### 第 0 步：决定响应机制（见第 6 节）
+### 第 0 步：决定响应机制（见第 6 节）✅ 已完成（2026-02-26）
+
+**采用方案 A**（与旧 Squid 兼容）：10ms 周期上报。
+- `send_position_update()` 在 `loop()` 中调用
+- 读取 X/Y/Z/W 微步位置，检测任意轴运动状态
+- 摇杆按钮失效安全（1000ms 自动清除）
+- byte[1] = 0(COMPLETED)/1(IN_PROGRESS)/2(CRC_ERROR)
+- byte[2-5]=X, byte[6-9]=Y, byte[10-13]=Z, byte[14-17]=W
+- byte[22] = 固件版本（高半字节=主版本，低半字节=次版本）
 
 ### 第 1 步：修复已知 Bug
 
@@ -302,20 +311,19 @@ bool is_homing_XY;
 | `SET_OFFSET_VELOCITY` | 24 | ⏳ | 新架构暂未实现偏移速度；stub |
 | `SET_AXIS_DISABLE_ENABLE` | 32 | ✅ | axis->disableAxis()/enableAxis()（e49baf1）|
 
-#### 优先级 4：Homing 状态机
+#### 优先级 4：Homing 状态机 ✅ 已完成
 
-| 命令 | 码 | 旧架构位置 | 核心逻辑 |
-|------|----|-----------|---------|
-| `HOME_OR_ZERO` | 5 | `stage_commands.cpp:434` | 三阶段状态机 |
-| `INITFILTERWHEEL` | 253 | `commands.cpp:179` | 延迟初始化 W 轴 |
-| `INITFILTERWHEEL_W2` | 252 | `commands.cpp:185` | 延迟初始化 W2 轴 |
+| 命令 | 码 | 状态 | 说明 |
+|------|----|----|------|
+| `HOME_OR_ZERO` | 5 | ✅ | 三阶段由 Axis 状态机（STATE_HOMING_INIT/SEARCH/SET_ZERO）内部实现 |
+| `INITFILTERWHEEL` | 253 | ✅ | `findAxisByName("W")->startHoming()`（2026-02-26）|
+| `INITFILTERWHEEL_W2` | 252 | ✅ | W2 未启用时 no-op（2026-02-26）|
 
-**Homing 三阶段**（需迁移到新架构 loop 中）：
-
+**新架构 Homing 实现**（三阶段在 Axis 状态机中）：
 ```
-prepare_homing_*()  — 若已在限位上，先反向脱离
-check_homing_*()    — 向目标方向移动，等待限位事件，读 X_LATCH_RD
-finalize_homing_*() — 移到 latch 位置，设零，恢复 PID
+STATE_HOMING_INIT    — 若已在限位上，先反向脱离（等同旧 prepare_homing）
+STATE_HOMING_SEARCH  — 向目标方向运动，等待限位事件（等同旧 check_homing）
+STATE_HOMING_SET_ZERO — 读 X_LATCH_RD 精确位置，设零，移到安全位置（等同旧 finalize_homing）
 ```
 
 #### 优先级 5：PID / 编码器（可选）

@@ -413,12 +413,21 @@ void CommandProcessor::handleSetPinLevel(const byte *data) {
 }
 
 void CommandProcessor::handleInitFilterWheel(const byte *data) {
-  // TODO: 实现 INITFILTERWHEEL 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: INITFILTERWHEEL");
+  // 触发 W 轴（滤光轮）延迟初始化 homing
+  Axis *axis = axisManager.findAxisByName("W");
+  if (axis) {
+    axis->startHoming();
+    DEBUG_PRINTLN("INITFILTERWHEEL: W homing started");
+  }
 }
 
 void CommandProcessor::handleInitFilterWheelW2(const byte *data) {
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: INITFILTERWHEEL_W2");
+  // W2 轴当前未启用，忽略
+  Axis *axis = axisManager.findAxisByName("W2");
+  if (axis) {
+    axis->startHoming();
+    DEBUG_PRINTLN("INITFILTERWHEEL_W2: W2 homing started");
+  }
 }
 
 void CommandProcessor::handleInitialize(const byte *data) {
