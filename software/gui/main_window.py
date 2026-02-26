@@ -3,7 +3,7 @@ import datetime
 import os
 from typing import Optional
 
-from define import CMD_SET, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP
+from define import CMD_SET, AXIS, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP
 
 CMDS = CMD_SET
 from define import OBJECTIVE_RATIO, SCREW_PITCH_W_MM, OBJECTIVE_HOLES
@@ -621,10 +621,16 @@ class TeensyControlGUI(QMainWindow):
     def send_homing(self):
         """发送 Homing 命令到当前轴"""
         axis = self.get_current_axis()
-        axis_index = int(AXIS_CONFIG[axis]["index"])
+
+        # 使用协议轴值（与旧 Squid AXIS 类一致），不是固件内部数组索引
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W}
+        protocol_axis = _AXIS_PROTOCOL.get(axis)
+        if protocol_axis is None:
+            self.log(f"Axis {axis} does not support homing")
+            return
 
         # 使用二进制命令发送 Homing
-        self._home_or_zero(axis_index)
+        self._home_or_zero(protocol_axis)
 
         # 更新状态
         self.axis_manager.axis_status[axis]["state"] = "HOMING_INIT"
