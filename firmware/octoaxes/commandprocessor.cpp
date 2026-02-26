@@ -16,7 +16,6 @@ CommandProcessor::~CommandProcessor() {
 
 // 以下为各个命令处理函数的实现框架
 void CommandProcessor::handleMoveX(const byte *data) {
-  // TODO: 实现 MOVE_X 命令处理
   int32_t relative_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
@@ -28,7 +27,6 @@ void CommandProcessor::handleMoveX(const byte *data) {
 }
 
 void CommandProcessor::handleMoveY(const byte *data) {
-  // TODO: 实现 MOVE_Y 命令处理
   int32_t relative_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
@@ -40,7 +38,6 @@ void CommandProcessor::handleMoveY(const byte *data) {
 }
 
 void CommandProcessor::handleMoveZ(const byte *data) {
-  // TODO: 实现 MOVE_Z 命令处理
   int32_t relative_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
@@ -68,47 +65,55 @@ void CommandProcessor::handleMoveW(const byte *data) {
 }
 
 void CommandProcessor::handleHomeOrZero(const byte *data) {
-  // TODO: 实现 HOME_OR_ZERO 命令处理
-  Axis *axis = axisManager.getAxis(data[2]);
-  if (axis)
-    axis->startHoming();
+  // data[2]: 协议轴值 0=X,1=Y,2=Z,5=W,6=W2（不等于内部数组下标）
+  const char *axisName = nullptr;
+  switch (data[2]) {
+    case 0: axisName = "X";  break;
+    case 1: axisName = "Y";  break;
+    case 2: axisName = "Z";  break;
+    case 5: axisName = "W";  break;
+    case 6: axisName = "W2"; break;
+    default: break;
+  }
+  if (axisName) {
+    Axis *axis = axisManager.findAxisByName(axisName);
+    if (axis)
+      axis->startHoming();
+  }
 }
 
 void CommandProcessor::handleMoveToX(const byte *data) {
-  // TODO: 实现 MOVETO_X 命令处理
-  int32_t obsolute_position =
+  int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
-  float obsolute_position_float = float(obsolute_position) / 1000.0;
+  float absolute_position_mm = float(absolute_position) / 1000.0f;  // μm → mm
   Axis *axis = axisManager.findAxisByName("X");
   if (axis)
-    axis->moveToPosition(obsolute_position_float);
+    axis->moveToPosition(absolute_position_mm);
 
   DEBUG_PRINTLN("Get MoveToX Command");
 }
 
 void CommandProcessor::handleMoveToY(const byte *data) {
-  // TODO: 实现 MOVETO_Y 命令处理
-  int32_t obsolute_position =
+  int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
-  float obsolute_position_float = float(obsolute_position) / 1000.0;
+  float absolute_position_mm = float(absolute_position) / 1000.0f;  // μm → mm
   Axis *axis = axisManager.findAxisByName("Y");
   if (axis)
-    axis->moveToPosition(obsolute_position_float);
+    axis->moveToPosition(absolute_position_mm);
 
   DEBUG_PRINTLN("Get MoveToY Command");
 }
 
 void CommandProcessor::handleMoveToZ(const byte *data) {
-  // TODO: 实现 MOVETO_Z 命令处理
-  int32_t obsolute_position =
+  int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
-  float obsolute_position_float = float(obsolute_position) / 1000.0;
+  float absolute_position_mm = float(absolute_position) / 1000.0f;  // μm → mm
   Axis *axis = axisManager.findAxisByName("Z");
   if (axis)
-    axis->moveToPosition(obsolute_position_float);
+    axis->moveToPosition(absolute_position_mm);
 
   DEBUG_PRINTLN("Get MoveToZ Command");
 }
