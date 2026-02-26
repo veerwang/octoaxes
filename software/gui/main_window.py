@@ -33,7 +33,7 @@ from PyQt5.QtGui import QFont
 from hardware.serial_thread import SerialThread
 from gui.widgets import AxisStatusDisplay, ControlPanel, LogDisplay, IlluminationPanel
 from hardware.axis_manager import AxisManager
-from utils.constants import AXIS_CONFIG
+from utils.constants import AXIS_CONFIG, AXIS_MM_PER_STEP
 from utils.helpers import format_command, find_teensy_port
 
 
@@ -774,41 +774,37 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"Firmware version: {version}")
             return
 
-        # 处理轴数据
-        if self.axis_manager.parse_axis_data(data):
+        # 处理轴数据（parse_axis_data 只调用一次，用 parsed 缓存结果）
+        parsed = self.axis_manager.parse_axis_data(data)
+        if parsed:
             axis = self.axis_manager.last_parsed_axis
             status = self.axis_manager.get_axis_status(axis)
 
-            # 更新状态显示
             self.axis_status_display.update_axis_status(axis, status)
 
-            # 如果是当前轴，更新详细显示
             if axis == self.get_current_axis():
                 self.update_current_axis_display(axis)
 
-                # 更新位置显示
                 if "position_mm" in status:
-                    value = (
-                        float(status["position_mm"])
-                        * AXIS_CONFIG[axis]["movement_sign"]
-                    )
-                    self.pos_label.setText(f"Current Position: {value} mm")
+                    sign = AXIS_CONFIG[axis]["movement_sign"]
+                    mm = float(status["position_mm"]) * sign
+                    self.pos_label.setText(f"Current Position: {mm:.4f} mm")
                 if "position_steps" in status:
-                    value = status["position_steps"] * AXIS_CONFIG[axis]["movement_sign"]
-                    self.steps_label.setText(f"Current Position: {value} microsteps")
-
-                # 更新使能状态（如果从轴状态中获取）
+                    sign = AXIS_CONFIG[axis]["movement_sign"]
+                    self.steps_label.setText(
+                        f"Current Position: {int(status['position_steps']) * sign} steps"
+                    )
                 if "enabled" in status:
                     enabled = status["enabled"] == "YES"
                     self.axis_enabled_states[axis] = enabled
                     self.control_panel.set_enable_state(enabled)
 
-        # 只把未识别的 ASCII 调试行记录到日志（二进制位置包由 handle_binary_response 处理）
-        if data and not self.axis_manager.parse_axis_data(data):
+        # 只把未识别的 ASCII 调试行记录到日志
+        if data and not parsed:
             self.log(f"[DBG] {data}")
 
     def handle_binary_response(self, data: bytes):
-        """处理固件 24 字节二进制位置上报包（不写入日志，避免刷屏）。
+        """处理固件 24 字节二进制位置上报包（不写入日志，10ms 周期调用）。
 
         响应包格式：
           byte[0]     : cmd_id
@@ -824,23 +820,39 @@ class TeensyControlGUI(QMainWindow):
             return
 
         import struct
-        x_steps = struct.unpack('>i', data[2:6])[0]
-        y_steps = struct.unpack('>i', data[6:10])[0]
-        z_steps = struct.unpack('>i', data[10:14])[0]
-        w_steps = struct.unpack('>i', data[14:18])[0]
-        status  = data[1]   # 0=完成, 1=运动中, 2=CRC错误
+        steps = {
+            "X": struct.unpack('>i', data[2:6])[0],
+            "Y": struct.unpack('>i', data[6:10])[0],
+            "Z": struct.unpack('>i', data[10:14])[0],
+            "W": struct.unpack('>i', data[14:18])[0],
+        }
+        fw_status = data[1]   # 0=COMPLETED, 1=IN_PROGRESS, 2=CRC_ERROR
+        moving_str = "YES" if fw_status == 1 else "NO"
+        state_str  = "MOVING" if fw_status == 1 else "IDLE"
 
-        # 更新位置标签（仅在 Motion 标签页显示）
-        # TODO: 根据 screwPitch/microstepping 换算为 mm（当前先显示微步数）
-        axis = self.get_current_axis()
-        if axis == "X":
-            self.steps_label.setText(f"Current Position: {x_steps} steps")
-        elif axis == "Y":
-            self.steps_label.setText(f"Current Position: {y_steps} steps")
-        elif axis == "Z":
-            self.steps_label.setText(f"Current Position: {z_steps} steps")
-        elif axis == "W":
-            self.steps_label.setText(f"Current Position: {w_steps} steps")
+        # 更新 axis_manager 中所有轴的位置 + 运动状态
+        for axis, s in steps.items():
+            mm_per_step = AXIS_MM_PER_STEP.get(axis, 0.0)
+            position_mm = s * mm_per_step
+            self.axis_manager.update_axis_status(axis, {
+                "position_steps": s,
+                "position_mm":    round(position_mm, 4),
+                "moving":  moving_str,
+                "state":   state_str,
+            })
+            self.axis_status_display.update_axis_status(
+                axis, self.axis_manager.get_axis_status(axis)
+            )
+
+        # 更新当前轴详细显示（pos_label / steps_label / state labels）
+        current_axis = self.get_current_axis()
+        if current_axis in steps:
+            s    = steps[current_axis]
+            sign = AXIS_CONFIG[current_axis]["movement_sign"]
+            mm   = s * AXIS_MM_PER_STEP.get(current_axis, 0.0) * sign
+            self.steps_label.setText(f"Current Position: {int(s * sign)} steps")
+            self.pos_label.setText(f"Current Position: {mm:.4f} mm")
+            self.update_current_axis_display(current_axis)
 
     def log(self, message):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -867,8 +879,21 @@ class TeensyControlGUI(QMainWindow):
         self.send_command("S:VERSION", "Sent firmware version query")
 
     def query_axis_status(self):
-        command = format_command(self.get_current_axis(), "GET_DATA")
-        self.send_command(command, "Sent axis status query")
+        # 生产固件（ENABLE_DEBUG 关闭）不发 ASCII 回包，直接用 axis_manager 缓存刷新 UI
+        # 调试固件（ENABLE_DEBUG 打开）同时发 ASCII 查询命令，以获取更多状态
+        current_axis = self.get_current_axis()
+        self.update_current_axis_display(current_axis)
+        status = self.axis_manager.get_axis_status(current_axis)
+        if status:
+            sign = AXIS_CONFIG[current_axis]["movement_sign"]
+            mm   = float(status.get("position_mm", 0.0)) * sign
+            s    = int(status.get("position_steps", 0)) * sign
+            self.pos_label.setText(f"Current Position: {mm:.4f} mm")
+            self.steps_label.setText(f"Current Position: {s} steps")
+        # 调试构建时额外发 ASCII 命令（生产构建该命令无响应，但不影响功能）
+        if self.is_connected():
+            command = format_command(current_axis, "GET_DATA")
+            self.serial_thread.send_command(command)
 
     def refresh_all_axes_status(self):
         if self.is_connected() and self.serial_thread is not None:

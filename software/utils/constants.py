@@ -69,6 +69,18 @@ AXIS_CONFIG = {
     },
 }
 
+# 微步 → mm 换算系数（与 firmware/config.h AxisConstDefinition 保持一致）
+# 公式：mm_per_step = screwPitchMM / (fullStepsPerRev * microstepping)
+AXIS_MM_PER_STEP = {
+    "X":  2.54  / (200 * 256),   # ≈ 4.96e-5 mm/step
+    "Y":  2.54  / (200 * 256),
+    "Z":  0.3   / (200 * 256),   # ≈ 5.86e-6 mm/step
+    "W":  100.0 / (200 * 8),     # 0.0625 mm/step（滤光轮，mm 无实际意义）
+    "E1": 1.0   / (200 * 64),
+    "E3": 0.3   / (200 * 256),
+    "E4": 100.0 / (200 * 8),
+}
+
 # 移动距离
 FILTERWHEEL_DISTANCE = 0.125 * 100  # mm
 
