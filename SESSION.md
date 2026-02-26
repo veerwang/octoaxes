@@ -6,9 +6,9 @@
 
 ## 最新会话
 
-**日期**: 2026-02-26
+**日期**: 2026-02-26（续）
 **分支**: develop
-**位置**: 相机触发系统移植（Squid → Octoaxes）
+**位置**: 相机触发系统移植 + Bug 修复 + 上位机照明面板
 
 ### 本次完成
 
@@ -48,15 +48,39 @@
 - 频闪 ISR：短曝光（≤30ms）同步模式，长曝光（>30ms）异步两步分离
 - 引脚：pin 29-32（4 路触发），空闲 HIGH，触发 LOW
 
+#### 2. Bug 修复 + 文档更新
+
+- `handleMoveToX/Y/Z`：变量名 `obsolute_position` → `absolute_position`，补充 `// μm → mm` 注释
+- 重新评估：`/1000.0f` 单位转换本身正确（上位机发 μm，转 mm 后调 `moveToPosition`）
+- 移除已实现函数（MoveX/Y/Z）的 `// TODO:` 注释
+- `handleHomeOrZero` 协议轴映射修复已提交后回退（`a104dee` → `033d78b`），Bug 2 待重新应用
+- 迁移指南（squid-migration-guide.md）更新：Bug 1/2/3 状态标注 + 照明系统标记完成
+
+#### 3. 上位机照明控制面板
+
+在 PyQt5 上位机中新增 `IlluminationPanel` 组件（右侧面板，轴状态表格下方）：
+
+- 5个 TTL 端口行（D1-D5）：强度滑条(0-100%) + ON/OFF 切换按钮
+- LED 矩阵：图案下拉(9种) + R/G/B 滑条 + 颜色实时预览 + Set/Clear 按钮
+- 全局强度因子滑条(0-100%) + Apply 按钮 + 红色 All OFF 一键关闭
+- 完成多次布局修复（字体传播/按钮宽度/百分比截断/All OFF字号）
+
+**提交**：`17f17a0` → `57bbb3d`（5次提交）
+
+#### 4. 照明系统测试脚本
+
+新增 `software/tests/test_illumination.py`：交互式硬件验证脚本，覆盖所有照明命令。
+
 ### 下次继续
 
 1. **硬件测试触发系统**（示波器验证 pin 29-32 脉冲波形：模式 0 = 50μs，模式 1 = 可变宽度）
 2. **硬件测试照明系统**（上电验证 TTL + DAC + LED 矩阵）
 3. **上位机兼容性测试**（Python 发送触发 + 照明命令验证协议）
-4. **去掉 StepAxis homing debug 打印**（确认稳定后）
-5. **去掉 FilterWheel homing debug 打印**
-6. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-7. **后续移植批次**：motion 命令（unit bug 修复 + HomeOrZero axis mapping 修复）
+4. **重新确认并应用 Bug 2 修复**（handleHomeOrZero 轴映射）
+5. **去掉 StepAxis homing debug 打印**（确认稳定后）
+6. **去掉 FilterWheel homing debug 打印**
+7. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+8. **后续移植批次**：motion 命令（unit bug 修复 + HomeOrZero axis mapping 修复）
 
 ---
 
@@ -89,12 +113,6 @@
 - 修复 sRampInit 清除 USE_ASTART_AND_VSTART
 - 修复 FilterWheel homing 竞态条件（VMAX 写入导致 ~70 微步漂移）
 - motor 时间 70ms→61.3ms，24 次移动 err=0
-
-### 2026-02-09 - W 轴滤光轮 homing 两阶段精确定位 (master)
-- 重写 FilterWheel homing 为两阶段精确定位（快速搜索+慢速逼近）
-- 添加 `_slowApproach` 标志控制两阶段切换
-- 去掉 STATE_HOMING_SET_ZERO，停车后直接设零
-- 经 10 次连续测试验证稳定
 
 ---
 
