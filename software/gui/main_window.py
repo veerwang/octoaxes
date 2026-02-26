@@ -4,6 +4,8 @@ import os
 from typing import Optional
 
 from define import CMD_SET, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP
+
+CMDS = CMD_SET
 from define import OBJECTIVE_RATIO, SCREW_PITCH_W_MM, OBJECTIVE_HOLES
 from define import SQUID_FILTERWHEEL_OFFSET
 from utils.helpers import int_to_payload
@@ -28,7 +30,7 @@ from PyQt5.QtCore import QTimer, Qt, QMutex
 from PyQt5.QtGui import QFont
 
 from hardware.serial_thread import SerialThread
-from gui.widgets import AxisStatusDisplay, ControlPanel, LogDisplay
+from gui.widgets import AxisStatusDisplay, ControlPanel, LogDisplay, IlluminationPanel
 from hardware.axis_manager import AxisManager
 from utils.constants import AXIS_CONFIG
 from utils.helpers import format_command, find_teensy_port
@@ -234,6 +236,14 @@ class TeensyControlGUI(QMainWindow):
         self.axis_status_display = AxisStatusDisplay()
         self.axis_status_display.refresh_clicked.connect(self.refresh_all_axes_status)
         layout.addWidget(self.axis_status_display)
+
+        # 照明控制面板
+        self.illumination_panel = IlluminationPanel()
+        self.illumination_panel.port_cmd.connect(self._send_illu_port)
+        self.illumination_panel.turn_off_all.connect(self._send_illu_turn_off_all)
+        self.illumination_panel.led_matrix_cmd.connect(self._send_illu_led_matrix)
+        self.illumination_panel.intensity_factor_cmd.connect(self._send_illu_intensity_factor)
+        layout.addWidget(self.illumination_panel)
 
         return panel
 
@@ -944,6 +954,54 @@ class TeensyControlGUI(QMainWindow):
         command = format_command(self.get_current_axis(), base_command)
         direction = "Next" if is_next else "Previous"
         self.send_command(command, f"Sent objective move ({direction})")
+
+    # ====== 照明命令发送 ======
+
+    def _send_illu_port(self, port: int, intensity: int, on: bool):
+        """SET_PORT_ILLUMINATION (cmd 37)：原子设置强度 + 开关"""
+        if self.serial_thread is None:
+            return
+        cmd = bytearray(8)
+        cmd[1] = CMDS.SET_PORT_ILLUMINATION
+        cmd[2] = port
+        cmd[3] = (intensity >> 8) & 0xFF
+        cmd[4] = intensity & 0xFF
+        cmd[5] = 1 if on else 0
+        self.serial_thread.send_binary_command(cmd)
+        state = "ON" if on else "OFF"
+        self.log(f"Illumination port {port} {state}, intensity={intensity}")
+
+    def _send_illu_turn_off_all(self):
+        """TURN_OFF_ALL_PORTS (cmd 39)"""
+        if self.serial_thread is None:
+            return
+        cmd = bytearray(8)
+        cmd[1] = CMDS.TURN_OFF_ALL_PORTS
+        self.serial_thread.send_binary_command(cmd)
+        self.log("Illumination: Turn Off All Ports")
+
+    def _send_illu_led_matrix(self, pattern: int, r: int, g: int, b: int):
+        """SET_ILLUMINATION_LED_MATRIX (cmd 13)"""
+        if self.serial_thread is None:
+            return
+        cmd = bytearray(8)
+        cmd[1] = CMDS.SET_ILLUMINATION_LED_MATRIX
+        cmd[2] = pattern
+        cmd[3] = r
+        cmd[4] = g
+        cmd[5] = b
+        self.serial_thread.send_binary_command(cmd)
+        self.log(f"Illumination LED matrix: pattern={pattern} R={r} G={g} B={b}")
+
+    def _send_illu_intensity_factor(self, pct: int):
+        """SET_ILLUMINATION_INTENSITY_FACTOR (cmd 17)"""
+        if self.serial_thread is None:
+            return
+        cmd = bytearray(8)
+        cmd[1] = CMDS.SET_ILLUMINATION_INTENSITY_FACTOR
+        cmd[2] = pct
+        self.serial_thread.send_binary_command(cmd)
+        self.log(f"Illumination intensity factor: {pct}%")
 
     def clear_sent_commands(self):
         self.sent_display.clear()

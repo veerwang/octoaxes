@@ -12,9 +12,11 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QStackedWidget,
     QSpinBox,
+    QSlider,
+    QFrame,
 )
 from PyQt5.QtCore import pyqtSignal, Qt, QTimer
-from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont
+from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QColor
 
 from utils.constants import AXIS_CONFIG
 
@@ -616,6 +618,273 @@ class ControlPanel(QGroupBox):
                 return None
         except (ValueError, AttributeError):
             return None
+
+
+class IlluminationPanel(QGroupBox):
+    """照明控制面板
+
+    Signals:
+        port_cmd(port_index, intensity_0_65535, on_off)
+            → SET_PORT_ILLUMINATION
+        turn_off_all()
+            → TURN_OFF_ALL_PORTS
+        led_matrix_cmd(pattern, r, g, b)
+            → SET_ILLUMINATION_LED_MATRIX
+        intensity_factor_cmd(pct_0_100)
+            → SET_ILLUMINATION_INTENSITY_FACTOR
+    """
+
+    port_cmd            = pyqtSignal(int, int, bool)   # port, intensity, on
+    turn_off_all        = pyqtSignal()
+    led_matrix_cmd      = pyqtSignal(int, int, int, int)  # pattern, r, g, b
+    intensity_factor_cmd = pyqtSignal(int)             # 0-100
+
+    # D3/D4 源码非连续（历史遗留）：port_index → old source code
+    PORT_SOURCES = [11, 12, 14, 13, 15]   # D1-D5
+    PORT_PINS    = [5,  4,  22, 3,  23]   # 对应引脚
+    PORT_NAMES   = ["D1 (pin 5)", "D2 (pin 4)", "D3 (pin 22)", "D4 (pin 3)", "D5 (pin 23)"]
+
+    LED_PATTERNS = [
+        (0, "Full — 全亮"),
+        (1, "Left Half — 左半"),
+        (2, "Right Half — 右半"),
+        (3, "Left Blue / Right Red"),
+        (4, "Low NA — 低数值孔"),
+        (5, "Left Dot — 左点"),
+        (6, "Right Dot — 右点"),
+        (7, "Top Half — 上半"),
+        (8, "Bottom Half — 下半"),
+    ]
+
+    def __init__(self):
+        super().__init__("Illumination")
+        self.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        # 保存每个端口的当前强度（0-100）
+        self._port_intensity_pct = [50] * 5
+        # 保存每个端口的开关状态
+        self._port_on = [False] * 5
+        self._init_ui()
+
+    def _init_ui(self):
+        root = QVBoxLayout(self)
+        root.setSpacing(6)
+
+        # ── 全局控制行 ───────────────────────────────────────
+        global_layout = QHBoxLayout()
+
+        # 强度因子
+        global_layout.addWidget(QLabel("Global Factor:"))
+        self._factor_slider = QSlider(Qt.Horizontal)
+        self._factor_slider.setRange(0, 100)
+        self._factor_slider.setValue(60)
+        self._factor_slider.setFixedWidth(110)
+        self._factor_slider.valueChanged.connect(self._on_factor_changed)
+        global_layout.addWidget(self._factor_slider)
+
+        self._factor_label = QLabel("60%")
+        self._factor_label.setFixedWidth(36)
+        global_layout.addWidget(self._factor_label)
+
+        apply_factor_btn = QPushButton("Apply")
+        apply_factor_btn.setFixedWidth(52)
+        apply_factor_btn.clicked.connect(self._send_factor)
+        global_layout.addWidget(apply_factor_btn)
+
+        global_layout.addStretch()
+
+        # 全部关闭
+        off_all_btn = QPushButton("Turn Off All")
+        off_all_btn.setStyleSheet(
+            "background-color: #c0392b; color: white; font-weight: bold;"
+        )
+        off_all_btn.setFixedWidth(100)
+        off_all_btn.clicked.connect(self._on_turn_off_all)
+        global_layout.addWidget(off_all_btn)
+
+        root.addLayout(global_layout)
+
+        # ── 分割线 ────────────────────────────────────────────
+        root.addWidget(self._make_divider("TTL Ports"))
+
+        # ── 五个 TTL 端口行 ────────────────────────────────────
+        self._port_btns = []
+        self._port_sliders = []
+        self._port_pct_labels = []
+
+        ports_grid = QGridLayout()
+        ports_grid.setVerticalSpacing(4)
+
+        for i, name in enumerate(self.PORT_NAMES):
+            # 名称
+            lbl = QLabel(name)
+            lbl.setFixedWidth(110)
+            ports_grid.addWidget(lbl, i, 0)
+
+            # 强度滑条
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(0, 100)
+            slider.setValue(self._port_intensity_pct[i])
+            slider.setFixedWidth(130)
+            slider.valueChanged.connect(lambda v, idx=i: self._on_port_slider(idx, v))
+            ports_grid.addWidget(slider, i, 1)
+            self._port_sliders.append(slider)
+
+            # 百分比数值
+            pct_lbl = QLabel(f"{self._port_intensity_pct[i]}%")
+            pct_lbl.setFixedWidth(36)
+            pct_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            ports_grid.addWidget(pct_lbl, i, 2)
+            self._port_pct_labels.append(pct_lbl)
+
+            # ON/OFF 切换按钮
+            btn = QPushButton("OFF")
+            btn.setCheckable(True)
+            btn.setChecked(False)
+            btn.setFixedWidth(54)
+            self._set_port_btn_style(btn, False)
+            btn.toggled.connect(lambda checked, idx=i: self._on_port_toggle(idx, checked))
+            ports_grid.addWidget(btn, i, 3)
+            self._port_btns.append(btn)
+
+        root.addLayout(ports_grid)
+
+        # ── 分割线 ────────────────────────────────────────────
+        root.addWidget(self._make_divider("LED Matrix"))
+
+        # ── LED 矩阵控制 ──────────────────────────────────────
+        matrix_layout = QVBoxLayout()
+        matrix_layout.setSpacing(4)
+
+        # 图案选择
+        pat_row = QHBoxLayout()
+        pat_row.addWidget(QLabel("Pattern:"))
+        self._pattern_combo = QComboBox()
+        for code, label in self.LED_PATTERNS:
+            self._pattern_combo.addItem(label, code)
+        self._pattern_combo.setMinimumWidth(200)
+        pat_row.addWidget(self._pattern_combo)
+        pat_row.addStretch()
+        matrix_layout.addLayout(pat_row)
+
+        # R/G/B 滑条
+        self._rgb_sliders = []
+        self._rgb_labels  = []
+        for ch_name, default in [("R", 255), ("G", 255), ("B", 255)]:
+            row = QHBoxLayout()
+            row.addWidget(QLabel(f"  {ch_name}:"))
+            sl = QSlider(Qt.Horizontal)
+            sl.setRange(0, 255)
+            sl.setValue(default)
+            sl.setFixedWidth(160)
+            sl.valueChanged.connect(self._update_color_preview)
+            row.addWidget(sl)
+            val_lbl = QLabel(str(default))
+            val_lbl.setFixedWidth(28)
+            val_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            sl.valueChanged.connect(lambda v, lbl=val_lbl: lbl.setText(str(v)))
+            row.addWidget(val_lbl)
+            row.addStretch()
+            matrix_layout.addLayout(row)
+            self._rgb_sliders.append(sl)
+            self._rgb_labels.append(val_lbl)
+
+        # 颜色预览 + 按钮
+        ctrl_row = QHBoxLayout()
+        self._color_preview = QLabel()
+        self._color_preview.setFixedSize(30, 24)
+        self._color_preview.setStyleSheet("background-color: rgb(255,255,255); border: 1px solid #888;")
+        ctrl_row.addWidget(self._color_preview)
+
+        set_matrix_btn = QPushButton("Set Matrix")
+        set_matrix_btn.setStyleSheet(
+            "background-color: #2980b9; color: white; font-weight: bold;"
+        )
+        set_matrix_btn.clicked.connect(self._send_led_matrix)
+        ctrl_row.addWidget(set_matrix_btn)
+
+        clear_matrix_btn = QPushButton("Clear")
+        clear_matrix_btn.setFixedWidth(52)
+        clear_matrix_btn.clicked.connect(self._clear_led_matrix)
+        ctrl_row.addWidget(clear_matrix_btn)
+
+        ctrl_row.addStretch()
+        matrix_layout.addLayout(ctrl_row)
+
+        root.addLayout(matrix_layout)
+        root.addStretch()
+
+    # ── 内部辅助 ──────────────────────────────────────────────
+
+    @staticmethod
+    def _make_divider(text=""):
+        frame = QFrame()
+        frame.setFrameShape(QFrame.HLine)
+        frame.setFrameShadow(QFrame.Sunken)
+        frame.setStyleSheet("color: #aaa;")
+        return frame
+
+    @staticmethod
+    def _set_port_btn_style(btn: QPushButton, on: bool):
+        if on:
+            btn.setText("ON")
+            btn.setStyleSheet(
+                "background-color: #27ae60; color: white; font-weight: bold;"
+            )
+        else:
+            btn.setText("OFF")
+            btn.setStyleSheet(
+                "background-color: #7f8c8d; color: white;"
+            )
+
+    def _on_factor_changed(self, v):
+        self._factor_label.setText(f"{v}%")
+
+    def _send_factor(self):
+        self.intensity_factor_cmd.emit(self._factor_slider.value())
+
+    def _on_turn_off_all(self):
+        # 重置所有按钮状态（不触发 toggled 信号）
+        for i, btn in enumerate(self._port_btns):
+            btn.blockSignals(True)
+            btn.setChecked(False)
+            self._set_port_btn_style(btn, False)
+            self._port_on[i] = False
+            btn.blockSignals(False)
+        self.turn_off_all.emit()
+
+    def _on_port_slider(self, port_idx, value):
+        self._port_intensity_pct[port_idx] = value
+        self._port_pct_labels[port_idx].setText(f"{value}%")
+        # 如果端口当前开启，实时更新强度
+        if self._port_on[port_idx]:
+            intensity = int(value / 100.0 * 65535)
+            self.port_cmd.emit(port_idx, intensity, True)
+
+    def _on_port_toggle(self, port_idx, checked):
+        self._port_on[port_idx] = checked
+        self._set_port_btn_style(self._port_btns[port_idx], checked)
+        pct = self._port_intensity_pct[port_idx]
+        intensity = int(pct / 100.0 * 65535)
+        self.port_cmd.emit(port_idx, intensity, checked)
+
+    def _update_color_preview(self):
+        r = self._rgb_sliders[0].value()
+        g = self._rgb_sliders[1].value()
+        b = self._rgb_sliders[2].value()
+        self._color_preview.setStyleSheet(
+            f"background-color: rgb({r},{g},{b}); border: 1px solid #888;"
+        )
+
+    def _send_led_matrix(self):
+        pattern = self._pattern_combo.currentData()
+        r = self._rgb_sliders[0].value()
+        g = self._rgb_sliders[1].value()
+        b = self._rgb_sliders[2].value()
+        self.led_matrix_cmd.emit(pattern, r, g, b)
+
+    def _clear_led_matrix(self):
+        # 发送 pattern=FULL, RGB=0,0,0 相当于熄灭
+        self.led_matrix_cmd.emit(0, 0, 0, 0)
 
 
 class LogDisplay(QGroupBox):
