@@ -54,6 +54,10 @@
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
 
+### 上位机 UI 标签化重构 (2026-02-26, develop)
+- [x] main_window.py 改为 QTabWidget 三标签页（Motion / Illumination / Log）
+- [x] 纯布局调整，零逻辑变更
+
 ### 相机触发系统移植 (2026-02-26, develop)
 - [x] 新建 trigger.h/cpp：4 路触发、双模式脉冲、100μs 频闪 ISR
 - [x] 实现 6 个 handler：SEND_HARDWARE_TRIGGER(30)、SET_STROBE_DELAY(31)、SET_TRIGGER_MODE(33)、ANALOG_WRITE_ONBOARD_DAC(15)、SET_PIN_LEVEL(41)、ACK_JOYSTICK_BUTTON_PRESSED(14)

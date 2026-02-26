@@ -6,52 +6,47 @@
 
 ## 最新会话
 
-**日期**: 2026-02-26
+**日期**: 2026-02-26（续）
 **分支**: develop
-**位置**: LED 矩阵硬件调试 + Bug 修复 + 文档更新
+**位置**: 相机触发系统移植 + 上位机 UI 标签化重构
 
 ### 本次完成
 
-#### 1. LED 矩阵不亮 — 两处根因修复（7d6fd79）
+#### 1. 相机触发系统移植（686b9a5）
 
-**根因 1**：`set_illumination_led_matrix()` 有 `if (illumination_is_on)` 门控。UI 直接发 cmd 13 时未先发 TURN_ON_ILLUMINATION，`illumination_is_on = false` → 函数只存颜色不驱动 LED。
+新建 `trigger.h`/`trigger.cpp` 模块，实现 4 路相机触发脉冲管理和频闪照明控制。
+实现 6 个命令 handler：SEND_HARDWARE_TRIGGER(30)、SET_STROBE_DELAY(31)、SET_TRIGGER_MODE(33)、ANALOG_WRITE_ONBOARD_DAC(15)、SET_PIN_LEVEL(41)、ACK_JOYSTICK_BUTTON_PRESSED(14)。
+编译通过。
 
-**根因 2**：`octoaxes.ino` loop 的联锁检查调用 `turn_off_all_ports()`（含 `clear_matrix()`）。联锁引脚 `INPUT_PULLUP` 无硬件接线 → 恒读 HIGH → interlock 判断"不安全" → 每轮 loop 清空矩阵。
+#### 2. 上位机 UI 标签化重构
 
-**修复**：
-- `illumination.cpp`：`set_illumination_led_matrix()` 直接调 `turn_on_LED_matrix_pattern()`，与旧 Squid 行为一致
-- `octoaxes.ino`：联锁检查改为只关闭 TTL 激光端口，不碰 LED 矩阵
+将 `main_window.py` 的单页面布局改为 `QTabWidget` 三标签页：
+- **Motion** — 轴控制面板 + 全轴状态表
+- **Illumination** — 照明面板（独占标签页，空间更充裕）
+- **Log** — 已发送命令 + 日志 + 重连按钮
 
-#### 2. handleMoveToX/Y/Z 变量名清理（a104dee 部分）
-
-- `obsolute_position` → `absolute_position`，补充 `// μm → mm` 注释
-- 重新评估：`/1000.0f` 单位转换正确（上位机发 μm → mm → moveToPosition）
-- 移除已实现函数的 `// TODO:` 注释
-
-#### 3. handleHomeOrZero 轴映射（提交后回退）
-
-- `a104dee`：实现协议轴值 → 名称 switch → `findAxisByName()`
-- `033d78b`：用户要求回退，Bug 2 仍待修复
-
-#### 4. 迁移指南更新（cb916bb）
-
-- Bug 1 标注"单位正确，变量名已清理"
-- Bug 2 补充正确修复方案，标注已回退
-- Bug 3 标注已修复；优先级 6 照明系统标注 ✅
+顶部状态栏和 Engine Start 按钮常驻在标签页上方。
+纯布局调整，零逻辑变更。
 
 ### 下次继续
 
-1. **重新确认并应用 Bug 2 修复**（handleHomeOrZero 轴映射：`getAxis(data[2])` → `findAxisByName`）
-2. **硬件验证 TTL 端口 + DAC**（D1-D5 数字端口通断 + DAC80508 模拟强度）
-3. **去掉 StepAxis homing debug 打印**（确认稳定后）
-4. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-5. **后续移植批次**：响应机制决策 + motion 命令完善
+1. **硬件测试触发系统**（示波器验证 pin 29-32 脉冲波形）
+2. **硬件验证 TTL 端口 + DAC**（D1-D5 通断 + DAC80508 模拟强度）
+3. **重新确认并应用 Bug 2 修复**（handleHomeOrZero 轴映射）
+4. **去掉 StepAxis homing debug 打印**（确认稳定后）
+5. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+6. **后续移植批次**：响应机制决策 + motion 命令完善
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-26 - LED 矩阵调试 + Bug 修复 + 文档更新 (develop)
+- LED 矩阵不亮两处根因修复：去掉 illumination_is_on 门控 + 联锁不碰 LED 矩阵
+- handleMoveToX/Y/Z 变量名清理，handleHomeOrZero 轴映射提交后回退
+- 迁移指南 Bug 状态标注更新
 
 ### 2026-02-26 - 照明系统完整移植 + 上位机照明面板 (develop)
 - 新建 illumination.h/cpp：DAC80508 驱动、APA102 LED 矩阵、5 端口控制、新旧双 API

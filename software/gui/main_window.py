@@ -25,6 +25,7 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QGridLayout,
     QFileDialog,
+    QTabWidget,
 )
 from PyQt5.QtCore import QTimer, Qt, QMutex
 from PyQt5.QtGui import QFont
@@ -71,35 +72,31 @@ class TeensyControlGUI(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        # 顶部状态栏
+        # 顶部状态栏（常驻）
         main_layout.addLayout(self.create_top_bar())
 
-        # Engine Start 按钮
+        # Engine Start 按钮（常驻）
         main_layout.addLayout(self.create_engine_start_bar())
 
-        # 主内容区域
-        content_layout = QHBoxLayout()
+        # 标签页
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet(
+            "QTabBar::tab { font-size: 14px; font-weight: bold; padding: 6px 20px; }"
+        )
 
-        # 左侧控制面板
-        left_panel = self.create_left_panel()
-        content_layout.addWidget(left_panel)
+        # Tab 1: Motion — 轴控制 + 全轴状态
+        motion_tab = self.create_motion_tab()
+        self.tab_widget.addTab(motion_tab, "Motion")
 
-        # 右侧状态显示
-        right_panel = self.create_right_panel()
-        content_layout.addWidget(right_panel)
+        # Tab 2: Illumination — 照明控制
+        illumination_tab = self.create_illumination_tab()
+        self.tab_widget.addTab(illumination_tab, "Illumination")
 
-        main_layout.addLayout(content_layout)
+        # Tab 3: Log — 日志
+        log_tab = self.create_log_tab()
+        self.tab_widget.addTab(log_tab, "Log")
 
-        # 发送命令显示
-        main_layout.addWidget(self.create_sent_commands_group())
-
-        # 日志显示
-        main_layout.addWidget(self.create_log_group())
-
-        # 重连按钮
-        self.connect_btn = QPushButton("Reconnect")
-        self.connect_btn.clicked.connect(self.find_and_connect_teensy)
-        main_layout.addWidget(self.connect_btn)
+        main_layout.addWidget(self.tab_widget)
 
     def create_top_bar(self):
         layout = QHBoxLayout()
@@ -228,16 +225,32 @@ class TeensyControlGUI(QMainWindow):
 
         return group
 
-    def create_right_panel(self):
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
+    def create_motion_tab(self):
+        """Motion 标签页：左侧轴控制 + 右侧全轴状态表"""
+        tab = QWidget()
+        layout = QHBoxLayout(tab)
 
-        # 所有轴状态显示
+        # 左侧控制面板
+        left_panel = self.create_left_panel()
+        layout.addWidget(left_panel)
+
+        # 右侧状态显示
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+
         self.axis_status_display = AxisStatusDisplay()
         self.axis_status_display.refresh_clicked.connect(self.refresh_all_axes_status)
-        layout.addWidget(self.axis_status_display)
+        right_layout.addWidget(self.axis_status_display)
+        right_layout.addStretch()
 
-        # 照明控制面板
+        layout.addWidget(right_panel)
+        return tab
+
+    def create_illumination_tab(self):
+        """Illumination 标签页：照明控制面板"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
         self.illumination_panel = IlluminationPanel()
         self.illumination_panel.port_cmd.connect(self._send_illu_port)
         self.illumination_panel.turn_off_all.connect(self._send_illu_turn_off_all)
@@ -245,7 +258,25 @@ class TeensyControlGUI(QMainWindow):
         self.illumination_panel.intensity_factor_cmd.connect(self._send_illu_intensity_factor)
         layout.addWidget(self.illumination_panel)
 
-        return panel
+        return tab
+
+    def create_log_tab(self):
+        """Log 标签页：已发送命令 + 日志"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        # 发送命令显示
+        layout.addWidget(self.create_sent_commands_group())
+
+        # 日志显示
+        layout.addWidget(self.create_log_group())
+
+        # 重连按钮
+        self.connect_btn = QPushButton("Reconnect")
+        self.connect_btn.clicked.connect(self.find_and_connect_teensy)
+        layout.addWidget(self.connect_btn)
+
+        return tab
 
     def create_sent_commands_group(self):
         self.sent_display = LogDisplay("Sent Commands")
