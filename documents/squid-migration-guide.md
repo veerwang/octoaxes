@@ -308,7 +308,7 @@ bool is_homing_XY;
 | `CONFIGURE_STEPPER_DRIVER` | 21 | ✅ | axis->configureDriver()，微步(0→1,>128→256) + 电流 + 保持比 |
 | `SET_LIM_SWITCH_POLARITY` | 20 | ✅ | 更新 config.left/rightSwitchPolarity，DISABLED=2 时忽略 |
 | `SET_HOME_SAFETY_MERGIN` | 28 | ✅ | axis->setHomeSafetyMargin()，重新调用 motor_enableHomingLimit |
-| `SET_OFFSET_VELOCITY` | 24 | ⏳ | 新架构暂未实现偏移速度；stub |
+| `SET_OFFSET_VELOCITY` | 24 | ✅ | 与旧架构一致：enable_offset_velocity 门控，仅存储 X/Y 偏移速度 |
 | `SET_AXIS_DISABLE_ENABLE` | 32 | ✅ | axis->disableAxis()/enableAxis()（e49baf1）|
 
 #### 优先级 4：Homing 状态机 ✅ 已完成

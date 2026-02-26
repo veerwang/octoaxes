@@ -23,6 +23,11 @@ static const int POLARITY_ACTIVE_LOW  = 0;
 static const int POLARITY_ACTIVE_HIGH = 1;
 static const int POLARITY_DISABLED    = 2;
 
+// 偏移速度（与旧架构 globals.cpp 一致）
+// enable_offset_velocity 已在 def_octopi_80120.h 中定义
+float offset_velocity_x = 0;
+float offset_velocity_y = 0;
+
 // 协议轴值 → 轴名称（nullptr = 无效轴）
 static const char* protocolAxisToName(uint8_t protocolAxis) {
   switch (protocolAxis) {
@@ -331,8 +336,20 @@ void CommandProcessor::handleSetLeadScrewPitch(const byte *data) {
 }
 
 void CommandProcessor::handleSetOffsetVelocity(const byte *data) {
-  // TODO: 实现 SET_OFFSET_VELOCITY 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_OFFSET_VELOCITY");
+  // 与旧架构 callback_set_offset_velocity 一致：
+  // 仅在 enable_offset_velocity 为 true 时存储值，供摇杆循环使用
+  if (!enable_offset_velocity) return;
+
+  // data[3..6]: int32 大端序 (μm/s), ÷1000000 → mm/s
+  float velocityMM =
+      float(int32_t(uint32_t(data[3]) << 24 | uint32_t(data[4]) << 16 |
+                    uint32_t(data[5]) << 8 | uint32_t(data[6]))) /
+      1000000.0f;
+
+  switch (data[2]) {
+    case 0: offset_velocity_x = velocityMM; break;  // AXIS_X
+    case 1: offset_velocity_y = velocityMM; break;  // AXIS_Y
+  }
 }
 
 void CommandProcessor::handleConfigureStagePID(const byte *data) {
