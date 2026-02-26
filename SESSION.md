@@ -8,60 +8,67 @@
 
 **日期**: 2026-02-26
 **分支**: develop
-**位置**: 照明系统移植（Squid → Octoaxes）
+**位置**: 相机触发系统移植（Squid → Octoaxes）
 
 ### 本次完成
 
-#### 1. 照明系统完整移植
+#### 1. 相机触发/DAC/IO 命令移植
 
-将旧 Squid 控制器的照明系统命令移植到新 Octoaxes 架构，编译通过（SUCCESS）。
+将旧 Squid 控制器的触发系统移植到新 Octoaxes 架构，编译通过（SUCCESS）。
 
-**新增/修改文件：**
+**新增文件：**
+
+| 文件 | 内容 |
+|------|------|
+| `trigger.h` | 触发系统头文件：常量、4 路引脚映射、状态数组 extern、API 声明 |
+| `trigger.cpp` | 完整实现：`trigger_init()` + `trigger_update()` + `ISR_strobeTimer()` |
+
+**修改文件：**
 
 | 文件 | 变更 |
 |------|------|
-| `config.h` | 添加照明引脚（D1-D5, interlock, LED matrix）、缺失命令码（19,33-39,252）、`IlluminationConfig` 命名空间 |
-| `illumination.h` | 新建，照明模块完整头文件（状态变量 extern + 函数声明） |
-| `illumination.cpp` | 新建，完整实现（DAC80508驱动、APA102 LED矩阵、端口控制、新旧双 API） |
-| `commandprocessor.h` | 添加 9 个缺失 handler 声明（6 多端口 + MOVE_W2 + SET_TRIGGER_MODE + INITFILTERWHEEL_W2） |
-| `commandprocessor.cpp` | 实现全部 11 个照明 handler（5 旧API + 6 新多端口 API），另添加 3 个 stub |
-| `serial.cpp` | switch-case 添加 9 个新命令（19, 33-39, 252） |
-| `octoaxes.ino` | setup 调用 `illumination_init()`，loop 添加安全联锁检查 |
+| `commandprocessor.cpp` | 实现 6 个 handler（从 stub 替换），include trigger.h |
+| `octoaxes.ino` | include trigger.h，`initializeSystem()` 调 `trigger_init()`，`loop()` 调 `trigger_update()` |
 
-**旧 API（命令 10-17）：**
-- TURN_ON/OFF_ILLUMINATION → `turn_on/off_illumination()`
-- SET_ILLUMINATION → `set_illumination(source, intensity)`
-- SET_ILLUMINATION_LED_MATRIX → `set_illumination_led_matrix(src, r, g, b)`
-- SET_ILLUMINATION_INTENSITY_FACTOR → `illumination_intensity_factor = data[2] / 100.0f`
-- SET_DAC80508_REFDIV_GAIN → `set_DAC8050x_gain(div, gains)`
+**实现的 6 个命令 handler：**
 
-**新多端口 API（命令 34-39）：**
-- SET_PORT_INTENSITY(34), TURN_ON_PORT(35), TURN_OFF_PORT(36)
-- SET_PORT_ILLUMINATION(37) — 原子设置强度+开关
-- SET_MULTI_PORT_MASK(38) — 批量开关多端口
-- TURN_OFF_ALL_PORTS(39) — 关闭所有端口+LED矩阵
+| Handler | 命令码 | 实现 |
+|---------|--------|------|
+| `handleSendHardwareTrigger` | 30 | 解析 channel/control_strobe/on_time，noInterrupts 保护，触发引脚拉 LOW |
+| `handleSetStrobeDelay` | 31 | 4 字节大端序设置频闪延迟 |
+| `handleSetTriggerMode` | 33 | 设置触发模式 0（50μs脉冲）/1（电平触发） |
+| `handleAnalogWriteOnboardDAC` | 15 | 调用 `set_DAC8050x_output(channel, value)` |
+| `handleSetPinLevel` | 41 | `digitalWrite(pin, level)` |
+| `handleAckJoystickButtonPressed` | 14 | 清除 joystick 按压标志 |
 
-**关键设计细节：**
-- D3/D4 光源码非连续：D1=11,D2=12,D3=14,D4=13,D5=15（历史 API 遗留）
-- 引脚：D1→pin5, D2→pin4, D3→pin22, D4→pin3, D5→pin23
-- 联锁：pin2（INPUT_PULLUP，LOW=安全），可通过 `-DDISABLE_LASER_INTERLOCK` 禁用
-- LED矩阵：APA102，data=26, clock=27，BGR 顺序，FastLED 驱动
-- DAC：DAC80508，CS=pin33，`illumination_intensity_factor`（默认0.6）缩放
+**触发系统架构：**
+- 两层机制：主循环脉冲恢复（`trigger_update`）+ 100μs 定时器频闪（`ISR_strobeTimer`）
+- 模式 0（正常脉冲）：固定 50μs 负脉冲
+- 模式 1（电平触发）：脉宽 = strobe_delay + illumination_on_time
+- 频闪 ISR：短曝光（≤30ms）同步模式，长曝光（>30ms）异步两步分离
+- 引脚：pin 29-32（4 路触发），空闲 HIGH，触发 LOW
 
 ### 下次继续
 
-1. **硬件测试照明系统**（上电验证各端口 TTL 开关 + DAC 输出 + LED 矩阵图案）
-2. **上位机兼容性测试**（用 Python 软件发送照明命令验证协议）
-3. **去掉 StepAxis homing debug 打印**（确认稳定后）
-4. **去掉 FilterWheel homing debug 打印**（需硬件验证 homing 稳定后）
-5. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-6. **后续移植批次**：motion 命令（unit bug 修复 + HomeOrZero axis mapping 修复）
+1. **硬件测试触发系统**（示波器验证 pin 29-32 脉冲波形：模式 0 = 50μs，模式 1 = 可变宽度）
+2. **硬件测试照明系统**（上电验证 TTL + DAC + LED 矩阵）
+3. **上位机兼容性测试**（Python 发送触发 + 照明命令验证协议）
+4. **去掉 StepAxis homing debug 打印**（确认稳定后）
+5. **去掉 FilterWheel homing debug 打印**
+6. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+7. **后续移植批次**：motion 命令（unit bug 修复 + HomeOrZero axis mapping 修复）
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-26 - 照明系统完整移植 (develop)
+- 新建 illumination.h/cpp：DAC80508 驱动、APA102 LED 矩阵、5 端口控制、新旧双 API
+- 实现 11 个照明 handler（命令 10-17 旧 API + 命令 34-39 新多端口 API）
+- config.h 添加照明引脚、命令码、IlluminationConfig 命名空间
+- octoaxes.ino 添加 illumination_init() + 安全联锁检查
 
 ### 2026-02-25 - Z 轴 homing SOFT_STOP_EN Bug 修复 (develop)
 - 修复 Z 轴 homing 停车失败：移除 REFERENCE_CONF 中的 SOFT_STOP_EN 位
@@ -88,12 +95,6 @@
 - 添加 `_slowApproach` 标志控制两阶段切换
 - 去掉 STATE_HOMING_SET_ZERO，停车后直接设零
 - 经 10 次连续测试验证稳定
-
-### 2026-01-27 - 新旧 API 一致性修复 + Z 轴运动调试
-- velocity_mode 状态追踪、sRampInit 完整实现、motor_adjustBows()
-- RAMPMODE 位操作修复
-- 创建调试脚本 test_09/10/11
-- 验证 Z 轴基本移动正常，问题定位在 homing 流程
 
 ---
 

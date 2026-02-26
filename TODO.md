@@ -14,6 +14,12 @@
 
 <!-- 计划要做但尚未开始的任务 -->
 
+### 硬件测试
+- [ ] 硬件测试触发系统（示波器验证 pin 29-32 脉冲波形）
+- [ ] 硬件测试照明系统（TTL 端口 + DAC 输出 + LED 矩阵图案）
+- [ ] 上位机兼容性测试（Python 发送触发 + 照明命令验证协议）
+- [ ] 测试 GUI 黑黄主题效果
+
 ### 功能验证
 - [x] 编译测试 (2026-01-23)
 - [x] API 参数对比检查 (2026-01-23) - 修复 REFERENCE_CONF 位偏移错误
@@ -28,8 +34,11 @@
 - [ ] 去掉 StepAxis homing debug 打印（确认稳定后）
 - [ ] 去掉 FilterWheel homing debug 打印
 - [ ] 修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW + 极性修正）
-- [ ] 上位机兼容性测试
-- [ ] 测试 GUI 黑黄主题效果
+
+### 命令移植
+- [x] 照明系统移植 (2026-02-26) - illumination.h/cpp + 11 个 handler
+- [x] 相机触发系统移植 (2026-02-26) - trigger.h/cpp + 6 个 handler
+- [ ] motion 命令移植（unit bug 修复 + HomeOrZero axis mapping 修复）
 
 ### 代码清理（可选）
 - [x] 修正 calculateCurrentScale 注释和变量名（峰值 vs RMS 区分）(2026-02-12)
@@ -44,6 +53,18 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### 相机触发系统移植 (2026-02-26, develop)
+- [x] 新建 trigger.h/cpp：4 路触发、双模式脉冲、100μs 频闪 ISR
+- [x] 实现 6 个 handler：SEND_HARDWARE_TRIGGER(30)、SET_STROBE_DELAY(31)、SET_TRIGGER_MODE(33)、ANALOG_WRITE_ONBOARD_DAC(15)、SET_PIN_LEVEL(41)、ACK_JOYSTICK_BUTTON_PRESSED(14)
+- [x] octoaxes.ino 集成 trigger_init() + trigger_update()
+- [x] 编译通过
+
+### 照明系统完整移植 (2026-02-26, develop)
+- [x] 新建 illumination.h/cpp：DAC80508 驱动、APA102 LED 矩阵、5 端口控制
+- [x] 实现 11 个照明 handler（旧 API 命令 10-17 + 新多端口 API 命令 34-39）
+- [x] config.h 添加照明引脚、命令码、IlluminationConfig 命名空间
+- [x] 编译通过
 
 ### Z 轴 homing 停车失败修复 (2026-02-25, develop)
 - [x] 定位根因: motor_configLimitSwitches() 多设 SOFT_STOP_EN (bit 5)，master 无此位

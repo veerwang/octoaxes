@@ -2,6 +2,7 @@
 #include "build_opt.h"
 #include "filterwheel.h"
 #include "illumination.h"
+#include "trigger.h"
 #include "objectives.h"
 #include "serial.h"
 #include "stepaxis.h"
@@ -72,6 +73,9 @@ bool initializeSystem() {
   // 初始化照明系统（引脚、LED矩阵、DAC、联锁）
   illumination_init();
 
+  // 初始化触发系统（引脚、频闪定时器）
+  trigger_init();
+
   // 初始化新架构的运动控制子系统
   motor_initSubsystem();
 
@@ -134,6 +138,9 @@ void loop() {
   if (!illumination_interlock_ok()) {
     turn_off_all_ports();
   }
+
+  // 更新触发脉冲恢复
+  trigger_update();
 
   // 处理串口调试命令
   serialProtocol.processSerialCommands();

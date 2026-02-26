@@ -2,6 +2,7 @@
 #include "axesmrg.h"
 #include "build_opt.h"
 #include "illumination.h"
+#include "trigger.h"
 #include "config.h"
 
 CommandProcessor commandProcessor;
@@ -136,13 +137,13 @@ void CommandProcessor::handleSetIlluminationLEDMatrix(const byte *data) {
 }
 
 void CommandProcessor::handleAckJoystickButtonPressed(const byte *data) {
-  // TODO: 实现 ACK_JOYSTICK_BUTTON_PRESSED 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: ACK_JOYSTICK_BUTTON_PRESSED");
+  joystick_button_pressed = false;
 }
 
 void CommandProcessor::handleAnalogWriteOnboardDAC(const byte *data) {
-  // TODO: 实现 ANALOG_WRITE_ONBOARD_DAC 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: ANALOG_WRITE_ONBOARD_DAC");
+  int channel = data[2];
+  uint16_t value = (uint16_t(data[3]) << 8) | uint16_t(data[4]);
+  set_DAC8050x_output(channel, value);
 }
 
 void CommandProcessor::handleSetDAC80508RefDivGain(const byte *data) {
@@ -191,7 +192,8 @@ void CommandProcessor::handleMoveW2(const byte *data) {
 }
 
 void CommandProcessor::handleSetTriggerMode(const byte *data) {
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_TRIGGER_MODE");
+  if (data[2] <= 1)
+    trigger_mode = data[2];
 }
 
 void CommandProcessor::handleMoveToW(const byte *data) {
@@ -257,13 +259,35 @@ void CommandProcessor::handleSetPIDArguments(const byte *data) {
 }
 
 void CommandProcessor::handleSendHardwareTrigger(const byte *data) {
-  // TODO: 实现 SEND_HARDWARE_TRIGGER 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SEND_HARDWARE_TRIGGER");
+  int camera_channel = data[2] & 0x0F;
+  if (camera_channel >= NUM_TRIGGER_CHANNELS)
+    return;
+
+  noInterrupts();
+
+  control_strobe[camera_channel] = (data[2] >> 7) & 0x01;
+  illumination_on_time_us[camera_channel] =
+      (uint32_t(data[3]) << 24) | (uint32_t(data[4]) << 16) |
+      (uint32_t(data[5]) << 8)  |  uint32_t(data[6]);
+
+  // 触发引脚拉 LOW（负脉冲起始）
+  digitalWrite(camera_trigger_pins[camera_channel], LOW);
+  trigger_output_level[camera_channel] = LOW;
+  timestamp_trigger_rising_edge[camera_channel] = micros();
+
+  // 频闪状态重置
+  strobe_on[camera_channel] = false;
+
+  interrupts();
 }
 
 void CommandProcessor::handleSetStrobeDelay(const byte *data) {
-  // TODO: 实现 SET_STROBE_DELAY 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_STROBE_DELAY");
+  int channel = data[2];
+  if (channel >= NUM_TRIGGER_CHANNELS)
+    return;
+  strobe_delay_us[channel] =
+      (uint32_t(data[3]) << 24) | (uint32_t(data[4]) << 16) |
+      (uint32_t(data[5]) << 8)  |  uint32_t(data[6]);
 }
 
 void CommandProcessor::handleSetAxisDisableEnable(const byte *data) {
@@ -272,8 +296,7 @@ void CommandProcessor::handleSetAxisDisableEnable(const byte *data) {
 }
 
 void CommandProcessor::handleSetPinLevel(const byte *data) {
-  // TODO: 实现 SET_PIN_LEVEL 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_PIN_LEVEL");
+  digitalWrite(data[2], data[3]);
 }
 
 void CommandProcessor::handleInitFilterWheel(const byte *data) {
