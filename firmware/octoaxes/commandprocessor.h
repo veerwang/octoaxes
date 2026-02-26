@@ -27,6 +27,14 @@ public:
     void handleAnalogWriteOnboardDAC(const byte* data);
     void handleSetDAC80508RefDivGain(const byte* data);
     void handleSetIlluminationIntensityFactor(const byte* data);
+    void handleSetPortIntensity(const byte* data);
+    void handleTurnOnPort(const byte* data);
+    void handleTurnOffPort(const byte* data);
+    void handleSetPortIllumination(const byte* data);
+    void handleSetMultiPortMask(const byte* data);
+    void handleTurnOffAllPorts(const byte* data);
+    void handleMoveW2(const byte* data);
+    void handleSetTriggerMode(const byte* data);
     void handleMoveToW(const byte* data);
     void handleSetLimSwitchPolarity(const byte* data);
     void handleConfigureStepperDriver(const byte* data);
@@ -43,6 +51,7 @@ public:
     void handleSetAxisDisableEnable(const byte* data);
     void handleSetPinLevel(const byte* data);
     void handleInitFilterWheel(const byte* data);
+    void handleInitFilterWheelW2(const byte* data);
     void handleInitialize(const byte* data);
     void handleReset(const byte* data);
     

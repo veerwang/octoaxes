@@ -1,6 +1,7 @@
 #include "axesmrg.h"
 #include "build_opt.h"
 #include "filterwheel.h"
+#include "illumination.h"
 #include "objectives.h"
 #include "serial.h"
 #include "stepaxis.h"
@@ -68,6 +69,9 @@ bool initializeSystem() {
   // 初始化SPI和引脚
   initializeSPIAndPins();
 
+  // 初始化照明系统（引脚、LED矩阵、DAC、联锁）
+  illumination_init();
+
   // 初始化新架构的运动控制子系统
   motor_initSubsystem();
 
@@ -124,6 +128,11 @@ void loop() {
   if (firstLoop) {
     DEBUG_PRINTLN("MAIN_LOOP_ENTERED");  // 确认进入主循环
     firstLoop = false;
+  }
+
+  // 安全联锁检查：联锁断开时强制关闭所有照明
+  if (!illumination_interlock_ok()) {
+    turn_off_all_ports();
   }
 
   // 处理串口调试命令

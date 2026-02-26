@@ -253,6 +253,10 @@ void SerialProtocolHandler::processSerialStandardCommands() {
       commandProcessor.handleMoveW(data);
       break;
 
+    case Commands::MOVE_W2:
+      commandProcessor.handleMoveW2(data);
+      break;
+
     case Commands::HOME_OR_ZERO:
       commandProcessor.handleHomeOrZero(data);
       break;
@@ -303,6 +307,34 @@ void SerialProtocolHandler::processSerialStandardCommands() {
 
     case Commands::SET_ILLUMINATION_INTENSITY_FACTOR:
       commandProcessor.handleSetIlluminationIntensityFactor(data);
+      break;
+
+    case Commands::SET_TRIGGER_MODE:
+      commandProcessor.handleSetTriggerMode(data);
+      break;
+
+    case Commands::SET_PORT_INTENSITY:
+      commandProcessor.handleSetPortIntensity(data);
+      break;
+
+    case Commands::TURN_ON_PORT:
+      commandProcessor.handleTurnOnPort(data);
+      break;
+
+    case Commands::TURN_OFF_PORT:
+      commandProcessor.handleTurnOffPort(data);
+      break;
+
+    case Commands::SET_PORT_ILLUMINATION:
+      commandProcessor.handleSetPortIllumination(data);
+      break;
+
+    case Commands::SET_MULTI_PORT_MASK:
+      commandProcessor.handleSetMultiPortMask(data);
+      break;
+
+    case Commands::TURN_OFF_ALL_PORTS:
+      commandProcessor.handleTurnOffAllPorts(data);
       break;
 
     case Commands::MOVETO_W:
@@ -367,6 +399,10 @@ void SerialProtocolHandler::processSerialStandardCommands() {
 
     case Commands::INITFILTERWHEEL:
       commandProcessor.handleInitFilterWheel(data);
+      break;
+
+    case Commands::INITFILTERWHEEL_W2:
+      commandProcessor.handleInitFilterWheelW2(data);
       break;
 
     case Commands::INITIALIZE:

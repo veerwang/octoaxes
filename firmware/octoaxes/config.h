@@ -24,6 +24,7 @@ namespace Commands {
     const int SET_DAC80508_REFDIV_GAIN = 16;
     const int SET_ILLUMINATION_INTENSITY_FACTOR = 17;
     const int MOVETO_W = 18;
+    const int MOVE_W2 = 19;
     const int SET_LIM_SWITCH_POLARITY = 20;
     const int CONFIGURE_STEPPER_DRIVER = 21;
     const int SET_MAX_VELOCITY_ACCELERATION = 22;
@@ -37,7 +38,16 @@ namespace Commands {
     const int SEND_HARDWARE_TRIGGER = 30;
     const int SET_STROBE_DELAY = 31;
     const int SET_AXIS_DISABLE_ENABLE = 32;
+    const int SET_TRIGGER_MODE = 33;
+    // 多端口照明命令（v1.0+）
+    const int SET_PORT_INTENSITY = 34;
+    const int TURN_ON_PORT = 35;
+    const int TURN_OFF_PORT = 36;
+    const int SET_PORT_ILLUMINATION = 37;
+    const int SET_MULTI_PORT_MASK = 38;
+    const int TURN_OFF_ALL_PORTS = 39;
     const int SET_PIN_LEVEL = 41;
+    const int INITFILTERWHEEL_W2 = 252;
     const int INITFILTERWHEEL = 253;
     const int INITIALIZE = 254;
     const int RESET = 255;
@@ -59,12 +69,36 @@ namespace Pins {
     const int EXPAND2_AXIS_CS = 18;
     const int EXPAND3_AXIS_CS = 17;
     const int EXPAND4_AXIS_CS = 16;
-    
+
     // 控制引脚数组
     const uint8_t CONTROL_PINS[] = {EXPAND1_AXIS_CS, EXPAND2_AXIS_CS, EXPAND3_AXIS_CS, EXPAND4_AXIS_CS};
     const uint8_t STANDARD_CONTROL_PINS[] = {W_AXIS_CS, Z_AXIS_CS, Y_AXIS_CS, X_AXIS_CS};
     const size_t NUM_CONTROL_PINS = 4;
     const size_t NUM_STANDARD_CONTROL_PINS = 4;
+
+    // 照明 TTL 端口（D1-D5）
+    // 注意：D3/D4 引脚非顺序排列，与旧版光源码一致
+    const int ILLUMINATION_D1 = 5;
+    const int ILLUMINATION_D2 = 4;
+    const int ILLUMINATION_D3 = 22;
+    const int ILLUMINATION_D4 = 3;
+    const int ILLUMINATION_D5 = 23;
+
+    // 激光安全联锁（LOW = 安全）
+    const int ILLUMINATION_INTERLOCK = 2;
+
+    // LED 矩阵（APA102，128 像素）
+    const int LED_MATRIX_DATA  = 26;
+    const int LED_MATRIX_CLOCK = 27;
+
+    // LED 驱动 LT3932 SYNC（16 MHz PWM）
+    const int LED_DRIVER_SYNC = 25;
+
+    // 相机触发
+    const int CAMERA_TRIGGER_1 = 29;
+    const int CAMERA_TRIGGER_2 = 30;
+    const int CAMERA_TRIGGER_3 = 31;
+    const int CAMERA_TRIGGER_4 = 32;
 }
 
 // 系统配置
@@ -151,6 +185,50 @@ namespace AxisConstDefinition {
 		const float Z_SAFEPOSITION = 0.7;
 		const float FILTERWHEEL_SAFEPOSITION = 0;
 		const float OBJECTIVES_SAFEPOSITION = 0;
+}
+
+// 照明系统配置
+namespace IlluminationConfig {
+    // DAC80508 寄存器地址
+    const uint8_t DAC_CONFIG_ADDR = 0x03;
+    const uint8_t DAC_GAIN_ADDR   = 0x04;
+    const uint8_t DAC_DAC_ADDR    = 0x08;
+
+    // 默认 DAC 增益：div=0x00, gains=0x80（通道 0-6 增益 1，通道 7 增益 2）
+    const uint8_t DAC_DEFAULT_DIV   = 0x00;
+    const uint8_t DAC_DEFAULT_GAINS = 0x80;
+
+    // LED 矩阵（APA102，128 像素，BGR 顺序）
+    const int   NUM_LEDS          = 128;
+    const int   LED_MAX_INTENSITY = 100;
+    const float GREEN_ADJUSTMENT  = 1.0f;
+    const float RED_ADJUSTMENT    = 1.0f;
+    const float BLUE_ADJUSTMENT   = 1.0f;
+
+    // 默认全局强度因子（Squid LED 0-1.5V）
+    const float DEFAULT_INTENSITY_FACTOR = 0.6f;
+
+    // 端口数量（D1-D16）
+    const int NUM_PORTS = 16;
+
+    // 照明光源码（旧版 API，与协议保持一致）
+    // LED 矩阵图案：0-8
+    const int LED_ARRAY_FULL       = 0;
+    const int LED_ARRAY_LEFT_HALF  = 1;
+    const int LED_ARRAY_RIGHT_HALF = 2;
+    const int LED_ARRAY_LEFTB_RIGHTR = 3;
+    const int LED_ARRAY_LOW_NA     = 4;
+    const int LED_ARRAY_LEFT_DOT   = 5;
+    const int LED_ARRAY_RIGHT_DOT  = 6;
+    const int LED_ARRAY_TOP_HALF   = 7;
+    const int LED_ARRAY_BOTTOM_HALF = 8;
+    const int LED_EXTERNAL_FET     = 20;
+    // TTL 端口光源码（注意 D3/D4 非顺序！）
+    const int D1 = 11;
+    const int D2 = 12;
+    const int D3 = 14;  // 非顺序！
+    const int D4 = 13;  // 非顺序！
+    const int D5 = 15;
 }
 
 // 轴配置

@@ -1,6 +1,8 @@
 #include "commandprocessor.h"
 #include "axesmrg.h"
 #include "build_opt.h"
+#include "illumination.h"
+#include "config.h"
 
 CommandProcessor commandProcessor;
 
@@ -117,23 +119,20 @@ void CommandProcessor::handleSetLim(const byte *data) {
 }
 
 void CommandProcessor::handleTurnOnIllumination(const byte *data) {
-  // TODO: 实现 TURN_ON_ILLUMINATION 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: TURN_ON_ILLUMINATION");
+  illumination_source = data[2];
+  turn_on_illumination();
 }
 
 void CommandProcessor::handleTurnOffIllumination(const byte *data) {
-  // TODO: 实现 TURN_OFF_ILLUMINATION 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: TURN_OFF_ILLUMINATION");
+  turn_off_illumination();
 }
 
 void CommandProcessor::handleSetIllumination(const byte *data) {
-  // TODO: 实现 SET_ILLUMINATION 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_ILLUMINATION");
+  set_illumination(data[2], (uint16_t(data[3]) << 8) + uint16_t(data[4]));
 }
 
 void CommandProcessor::handleSetIlluminationLEDMatrix(const byte *data) {
-  // TODO: 实现 SET_ILLUMINATION_LED_MATRIX 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_ILLUMINATION_LED_MATRIX");
+  set_illumination_led_matrix(data[2], data[3], data[4], data[5]);
 }
 
 void CommandProcessor::handleAckJoystickButtonPressed(const byte *data) {
@@ -147,13 +146,52 @@ void CommandProcessor::handleAnalogWriteOnboardDAC(const byte *data) {
 }
 
 void CommandProcessor::handleSetDAC80508RefDivGain(const byte *data) {
-  // TODO: 实现 SET_DAC80508_REFDIV_GAIN 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_DAC80508_REFDIV_GAIN");
+  set_DAC8050x_gain(data[2], data[3]);
 }
 
 void CommandProcessor::handleSetIlluminationIntensityFactor(const byte *data) {
-  // TODO: 实现 SET_ILLUMINATION_INTENSITY_FACTOR 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_ILLUMINATION_INTENSITY_FACTOR");
+  illumination_intensity_factor = float(data[2]) / 100.0f;
+}
+
+void CommandProcessor::handleSetPortIntensity(const byte *data) {
+  set_port_intensity(data[2], (uint16_t(data[3]) << 8) | uint16_t(data[4]));
+}
+
+void CommandProcessor::handleTurnOnPort(const byte *data) {
+  turn_on_port(data[2]);
+}
+
+void CommandProcessor::handleTurnOffPort(const byte *data) {
+  turn_off_port(data[2]);
+}
+
+void CommandProcessor::handleSetPortIllumination(const byte *data) {
+  set_port_intensity(data[2], (uint16_t(data[3]) << 8) | uint16_t(data[4]));
+  if (data[5] != 0) turn_on_port(data[2]);
+  else              turn_off_port(data[2]);
+}
+
+void CommandProcessor::handleSetMultiPortMask(const byte *data) {
+  uint16_t port_mask = (uint16_t(data[2]) << 8) | uint16_t(data[3]);
+  uint16_t on_mask   = (uint16_t(data[4]) << 8) | uint16_t(data[5]);
+  for (int i = 0; i < IlluminationConfig::NUM_PORTS; i++) {
+    if (port_mask & (1 << i)) {
+      if (on_mask & (1 << i)) turn_on_port(i);
+      else                    turn_off_port(i);
+    }
+  }
+}
+
+void CommandProcessor::handleTurnOffAllPorts(const byte *data) {
+  turn_off_all_ports();
+}
+
+void CommandProcessor::handleMoveW2(const byte *data) {
+  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: MOVE_W2");
+}
+
+void CommandProcessor::handleSetTriggerMode(const byte *data) {
+  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_TRIGGER_MODE");
 }
 
 void CommandProcessor::handleMoveToW(const byte *data) {
@@ -241,6 +279,10 @@ void CommandProcessor::handleSetPinLevel(const byte *data) {
 void CommandProcessor::handleInitFilterWheel(const byte *data) {
   // TODO: 实现 INITFILTERWHEEL 命令处理
   DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: INITFILTERWHEEL");
+}
+
+void CommandProcessor::handleInitFilterWheelW2(const byte *data) {
+  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: INITFILTERWHEEL_W2");
 }
 
 void CommandProcessor::handleInitialize(const byte *data) {

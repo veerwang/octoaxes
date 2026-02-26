@@ -6,52 +6,67 @@
 
 ## 最新会话
 
-**日期**: 2026-02-25
+**日期**: 2026-02-26
 **分支**: develop
-**位置**: Z 轴 homing 调试（硬件测试）
+**位置**: 照明系统移植（Squid → Octoaxes）
 
 ### 本次完成
 
-#### 1. 修复 Z 轴 homing 停车失败 (核心 Bug)
+#### 1. 照明系统完整移植
 
-**现象**: Z 轴 homing 搜索到传感器后，电机不停车，继续全速运行，最终超时。
+将旧 Squid 控制器的照明系统命令移植到新 Octoaxes 架构，编译通过（SUCCESS）。
 
-**根因**: `motor_configLimitSwitches()` 中多设了 `SOFT_STOP_EN` (REFERENCE_CONF bit 5)，
-master 分支旧 API `tmc4361A_enableLimitSwitch()` 没有此位。
-`SOFT_STOP_EN=1` 导致限位开关触发时 TMC4361A 进入内部软停车状态机，
-锁定 RAMPMODE/VMAX/XTARGET 写入，使后续停车命令被忽略。
+**新增/修改文件：**
 
-**修复**: 移除 `SOFT_STOP_EN`，与 master 保持一致（硬停车）。
+| 文件 | 变更 |
+|------|------|
+| `config.h` | 添加照明引脚（D1-D5, interlock, LED matrix）、缺失命令码（19,33-39,252）、`IlluminationConfig` 命名空间 |
+| `illumination.h` | 新建，照明模块完整头文件（状态变量 extern + 函数声明） |
+| `illumination.cpp` | 新建，完整实现（DAC80508驱动、APA102 LED矩阵、端口控制、新旧双 API） |
+| `commandprocessor.h` | 添加 9 个缺失 handler 声明（6 多端口 + MOVE_W2 + SET_TRIGGER_MODE + INITFILTERWHEEL_W2） |
+| `commandprocessor.cpp` | 实现全部 11 个照明 handler（5 旧API + 6 新多端口 API），另添加 3 个 stub |
+| `serial.cpp` | switch-case 添加 9 个新命令（19, 33-39, 252） |
+| `octoaxes.ino` | setup 调用 `illumination_init()`，loop 添加安全联锁检查 |
 
-**验证**: 硬件测试 homing 正常完成，停车、latch、安全位置移动均正确。
+**旧 API（命令 10-17）：**
+- TURN_ON/OFF_ILLUMINATION → `turn_on/off_illumination()`
+- SET_ILLUMINATION → `set_illumination(source, intensity)`
+- SET_ILLUMINATION_LED_MATRIX → `set_illumination_led_matrix(src, r, g, b)`
+- SET_ILLUMINATION_INTENSITY_FACTOR → `illumination_intensity_factor = data[2] / 100.0f`
+- SET_DAC80508_REFDIV_GAIN → `set_DAC8050x_gain(div, gains)`
 
-#### 2. 新增 motor_setHardwareStopEnable() API
+**新多端口 API（命令 34-39）：**
+- SET_PORT_INTENSITY(34), TURN_ON_PORT(35), TURN_OFF_PORT(36)
+- SET_PORT_ILLUMINATION(37) — 原子设置强度+开关
+- SET_MULTI_PORT_MASK(38) — 批量开关多端口
+- TURN_OFF_ALL_PORTS(39) — 关闭所有端口+LED矩阵
 
-- 控制 REFERENCE_CONF 中 STOP_LEFT_EN / STOP_RIGHT_EN 位
-- 可在运行时动态启用/禁用硬件限位停车（备用）
-
-#### 3. StepAxis homing 搜索阶段添加周期性 debug 打印
-
-- 每 200ms 输出 limit_state、STATUS、XACTUAL、VACTUAL
-- 便于排查 homing 过程中的问题
-
-**提交**: `5652bc3`
+**关键设计细节：**
+- D3/D4 光源码非连续：D1=11,D2=12,D3=14,D4=13,D5=15（历史 API 遗留）
+- 引脚：D1→pin5, D2→pin4, D3→pin22, D4→pin3, D5→pin23
+- 联锁：pin2（INPUT_PULLUP，LOW=安全），可通过 `-DDISABLE_LASER_INTERLOCK` 禁用
+- LED矩阵：APA102，data=26, clock=27，BGR 顺序，FastLED 驱动
+- DAC：DAC80508，CS=pin33，`illumination_intensity_factor`（默认0.6）缩放
 
 ### 下次继续
 
-1. **去掉 StepAxis homing debug 打印**（确认稳定后）
-2. **去掉 FilterWheel homing debug 打印**（需硬件验证 homing 稳定后）
-3. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正，需硬件验证）
-4. **W 轴进一步优化（可选）** — 距 60ms 还差 ~1.3ms
-5. **上位机兼容性测试**
-6. **移除兼容层中不再需要的代码**
-7. **清理注释和文档**
+1. **硬件测试照明系统**（上电验证各端口 TTL 开关 + DAC 输出 + LED 矩阵图案）
+2. **上位机兼容性测试**（用 Python 软件发送照明命令验证协议）
+3. **去掉 StepAxis homing debug 打印**（确认稳定后）
+4. **去掉 FilterWheel homing debug 打印**（需硬件验证 homing 稳定后）
+5. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+6. **后续移植批次**：motion 命令（unit bug 修复 + HomeOrZero axis mapping 修复）
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-25 - Z 轴 homing SOFT_STOP_EN Bug 修复 (develop)
+- 修复 Z 轴 homing 停车失败：移除 REFERENCE_CONF 中的 SOFT_STOP_EN 位
+- 根因：SOFT_STOP_EN=1 锁定了后续 VMAX/XTARGET 写入，导致停车命令被忽略
+- 硬件验证通过，提交 5652bc3
 
 ### 2026-02-14 - 固件代码清理 (develop)
 - MotorControl.cpp debug 打印统一 DEBUG 宏
