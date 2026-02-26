@@ -80,9 +80,28 @@ class TeensyControlGUI(QMainWindow):
 
         # 标签页
         self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet(
-            "QTabBar::tab { font-size: 14px; font-weight: bold; padding: 6px 20px; }"
-        )
+        self.tab_widget.setStyleSheet("""
+            QTabBar::tab {
+                font-size: 18px;
+                font-weight: bold;
+                padding: 8px 28px;
+                color: #555;
+                border: 1px solid #ccc;
+                border-bottom: none;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                color: white;
+                background-color: #2980b9;
+                border-color: #2980b9;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #d5e8f0;
+                color: #2471a3;
+            }
+        """)
 
         # Tab 1: Motion — 轴控制 + 全轴状态
         motion_tab = self.create_motion_tab()
