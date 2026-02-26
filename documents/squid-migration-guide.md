@@ -230,43 +230,44 @@ bool is_homing_XY;
 ### 第 1 步：修复已知 Bug
 
 1. ~~修复单位问题（MOVETO 系列）~~ — 已重新评估，单位逻辑正确；变量名已清理（a104dee）
-2. 修复 handleHomeOrZero 轴映射（待重新应用，见 Bug 2）
+2. ~~修复 handleHomeOrZero 轴映射~~ — 已修复（e49baf1）：协议轴值 switch + findAxisByName，同时实现 ZERO 模式
 3. ~~补全 switch 中缺失的命令~~ — 已完成
 
 ### 第 2 步：添加全局状态变量
 
 ### 第 3 步：实现各命令（按优先级）
 
-#### 优先级 1：系统命令（无运动风险）
+#### 优先级 1：系统命令（无运动风险）✅ 已完成
 
-| 命令 | 码 | 旧架构位置 | 核心逻辑 |
-|------|----|-----------|---------|
-| `RESET` | 255 | `commands.cpp:261` | 清空所有运动/归位状态标志 |
-| `INITIALIZE` | 254 | `commands.cpp:211` | 重新初始化 TMC IC + 限位 + DAC，重置 trigger_mode |
+| 命令 | 码 | 状态 | 说明 |
+|------|----|------|------|
+| `RESET` | 255 | ✅ | 所有轴 handleReset() + trigger_mode=0 |
+| `INITIALIZE` | 254 | ✅ | DAC reinit + trigger_mode=0（TMC 不重复初始化）|
 
-#### 优先级 2：基础运动命令
+#### 优先级 2：基础运动命令 ✅ 已完成（基础实现）
 
-| 命令 | 码 | 旧架构位置 | 核心逻辑 |
-|------|----|-----------|---------|
-| `MOVE_X/Y/Z` | 0/1/2 | `stage_commands.cpp:3` | 相对位移，X/Y 需钳位 |
-| `MOVE_W/W2` | 4/19 | `stage_commands.cpp:59` | 相对位移，需 enable 检查 |
-| `MOVETO_X/Y/Z` | 6/7/8 | `stage_commands.cpp:69` | 绝对位置 |
-| `MOVETO_W` | 18 | `stage_commands.cpp:106` | 需 enable 检查 |
+| 命令 | 码 | 状态 | 说明 |
+|------|----|------|------|
+| `MOVE_X/Y/Z` | 0/1/2 | ✅ | axis->moveAxis(μm) |
+| `MOVE_W/W2` | 4/19 | ⚠️ | W 已实现；W2 为 stub（无第二滤光轮） |
+| `MOVETO_X/Y/Z` | 6/7/8 | ✅ | axis->moveToPosition(μm/1000) |
+| `MOVETO_W` | 18 | ✅ | 同上 |
+| `HOME_OR_ZERO` | 5 | ✅ | ZERO 模式 + HOME 模式（e49baf1）|
 
-**注意**：移动命令须设置 `X_commanded_movement_in_progress = true` 和 `mcu_cmd_execution_in_progress = true`。
+**注意**：新架构无全局 `mcu_cmd_execution_in_progress` 状态，运动状态由各 Axis 内部 `_isMoving` 管理。
 
 #### 优先级 3：运动配置命令
 
-| 命令 | 码 | 旧架构位置 | 核心逻辑 |
-|------|----|-----------|---------|
-| `SET_LIM` | 9 | `stage_commands.cpp:120` | 设虚拟限位并 enable |
-| `SET_MAX_VELOCITY_ACCELERATION` | 22 | `stage_commands.cpp:338` | 速度×100，加速度×10 |
-| `SET_LEAD_SCREW_PITCH` | 23 | `stage_commands.cpp:392` | 螺距×1000 |
-| `CONFIGURE_STEPPER_DRIVER` | 21 | `stage_commands.cpp:261` | 微步/电流/保持电流 |
-| `SET_LIM_SWITCH_POLARITY` | 20 | `stage_commands.cpp:169` | 限位极性 |
-| `SET_HOME_SAFETY_MERGIN` | 28 | `stage_commands.cpp:200` | 安全裕量 mm×1000 |
-| `SET_OFFSET_VELOCITY` | 24 | `stage_commands.cpp:789` | 偏移速度×10⁶ |
-| `SET_AXIS_DISABLE_ENABLE` | 32 | `commands.cpp:191` | 使能/禁用驱动 |
+| 命令 | 码 | 状态 | 说明 |
+|------|----|------|------|
+| `SET_LIM` | 9 | ⏳ | 需 Axis 单侧软限位 API；待实现 |
+| `SET_MAX_VELOCITY_ACCELERATION` | 22 | ✅ | axis->setMotionParameters(vel÷100, acc÷10)（e49baf1）|
+| `SET_LEAD_SCREW_PITCH` | 23 | ⏳ | 需修改 Axis 内部 config；stub |
+| `CONFIGURE_STEPPER_DRIVER` | 21 | ⏳ | 需修改 Axis 内部 config；stub |
+| `SET_LIM_SWITCH_POLARITY` | 20 | ⏳ | 需 Axis 动态极性更新；stub |
+| `SET_HOME_SAFETY_MERGIN` | 28 | ⏳ | 需 Axis 安全裕量更新；stub |
+| `SET_OFFSET_VELOCITY` | 24 | ⏳ | 新架构暂未实现偏移速度；stub |
+| `SET_AXIS_DISABLE_ENABLE` | 32 | ✅ | axis->disableAxis()/enableAxis()（e49baf1）|
 
 #### 优先级 4：Homing 状态机
 
@@ -312,17 +313,17 @@ finalize_homing_*() — 移到 latch 位置，设零，恢复 PID
 | `SET_MULTI_PORT_MASK` | 38 | ✅ |
 | `TURN_OFF_ALL_PORTS` | 39 | ✅ |
 
-#### 优先级 7：相机触发 / DAC / IO
+#### 优先级 7：相机触发 / DAC / IO ✅ 已完成
 
-| 命令 | 码 | 旧架构位置 |
-|------|----|-----------|
-| `SEND_HARDWARE_TRIGGER` | 30 | `commands.cpp:85` |
-| `SET_STROBE_DELAY` | 31 | `commands.cpp:80` |
-| `SET_TRIGGER_MODE` | 33 | `commands.cpp:205` |
-| `ANALOG_WRITE_ONBOARD_DAC` | 15 | `commands.cpp:66` |
-| `SET_DAC80508_REFDIV_GAIN` | 16 | `commands.cpp:73` |
-| `SET_PIN_LEVEL` | 41 | `commands.cpp:100` |
-| `ACK_JOYSTICK_BUTTON_PRESSED` | 14 | `commands.cpp:61` |
+| 命令 | 码 | 状态 |
+|------|----|------|
+| `SEND_HARDWARE_TRIGGER` | 30 | ✅ |
+| `SET_STROBE_DELAY` | 31 | ✅ |
+| `SET_TRIGGER_MODE` | 33 | ✅ |
+| `ANALOG_WRITE_ONBOARD_DAC` | 15 | ✅ |
+| `SET_DAC80508_REFDIV_GAIN` | 16 | ✅ |
+| `SET_PIN_LEVEL` | 41 | ✅ |
+| `ACK_JOYSTICK_BUTTON_PRESSED` | 14 | ✅ |
 
 ---
 
