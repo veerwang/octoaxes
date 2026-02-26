@@ -65,21 +65,10 @@ void CommandProcessor::handleMoveW(const byte *data) {
 }
 
 void CommandProcessor::handleHomeOrZero(const byte *data) {
-  // data[2]: 协议轴值 0=X,1=Y,2=Z,5=W,6=W2（不等于内部数组下标）
-  const char *axisName = nullptr;
-  switch (data[2]) {
-    case 0: axisName = "X";  break;
-    case 1: axisName = "Y";  break;
-    case 2: axisName = "Z";  break;
-    case 5: axisName = "W";  break;
-    case 6: axisName = "W2"; break;
-    default: break;
-  }
-  if (axisName) {
-    Axis *axis = axisManager.findAxisByName(axisName);
-    if (axis)
-      axis->startHoming();
-  }
+  // TODO: 实现 HOME_OR_ZERO 命令处理
+  Axis *axis = axisManager.getAxis(data[2]);
+  if (axis)
+    axis->startHoming();
 }
 
 void CommandProcessor::handleMoveToX(const byte *data) {
