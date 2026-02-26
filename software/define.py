@@ -11,6 +11,16 @@ OBJECTIVE_RATIO = OBJECTIVE_GEAR_LARGE / OBJECTIVE_GEAR_SMALL
 SCREW_PITCH_W_MM = 1
 
 
+class AXIS:
+    """协议轴值（与旧 Squid AXIS 类一致）"""
+    X  = 0
+    Y  = 1
+    Z  = 2
+    XY = 4   # 联合归位专用
+    W  = 5
+    W2 = 6
+
+
 class CMD_SET:
     # 相对移动命令
     MOVE_X = 0

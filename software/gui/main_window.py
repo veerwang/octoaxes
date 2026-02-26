@@ -3,7 +3,7 @@ import datetime
 import os
 from typing import Optional
 
-from define import CMD_SET, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP
+from define import CMD_SET, AXIS, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP
 
 CMDS = CMD_SET
 from define import OBJECTIVE_RATIO, SCREW_PITCH_W_MM, OBJECTIVE_HOLES
@@ -439,20 +439,16 @@ class TeensyControlGUI(QMainWindow):
     def enable_axis(self):
         """使能轴"""
         current_axis = self.get_current_axis()
-        command = format_command(current_axis, "ENABLE")
-        if self.send_command(command, "Sent enable command"):
+        if self._set_axis_enable(current_axis, True):
             self.log(f"Axis {current_axis} enabled")
-            # 更新轴状态显示
             self.axis_manager.update_axis_status(current_axis, {"enabled": "YES"})
             self.update_current_axis_display(current_axis)
 
     def disable_axis(self):
         """禁用轴"""
         current_axis = self.get_current_axis()
-        command = format_command(current_axis, "DISABLE")
-        if self.send_command(command, "Sent disable command"):
+        if self._set_axis_enable(current_axis, False):
             self.log(f"Axis {current_axis} disabled")
-            # 更新轴状态显示
             self.axis_manager.update_axis_status(current_axis, {"enabled": "NO"})
             self.update_current_axis_display(current_axis)
 
@@ -671,10 +667,16 @@ class TeensyControlGUI(QMainWindow):
     def send_homing(self):
         """发送 Homing 命令到当前轴"""
         axis = self.get_current_axis()
-        axis_index = int(AXIS_CONFIG[axis]["index"])
+
+        # 使用协议轴值（与旧 Squid AXIS 类一致），不是固件内部数组索引
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W}
+        protocol_axis = _AXIS_PROTOCOL.get(axis)
+        if protocol_axis is None:
+            self.log(f"Axis {axis} does not support homing")
+            return
 
         # 使用二进制命令发送 Homing
-        self._home_or_zero(axis_index)
+        self._home_or_zero(protocol_axis)
 
         # 更新状态
         self.axis_manager.axis_status[axis]["state"] = "HOMING_INIT"
@@ -927,6 +929,22 @@ class TeensyControlGUI(QMainWindow):
         cmd[2] = axis_index
         cmd[3] = 0
         self.serial_thread.send_binary_command(cmd)
+
+    def _set_axis_enable(self, axis_name, enable):
+        """发送 SET_AXIS_DISABLE_ENABLE 二进制命令，返回是否成功"""
+        if self.serial_thread is None:
+            return False
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W}
+        protocol_axis = _AXIS_PROTOCOL.get(axis_name)
+        if protocol_axis is None:
+            self.log(f"Axis {axis_name} does not support enable/disable via binary protocol")
+            return False
+        cmd = bytearray(8)
+        cmd[1] = CMD_SET.SET_AXIS_DISABLE_ENABLE
+        cmd[2] = protocol_axis
+        cmd[3] = 1 if enable else 0
+        self.serial_thread.send_binary_command(cmd)
+        return True
 
     def move_axis(self, is_forward: bool) -> None:
         """相对位移移动
