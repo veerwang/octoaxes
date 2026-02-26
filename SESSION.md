@@ -6,36 +6,40 @@
 
 ## 最新会话
 
-**日期**: 2026-02-26（续）
+**日期**: 2026-02-26（续 2）
 **分支**: develop
-**位置**: 相机触发系统移植 + 上位机 UI 标签化重构
+**位置**: 运动配置命令移植 + 兼容性目标文档化
 
 ### 本次完成
 
-#### 1. 相机触发系统移植（686b9a5）
+#### 1. 优先级 3 运动配置命令实现（5 个）
 
-新建 `trigger.h`/`trigger.cpp` 模块，实现 4 路相机触发脉冲管理和频闪照明控制。
-实现 6 个命令 handler：SEND_HARDWARE_TRIGGER(30)、SET_STROBE_DELAY(31)、SET_TRIGGER_MODE(33)、ANALOG_WRITE_ONBOARD_DAC(15)、SET_PIN_LEVEL(41)、ACK_JOYSTICK_BUTTON_PRESSED(14)。
+Axis 类新增运行时配置方法：`setOneSoftLimit`、`setLeadScrewPitch`、`configureDriver`、`setHomeSafetyMargin`、`getIcID`/`getConfig`/`getMutableConfig`。
+
+CommandProcessor 实现 5 个 handler（对照旧架构 `stage_commands.cpp` 逐函数移植）：
+- **SET_LIM(9)** — LIM_CODE→轴+方向，逐侧设置虚拟限位+使能
+- **SET_LIM_SWITCH_POLARITY(20)** — 更新 config 极性，DISABLED=2 忽略
+- **CONFIGURE_STEPPER_DRIVER(21)** — 微步(0→1,>128→256) + 电流 + motor_initDriver 重配
+- **SET_LEAD_SCREW_PITCH(23)** — 更新 screwPitchMM + stepsPerMM 缓存
+- **SET_HOME_SAFETY_MERGIN(28)** — 更新裕量 + 重调 motor_enableHomingLimit
+
 编译通过。
 
-#### 2. 上位机 UI 标签化重构
+#### 2. 兼容性目标文档化
 
-将 `main_window.py` 的单页面布局改为 `QTabWidget` 三标签页：
-- **Motion** — 轴控制面板 + 全轴状态表
-- **Illumination** — 照明面板（独占标签页，空间更充裕）
-- **Log** — 已发送命令 + 日志 + 重连按钮
-
-顶部状态栏和 Engine Start 按钮常驻在标签页上方。
-纯布局调整，零逻辑变更。
+迁移指南新增第 0 节「兼容性目标」：
+- 核心原则：旧 Squid Python 上位机（`microcontroller.py`）不改一行代码，换固件即可工作
+- 列出旧上位机 6 个关键方法的参数编码对照表
+- 定义最终验证流程：`configure_actuators()` → homing → 运动 → 软限位
 
 ### 下次继续
 
-1. **硬件测试触发系统**（示波器验证 pin 29-32 脉冲波形）
-2. **硬件验证 TTL 端口 + DAC**（D1-D5 通断 + DAC80508 模拟强度）
-3. **重新确认并应用 Bug 2 修复**（handleHomeOrZero 轴映射）
-4. **去掉 StepAxis homing debug 打印**（确认稳定后）
-5. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-6. **后续移植批次**：响应机制决策 + motion 命令完善
+1. **旧上位机兼容性验证**（用 Squid Python 连接 Octoaxes 固件，跑 configure_actuators）
+2. **响应机制决策**（10ms 周期上报 vs 命令-响应，上位机依赖哪种？）
+3. **Bug 2 重新应用**（handleHomeOrZero 轴映射）
+4. **硬件测试触发 + 照明系统**
+5. **去掉 homing debug 打印**（确认稳定后）
+6. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
 
 ---
 

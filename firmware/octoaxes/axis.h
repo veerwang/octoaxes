@@ -162,6 +162,18 @@ public:
   // 限位设置
   virtual void setSoftLimits(float lowerLimitMM, float upperLimitMM);
   virtual void enableSoftLimits(bool enable);
+  void setOneSoftLimit(int direction, int32_t valueMicrosteps);
+
+  // 运行时配置更新
+  void setLeadScrewPitch(float pitchMM);
+  void configureDriver(uint16_t microstepping, float currentMA,
+                        float holdCurrentRatio);
+  void setHomeSafetyMargin(float marginMM);
+
+  // 配置访问
+  uint8_t getIcID() const { return _icID; }
+  const AxisConfig &getConfig() const { return _config; }
+  AxisConfig &getMutableConfig() { return _config; }
 
   // 状态查询
   virtual AxisState getCurrentState() const;

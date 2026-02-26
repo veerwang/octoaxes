@@ -609,6 +609,67 @@ void Axis::enableSoftLimits(bool enable) {
   motor_enableSoftLimits(_icID, enable, enable);
 }
 
+// 设置单侧软限位 (direction: +1=上限/右, -1=下限/左)
+void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
+  uint32_t refConf = tmc4361A_readRegister(_icID, TMC4361A_REFERENCE_CONF);
+  if (direction > 0) {
+    tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_RIGHT, valueMicrosteps);
+    refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
+    refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
+  } else {
+    tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_LEFT, valueMicrosteps);
+    refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
+    refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
+  }
+  tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
+}
+
+// 运行时更新丝杆导程
+void Axis::setLeadScrewPitch(float pitchMM) {
+  _config.screwPitchMM = pitchMM;
+  motorParams[_icID].screwPitchMM = pitchMM;
+  motorParams[_icID].stepsPerMM =
+      (float)(motorParams[_icID].fullStepsPerRev * motorParams[_icID].microsteps) /
+      pitchMM;
+}
+
+// 运行时重新配置步进驱动器（微步 + 电流）
+void Axis::configureDriver(uint16_t microstepping, float currentMA,
+                            float holdCurrentRatio) {
+  _config.microstepping = microstepping;
+  _config.motorCurrentMA = currentMA;
+  _config.holdCurrent = holdCurrentRatio;
+
+  // 更新 TMC4361A 控制器侧微步 + stepsPerMM 缓存
+  motor_setMicrosteps(_icID, microstepping);
+
+  // 重新初始化 TMC2660 驱动器（电流 + chopper 参数）
+  MotorConfig motorConfig = {
+      .rSense = _config.r_sense,
+      .runCurrentMA = currentMA,
+      .holdCurrentRatio = holdCurrentRatio,
+      .microstepRes = 0,
+      .interpolation = true,
+      .toff = 3,
+      .hstrt = 4,
+      .hend = -2,
+      .tbl = 2,
+      .stallThreshold = (int8_t)_config.stallSensitivity,
+      .stallFilter = true};
+  motor_initDriver(_icID, &motorConfig);
+
+  // 微步变化导致 stepsPerMM 变化，重新计算运动参数
+  setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
+}
+
+// 运行时更新 homing 安全裕量
+void Axis::setHomeSafetyMargin(float marginMM) {
+  _config.homeSafetyMarginMM = marginMM;
+  motor_enableHomingLimit(_icID, _config.rightSwitchPolarity,
+                          _config.homingSwitch,
+                          mmToMicrosteps(marginMM));
+}
+
 // 获取当前状态
 AxisState Axis::getCurrentState() const { return _currentState; }
 

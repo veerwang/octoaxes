@@ -5,6 +5,39 @@
 - 旧架构: `/home/hds/github.com/veerwang/lihongquan/Squid/firmware/controller/`
 - 新架构: `/home/hds/gitee.com/octoaxes/firmware/octoaxes/`
 - 驱动逻辑文档: `squid_controller_driver_logic.md`
+- 旧上位机: `/home/hds/github.com/veerwang/lihongquan/Squid/software/`
+
+---
+
+## 0. 兼容性目标
+
+**移植核心原则：旧 Squid Python 上位机不改一行代码，换固件即可正常工作。**
+
+Octoaxes 固件必须完全兼容 Squid 上位机（`microcontroller.py`）的二进制协议：
+- 8 字节命令包格式不变（见第 2 节）
+- 24 字节响应包格式不变
+- 所有命令码和参数编码与旧固件一致
+- `configure_actuators()` 启动序列正常运行（SET_LEAD_SCREW_PITCH → CONFIGURE_STEPPER_DRIVER → SET_MAX_VELOCITY_ACCELERATION → SET_LIM_SWITCH_POLARITY → SET_HOME_SAFETY_MERGIN 逐轴配置）
+
+### 验证方法
+
+最终验证：用旧 Squid 上位机连接 Octoaxes 固件，执行以下流程：
+1. `configure_actuators()` — 发送丝杆导程、驱动参数、速度加速度、限位极性、安全裕量
+2. `home(AXIS.X)` / `home(AXIS.Y)` / `home(AXIS.Z)` — 归位
+3. `move_x()` / `move_y()` / `move_z()` — 相对移动
+4. `set_lim()` — 软限位设置
+5. 照明 + 触发命令正常
+
+### 旧上位机关键调用参考
+
+| 旧上位机方法 (`microcontroller.py`) | 命令码 | 参数编码 |
+|-------------------------------------|--------|---------|
+| `set_lim(limit_code, usteps)` | 9 | `data[2]=LIM_CODE, data[3..6]=微步(大端序)` |
+| `set_limit_switch_polarity(axis, polarity)` | 20 | `data[2]=轴, data[3]=极性(0/1/2)` |
+| `configure_motor_driver(axis, μstep, I_rms, I_hold)` | 21 | `data[2]=轴, data[3]=微步(0→1,255→256), data[4..5]=电流mA, data[6]=hold×255` |
+| `set_leadscrew_pitch(axis, pitch_mm)` | 23 | `data[2]=轴, data[3..4]=pitch×1000` |
+| `set_home_safety_margin(axis, margin)` | 28 | `data[2]=轴, data[3..4]=margin(uint16, ×1000 mm)` |
+| `set_max_velocity_acceleration(axis, vel, acc)` | 22 | `data[2]=轴, data[3..4]=vel×100, data[5..6]=acc×10` |
 
 ---
 
@@ -260,12 +293,12 @@ bool is_homing_XY;
 
 | 命令 | 码 | 状态 | 说明 |
 |------|----|------|------|
-| `SET_LIM` | 9 | ⏳ | 需 Axis 单侧软限位 API；待实现 |
+| `SET_LIM` | 9 | ✅ | LIM_CODE→轴+方向，axis->setOneSoftLimit() 逐侧设置+使能 |
 | `SET_MAX_VELOCITY_ACCELERATION` | 22 | ✅ | axis->setMotionParameters(vel÷100, acc÷10)（e49baf1）|
-| `SET_LEAD_SCREW_PITCH` | 23 | ⏳ | 需修改 Axis 内部 config；stub |
-| `CONFIGURE_STEPPER_DRIVER` | 21 | ⏳ | 需修改 Axis 内部 config；stub |
-| `SET_LIM_SWITCH_POLARITY` | 20 | ⏳ | 需 Axis 动态极性更新；stub |
-| `SET_HOME_SAFETY_MERGIN` | 28 | ⏳ | 需 Axis 安全裕量更新；stub |
+| `SET_LEAD_SCREW_PITCH` | 23 | ✅ | axis->setLeadScrewPitch()，更新 config + motorParams 缓存 |
+| `CONFIGURE_STEPPER_DRIVER` | 21 | ✅ | axis->configureDriver()，微步(0→1,>128→256) + 电流 + 保持比 |
+| `SET_LIM_SWITCH_POLARITY` | 20 | ✅ | 更新 config.left/rightSwitchPolarity，DISABLED=2 时忽略 |
+| `SET_HOME_SAFETY_MERGIN` | 28 | ✅ | axis->setHomeSafetyMargin()，重新调用 motor_enableHomingLimit |
 | `SET_OFFSET_VELOCITY` | 24 | ⏳ | 新架构暂未实现偏移速度；stub |
 | `SET_AXIS_DISABLE_ENABLE` | 32 | ✅ | axis->disableAxis()/enableAxis()（e49baf1）|
 

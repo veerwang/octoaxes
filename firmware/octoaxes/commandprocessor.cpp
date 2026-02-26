@@ -10,6 +10,19 @@ static const int HOME_POSITIVE     = 0;
 static const int HOME_NEGATIVE     = 1;
 static const int HOME_OR_ZERO_ZERO = 2;
 
+// SET_LIM 限位码
+static const int LIM_CODE_X_POSITIVE = 0;
+static const int LIM_CODE_X_NEGATIVE = 1;
+static const int LIM_CODE_Y_POSITIVE = 2;
+static const int LIM_CODE_Y_NEGATIVE = 3;
+static const int LIM_CODE_Z_POSITIVE = 4;
+static const int LIM_CODE_Z_NEGATIVE = 5;
+
+// 限位开关极性
+static const int POLARITY_ACTIVE_LOW  = 0;
+static const int POLARITY_ACTIVE_HIGH = 1;
+static const int POLARITY_DISABLED    = 2;
+
 // 协议轴值 → 轴名称（nullptr = 无效轴）
 static const char* protocolAxisToName(uint8_t protocolAxis) {
   switch (protocolAxis) {
@@ -154,8 +167,23 @@ void CommandProcessor::handleMoveToZ(const byte *data) {
 }
 
 void CommandProcessor::handleSetLim(const byte *data) {
-  // TODO: 实现 SET_LIM 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_LIM");
+  // data[2]: LIM_CODE (0-5), data[3..6]: 限位值 (微步, 32bit 大端序)
+  int32_t value = int32_t((uint32_t(data[3]) << 24) | (uint32_t(data[4]) << 16) |
+                          (uint32_t(data[5]) << 8)  |  uint32_t(data[6]));
+  const char *axisName = nullptr;
+  int direction = 0;
+  switch (data[2]) {
+    case LIM_CODE_X_POSITIVE: axisName = "X"; direction =  1; break;
+    case LIM_CODE_X_NEGATIVE: axisName = "X"; direction = -1; break;
+    case LIM_CODE_Y_POSITIVE: axisName = "Y"; direction =  1; break;
+    case LIM_CODE_Y_NEGATIVE: axisName = "Y"; direction = -1; break;
+    case LIM_CODE_Z_POSITIVE: axisName = "Z"; direction =  1; break;
+    case LIM_CODE_Z_NEGATIVE: axisName = "Z"; direction = -1; break;
+    default: return;
+  }
+  Axis *axis = axisManager.findAxisByName(axisName);
+  if (axis)
+    axis->setOneSoftLimit(direction, value);
 }
 
 void CommandProcessor::handleTurnOnIllumination(const byte *data) {
@@ -248,13 +276,36 @@ void CommandProcessor::handleMoveToW(const byte *data) {
 }
 
 void CommandProcessor::handleSetLimSwitchPolarity(const byte *data) {
-  // TODO: 实现 SET_LIM_SWITCH_POLARITY 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_LIM_SWITCH_POLARITY");
+  // data[2]: 协议轴; data[3]: 极性 (0=ACTIVE_LOW, 1=ACTIVE_HIGH, 2=DISABLED)
+  if (data[3] == POLARITY_DISABLED)
+    return;
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (!axis) return;
+  uint8_t polarity = data[3];
+  axis->getMutableConfig().leftSwitchPolarity = polarity;
+  axis->getMutableConfig().rightSwitchPolarity = polarity;
 }
 
 void CommandProcessor::handleConfigureStepperDriver(const byte *data) {
-  // TODO: 实现 CONFIGURE_STEPPER_DRIVER 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: CONFIGURE_STEPPER_DRIVER");
+  // data[2]: 协议轴; data[3]: 微步; data[4..5]: RMS 电流 (mA); data[6]: 保持电流 (0-255)
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (!axis) return;
+
+  // 微步特殊处理: 0→1, 1-128→原值, >128→256
+  int microstepping = data[3];
+  if (microstepping > 128)
+    microstepping = 256;
+  if (microstepping == 0)
+    microstepping = 1;
+
+  float currentMA = float((uint16_t(data[4]) << 8) | uint16_t(data[5]));
+  float holdRatio = float(data[6]) / 255.0f;
+
+  axis->configureDriver((uint16_t)microstepping, currentMA, holdRatio);
 }
 
 void CommandProcessor::handleSetMaxVelocityAcceleration(const byte *data) {
@@ -269,8 +320,14 @@ void CommandProcessor::handleSetMaxVelocityAcceleration(const byte *data) {
 }
 
 void CommandProcessor::handleSetLeadScrewPitch(const byte *data) {
-  // TODO: 实现 SET_LEAD_SCREW_PITCH 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_LEAD_SCREW_PITCH");
+  // data[2]: 协议轴; data[3..4]: 螺距×1000 (uint16, mm)
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (!axis) return;
+
+  float pitchMM = float((uint16_t(data[3]) << 8) | uint16_t(data[4])) / 1000.0f;
+  axis->setLeadScrewPitch(pitchMM);
 }
 
 void CommandProcessor::handleSetOffsetVelocity(const byte *data) {
@@ -294,8 +351,14 @@ void CommandProcessor::handleDisableStagePID(const byte *data) {
 }
 
 void CommandProcessor::handleSetHomeSafetyMargin(const byte *data) {
-  // TODO: 实现 SET_HOME_SAFETY_MERGIN 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_HOME_SAFETY_MARGIN");
+  // data[2]: 协议轴; data[3..4]: 裕量×1000 (uint16, mm)
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (!axis) return;
+
+  float marginMM = float((uint16_t(data[3]) << 8) | uint16_t(data[4])) / 1000.0f;
+  axis->setHomeSafetyMargin(marginMM);
 }
 
 void CommandProcessor::handleSetPIDArguments(const byte *data) {
