@@ -163,6 +163,7 @@ class ControlPanel(QGroupBox):
 
     enable_toggled = pyqtSignal(bool)  # 新增：使能状态切换信号
     axis_changed = pyqtSignal(str)
+    velocity_accel_set = pyqtSignal(float, float)  # vel_mm_s, acc_mm_s2
 
     def __init__(self):
         super().__init__("Motor Control")
@@ -176,6 +177,9 @@ class ControlPanel(QGroupBox):
         # 存储不同轴类型的绝对位置值（um单位）
         self.abs_um_values = {}  # Z和E3轴的um绝对位置值
         self.abs_mm_values = {}  # X和Y轴的mm绝对位置值
+        # 存储不同轴的速度/加速度值
+        self.vel_values = {}
+        self.acc_values = {}
 
         self.init_ui()
         # 初始设置，延迟执行以确保UI完全加载
@@ -286,6 +290,31 @@ class ControlPanel(QGroupBox):
         layout.addWidget(self.abs_widget)
 
         self.abs_widget.setVisible(True)
+
+        # 速度 / 加速度设置
+        vel_acc_layout = QHBoxLayout()
+        vel_acc_layout.addWidget(QLabel("Vel (mm/s):"))
+        self.vel_input = QLineEdit("25.0")
+        self.vel_input.setMaximumWidth(65)
+        v = QDoubleValidator(0.01, 655.0, 2)
+        v.setNotation(QDoubleValidator.StandardNotation)
+        self.vel_input.setValidator(v)
+        vel_acc_layout.addWidget(self.vel_input)
+
+        vel_acc_layout.addWidget(QLabel("Acc (mm/s²):"))
+        self.acc_input = QLineEdit("500.0")
+        self.acc_input.setMaximumWidth(70)
+        a = QDoubleValidator(0.1, 6553.0, 1)
+        a.setNotation(QDoubleValidator.StandardNotation)
+        self.acc_input.setValidator(a)
+        vel_acc_layout.addWidget(self.acc_input)
+
+        self.vel_acc_apply_btn = QPushButton("Apply")
+        self.vel_acc_apply_btn.setMaximumWidth(55)
+        self.vel_acc_apply_btn.clicked.connect(self.emit_vel_acc)
+        vel_acc_layout.addWidget(self.vel_acc_apply_btn)
+        vel_acc_layout.addStretch()
+        layout.addLayout(vel_acc_layout)
 
         layout.addStretch()
         return page
@@ -493,6 +522,18 @@ class ControlPanel(QGroupBox):
         except ValueError:
             pass
 
+    def emit_vel_acc(self):
+        """发射速度/加速度设置信号"""
+        try:
+            vel = float(self.vel_input.text())
+            acc = float(self.acc_input.text())
+            if vel > 0 and acc > 0:
+                self.vel_values[self.current_axis] = vel
+                self.acc_values[self.current_axis] = acc
+                self.velocity_accel_set.emit(vel, acc)
+        except ValueError:
+            pass
+
     def on_page_changed(self, index):
         """页面切换时的处理"""
         pass
@@ -571,6 +612,12 @@ class ControlPanel(QGroupBox):
                         self.abs_pos_edit.setText(str(self.abs_mm_values[axis]))
                     else:
                         self.abs_pos_edit.setText("0.000")
+
+                # 加载该轴的速度/加速度（用缓存值或 AXIS_CONFIG 默认值）
+                default_vel = AXIS_CONFIG.get(axis, {}).get("default_velocity", 5.0)
+                default_acc = AXIS_CONFIG.get(axis, {}).get("default_acceleration", 100.0)
+                self.vel_input.setText(str(self.vel_values.get(axis, default_vel)))
+                self.acc_input.setText(str(self.acc_values.get(axis, default_acc)))
 
         except Exception as e:
             print(f"Error switching control panel: {e}")

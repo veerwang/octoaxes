@@ -12,6 +12,8 @@ AXIS_CONFIG = {
         "limits": (-80000, 80000),
         "movement_sign": 1,
         "index": 1,  # X 轴 index=1
+        "default_velocity": 25.0,      # mm/s
+        "default_acceleration": 500.0, # mm/s²
     },
     "Y": {
         "display_name": "Step Motor - y_axis",
@@ -20,6 +22,8 @@ AXIS_CONFIG = {
         "limits": (-120000, 120000),
         "movement_sign": 1,
         "index": 0,  # Y 轴 index=0
+        "default_velocity": 25.0,
+        "default_acceleration": 500.0,
     },
     "Z": {
         "display_name": "Step Motor - z_axis",
@@ -28,6 +32,8 @@ AXIS_CONFIG = {
         "limits": (-6000, 6000),
         "movement_sign": -1,
         "index": 2,
+        "default_velocity": 3.0,
+        "default_acceleration": 20.0,
     },
     "W": {
         "display_name": "Filter Wheel 1 - w_axis",
