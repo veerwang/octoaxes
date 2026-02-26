@@ -658,53 +658,54 @@ class IlluminationPanel(QGroupBox):
 
     def __init__(self):
         super().__init__("Illumination")
-        self.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
-        # 保存每个端口的当前强度（0-100）
+        # 只影响标题字体，不传播给子控件
+        self.setStyleSheet(
+            "QGroupBox::title { font-weight: bold; font-size: 13px; }"
+        )
         self._port_intensity_pct = [50] * 5
-        # 保存每个端口的开关状态
         self._port_on = [False] * 5
         self._init_ui()
 
     def _init_ui(self):
+        from PyQt5.QtWidgets import QSizePolicy
         root = QVBoxLayout(self)
-        root.setSpacing(6)
+        root.setSpacing(4)
+        root.setContentsMargins(6, 14, 6, 6)
 
         # ── 全局控制行 ───────────────────────────────────────
         global_layout = QHBoxLayout()
+        global_layout.setSpacing(4)
 
-        # 强度因子
         global_layout.addWidget(QLabel("Global Factor:"))
+
         self._factor_slider = QSlider(Qt.Horizontal)
         self._factor_slider.setRange(0, 100)
         self._factor_slider.setValue(60)
-        self._factor_slider.setFixedWidth(110)
+        self._factor_slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._factor_slider.setMinimumWidth(80)
         self._factor_slider.valueChanged.connect(self._on_factor_changed)
-        global_layout.addWidget(self._factor_slider)
+        global_layout.addWidget(self._factor_slider, stretch=2)
 
         self._factor_label = QLabel("60%")
-        self._factor_label.setFixedWidth(36)
+        self._factor_label.setFixedWidth(32)
         global_layout.addWidget(self._factor_label)
 
         apply_factor_btn = QPushButton("Apply")
-        apply_factor_btn.setFixedWidth(52)
+        apply_factor_btn.setFixedWidth(48)
         apply_factor_btn.clicked.connect(self._send_factor)
         global_layout.addWidget(apply_factor_btn)
 
-        global_layout.addStretch()
-
         # 全部关闭
-        off_all_btn = QPushButton("Turn Off All")
+        off_all_btn = QPushButton("All OFF")
         off_all_btn.setStyleSheet(
             "background-color: #c0392b; color: white; font-weight: bold;"
         )
-        off_all_btn.setFixedWidth(100)
+        off_all_btn.setMinimumWidth(68)
         off_all_btn.clicked.connect(self._on_turn_off_all)
         global_layout.addWidget(off_all_btn)
 
         root.addLayout(global_layout)
-
-        # ── 分割线 ────────────────────────────────────────────
-        root.addWidget(self._make_divider("TTL Ports"))
+        root.addWidget(self._make_divider())
 
         # ── 五个 TTL 端口行 ────────────────────────────────────
         self._port_btns = []
@@ -712,87 +713,88 @@ class IlluminationPanel(QGroupBox):
         self._port_pct_labels = []
 
         ports_grid = QGridLayout()
-        ports_grid.setVerticalSpacing(4)
+        ports_grid.setVerticalSpacing(3)
+        ports_grid.setHorizontalSpacing(4)
+        ports_grid.setColumnStretch(1, 1)   # 滑条列自动拉伸
 
         for i, name in enumerate(self.PORT_NAMES):
-            # 名称
             lbl = QLabel(name)
-            lbl.setFixedWidth(110)
+            lbl.setMinimumWidth(85)
             ports_grid.addWidget(lbl, i, 0)
 
-            # 强度滑条
             slider = QSlider(Qt.Horizontal)
             slider.setRange(0, 100)
             slider.setValue(self._port_intensity_pct[i])
-            slider.setFixedWidth(130)
+            slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            slider.setMinimumWidth(60)
             slider.valueChanged.connect(lambda v, idx=i: self._on_port_slider(idx, v))
             ports_grid.addWidget(slider, i, 1)
             self._port_sliders.append(slider)
 
-            # 百分比数值
             pct_lbl = QLabel(f"{self._port_intensity_pct[i]}%")
-            pct_lbl.setFixedWidth(36)
+            pct_lbl.setFixedWidth(34)
             pct_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             ports_grid.addWidget(pct_lbl, i, 2)
             self._port_pct_labels.append(pct_lbl)
 
-            # ON/OFF 切换按钮
             btn = QPushButton("OFF")
             btn.setCheckable(True)
             btn.setChecked(False)
-            btn.setFixedWidth(54)
+            btn.setFixedWidth(46)
             self._set_port_btn_style(btn, False)
             btn.toggled.connect(lambda checked, idx=i: self._on_port_toggle(idx, checked))
             ports_grid.addWidget(btn, i, 3)
             self._port_btns.append(btn)
 
         root.addLayout(ports_grid)
-
-        # ── 分割线 ────────────────────────────────────────────
-        root.addWidget(self._make_divider("LED Matrix"))
+        root.addWidget(self._make_divider())
 
         # ── LED 矩阵控制 ──────────────────────────────────────
         matrix_layout = QVBoxLayout()
-        matrix_layout.setSpacing(4)
+        matrix_layout.setSpacing(3)
 
-        # 图案选择
         pat_row = QHBoxLayout()
+        pat_row.setSpacing(4)
         pat_row.addWidget(QLabel("Pattern:"))
         self._pattern_combo = QComboBox()
         for code, label in self.LED_PATTERNS:
             self._pattern_combo.addItem(label, code)
-        self._pattern_combo.setMinimumWidth(200)
-        pat_row.addWidget(self._pattern_combo)
-        pat_row.addStretch()
+        self._pattern_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        pat_row.addWidget(self._pattern_combo, stretch=1)
         matrix_layout.addLayout(pat_row)
 
-        # R/G/B 滑条
+        # R/G/B 滑条（共用 QGridLayout 对齐）
+        rgb_grid = QGridLayout()
+        rgb_grid.setVerticalSpacing(3)
+        rgb_grid.setHorizontalSpacing(4)
+        rgb_grid.setColumnStretch(1, 1)
         self._rgb_sliders = []
         self._rgb_labels  = []
-        for ch_name, default in [("R", 255), ("G", 255), ("B", 255)]:
-            row = QHBoxLayout()
-            row.addWidget(QLabel(f"  {ch_name}:"))
+        for row_i, (ch_name, default) in enumerate([("R", 255), ("G", 255), ("B", 255)]):
+            rgb_grid.addWidget(QLabel(f"{ch_name}:"), row_i, 0)
             sl = QSlider(Qt.Horizontal)
             sl.setRange(0, 255)
             sl.setValue(default)
-            sl.setFixedWidth(160)
+            sl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            sl.setMinimumWidth(60)
             sl.valueChanged.connect(self._update_color_preview)
-            row.addWidget(sl)
+            rgb_grid.addWidget(sl, row_i, 1)
             val_lbl = QLabel(str(default))
-            val_lbl.setFixedWidth(28)
+            val_lbl.setFixedWidth(30)
             val_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             sl.valueChanged.connect(lambda v, lbl=val_lbl: lbl.setText(str(v)))
-            row.addWidget(val_lbl)
-            row.addStretch()
-            matrix_layout.addLayout(row)
+            rgb_grid.addWidget(val_lbl, row_i, 2)
             self._rgb_sliders.append(sl)
             self._rgb_labels.append(val_lbl)
+        matrix_layout.addLayout(rgb_grid)
 
-        # 颜色预览 + 按钮
         ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(4)
         self._color_preview = QLabel()
-        self._color_preview.setFixedSize(30, 24)
-        self._color_preview.setStyleSheet("background-color: rgb(255,255,255); border: 1px solid #888;")
+        self._color_preview.setFixedSize(28, 22)
+        self._color_preview.setStyleSheet(
+            "background-color: rgb(255,255,255); border: 1px solid #888;"
+        )
         ctrl_row.addWidget(self._color_preview)
 
         set_matrix_btn = QPushButton("Set Matrix")
@@ -803,7 +805,7 @@ class IlluminationPanel(QGroupBox):
         ctrl_row.addWidget(set_matrix_btn)
 
         clear_matrix_btn = QPushButton("Clear")
-        clear_matrix_btn.setFixedWidth(52)
+        clear_matrix_btn.setMinimumWidth(46)
         clear_matrix_btn.clicked.connect(self._clear_led_matrix)
         ctrl_row.addWidget(clear_matrix_btn)
 
