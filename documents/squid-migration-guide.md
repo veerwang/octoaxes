@@ -122,28 +122,19 @@ const char* protocolAxisToName(uint8_t protocolAxis) {
 
 ---
 
-## 4. 已发现的 Bug（移植前必须修复）
+## 4. 已发现的 Bug
 
-### Bug 1：单位错误（严重）
+### Bug 1：单位问题（已重新评估）
 
-**位置**: `commandprocessor.cpp:80,93,104`
+**位置**: `commandprocessor.cpp` `handleMoveToX/Y/Z`
 
-```cpp
-// 错误！协议传的是微步，不是 mm×1000
-float obsolute_position_float = float(obsolute_position) / 1000.0;
-axis->moveToPosition(obsolute_position_float);
-```
+**原始描述**: 认为协议传微步，`/1000.0` 错误。
 
-旧架构直接传微步：
-```cpp
-// stage_commands.cpp:73 — 正确做法
-X_commanded_target_position = absolute_position;  // 直接微步
-tmc4361A_moveTo(&tmc4361[x], X_commanded_target_position);
-```
+**重新评估**: 新架构上位机（PyQt5）发送的是 **μm**（微米），`/1000.0f` 将 μm 转换为 mm 后传给 `moveToPosition(float mm)` 是**正确的**。旧架构直接操作微步是因为它绕过了 mm 层；新架构统一用 mm 作中间单位，与旧架构不同但各自自洽。
 
-**修复**: 确认 `Axis::moveToPosition()` 的接口语义，或统一改用微步接口。
+**已修复（a104dee）**: 变量名 `obsolute_position` → `absolute_position`，补充 `// μm → mm` 注释，清理 TODO 注释。单位逻辑本身不改。
 
-### Bug 2：handleHomeOrZero 轴映射错误
+### Bug 2：handleHomeOrZero 轴映射错误（待修复）
 
 **位置**: `commandprocessor.cpp:70`
 
@@ -152,21 +143,38 @@ tmc4361A_moveTo(&tmc4361[x], X_commanded_target_position);
 Axis *axis = axisManager.getAxis(data[2]);
 ```
 
-`getAxis(5)` 会返回第 5 个注册轴，而非 W 轴（协议值 5）。
+`getAxis(5)` 返回第 5 个注册轴，而非 W 轴（W 协议值为 5，但内部索引为 3）。`getAxis(0)` 返回 Y 轴而非 X 轴。
 
-**修复**: 改用 `findAxisByName(protocolAxisToName(data[2]))`。
+**正确修复方案**:
+```cpp
+void CommandProcessor::handleHomeOrZero(const byte *data) {
+  const char *axisName = nullptr;
+  switch (data[2]) {
+    case 0: axisName = "X";  break;
+    case 1: axisName = "Y";  break;
+    case 2: axisName = "Z";  break;
+    case 5: axisName = "W";  break;
+    case 6: axisName = "W2"; break;
+    default: break;
+  }
+  if (axisName) {
+    Axis *axis = axisManager.findAxisByName(axisName);
+    if (axis) axis->startHoming();
+  }
+}
+```
 
-另外 `axis->startHoming()` 缺少方向参数（HOME_NEGATIVE=1 / HOME_POSITIVE=0 / HOME_OR_ZERO_ZERO=2）。
+另外 `axis->startHoming()` 缺少方向参数（HOME_NEGATIVE=1 / HOME_POSITIVE=0 / HOME_OR_ZERO_ZERO=2），待后续实现 Homing 状态机时一并处理。
 
-### Bug 3：串口分发缺失命令
+> **注意**: 此修复曾提交后被回退（033d78b），待确认后重新应用。
 
-**位置**: `serial.cpp` 的 `processSerialStandardCommands()` switch
+### Bug 3：串口分发缺失命令（已修复）
 
-缺少：
-- `INITFILTERWHEEL_W2 (252)`
+**已修复**: `serial.cpp` switch 补充了以下 case：
 - `MOVE_W2 (19)`
-- `MOVETO_W2`（旧架构有，但新架构未定义命令码）
 - `SET_TRIGGER_MODE (33)`
+- `SET_PORT_INTENSITY (34)` 至 `TURN_OFF_ALL_PORTS (39)`
+- `INITFILTERWHEEL_W2 (252)`
 
 ---
 
@@ -221,9 +229,9 @@ bool is_homing_XY;
 
 ### 第 1 步：修复已知 Bug
 
-1. 修复单位问题（MOVETO 系列）
-2. 修复 handleHomeOrZero 轴映射
-3. 补全 switch 中缺失的 3 条命令
+1. ~~修复单位问题（MOVETO 系列）~~ — 已重新评估，单位逻辑正确；变量名已清理（a104dee）
+2. 修复 handleHomeOrZero 轴映射（待重新应用，见 Bug 2）
+3. ~~补全 switch 中缺失的命令~~ — 已完成
 
 ### 第 2 步：添加全局状态变量
 
@@ -285,21 +293,24 @@ finalize_homing_*() — 移到 latch 位置，设零，恢复 PID
 | `DISABLE_STAGE_PID` | 27 | `commands.cpp:142` |
 | `SET_PID_ARGUMENTS` | 29 | `stage_commands.cpp:247` |
 
-#### 优先级 6：照明系统
+#### 优先级 6：照明系统 ✅ 已完成
 
-| 命令 | 码 | 旧架构位置 |
-|------|----|-----------|
-| `TURN_ON_ILLUMINATION` | 10 | `light_commands.cpp` |
-| `TURN_OFF_ILLUMINATION` | 11 | `light_commands.cpp` |
-| `SET_ILLUMINATION` | 12 | `light_commands.cpp` |
-| `SET_ILLUMINATION_LED_MATRIX` | 13 | `light_commands.cpp` |
-| `SET_ILLUMINATION_INTENSITY_FACTOR` | 17 | `light_commands.cpp` |
-| `SET_PORT_INTENSITY` | 34 | `light_commands.cpp` |
-| `TURN_ON_PORT` | 35 | `light_commands.cpp` |
-| `TURN_OFF_PORT` | 36 | `light_commands.cpp` |
-| `SET_PORT_ILLUMINATION` | 37 | `light_commands.cpp` |
-| `SET_MULTI_PORT_MASK` | 38 | `light_commands.cpp` |
-| `TURN_OFF_ALL_PORTS` | 39 | `light_commands.cpp` |
+> 完整移植完成（提交 f4737d2），含 DAC80508、APA102 LED 矩阵、5 路 TTL 端口、安全联锁。
+> 上位机照明控制面板已实现（提交 17f17a0 ~ 57bbb3d）。
+
+| 命令 | 码 | 状态 |
+|------|----|------|
+| `TURN_ON_ILLUMINATION` | 10 | ✅ |
+| `TURN_OFF_ILLUMINATION` | 11 | ✅ |
+| `SET_ILLUMINATION` | 12 | ✅ |
+| `SET_ILLUMINATION_LED_MATRIX` | 13 | ✅ |
+| `SET_ILLUMINATION_INTENSITY_FACTOR` | 17 | ✅ |
+| `SET_PORT_INTENSITY` | 34 | ✅ |
+| `TURN_ON_PORT` | 35 | ✅ |
+| `TURN_OFF_PORT` | 36 | ✅ |
+| `SET_PORT_ILLUMINATION` | 37 | ✅ |
+| `SET_MULTI_PORT_MASK` | 38 | ✅ |
+| `TURN_OFF_ALL_PORTS` | 39 | ✅ |
 
 #### 优先级 7：相机触发 / DAC / IO
 

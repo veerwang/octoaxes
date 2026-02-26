@@ -6,8 +6,44 @@
 
 ## 最新会话
 
-**日期**: 2026-02-26
+**日期**: 2026-02-26（续）
 **分支**: develop
+**位置**: Bug 修复 + 文档更新
+
+### 本次完成
+
+#### 1. Bug 1 清理（a104dee 部分）
+
+- `handleMoveToX/Y/Z`：变量名 `obsolute_position` → `absolute_position`，补充 `// μm → mm` 注释
+- 重新评估：`/1000.0f` 单位转换本身正确（上位机发 μm，转 mm 后调 `moveToPosition`）
+- 移除已实现函数（MoveX/Y/Z）的 `// TODO:` 注释
+
+#### 2. Bug 2 修复后回退
+
+- 提交 `a104dee`：实现 `handleHomeOrZero` 协议轴值→名称映射（switch + `findAxisByName`）
+- 提交 `033d78b`：应用户要求回退此修改，恢复原 `getAxis(data[2])` 实现
+- Bug 2 仍处于**待修复**状态
+
+#### 3. 迁移指南更新（squid-migration-guide.md）
+
+- Bug 1：标注"已重新评估，单位正确，变量名已清理"
+- Bug 2：补充正确修复方案代码，标注"已回退待重新应用"
+- Bug 3：标注"已修复"
+- 优先级 6 照明系统：标注"✅ 已完成"，列出相关提交
+- 移植顺序第 1 步：更新已完成项
+
+### 下次继续
+
+1. **重新确认并应用 Bug 2 修复**（handleHomeOrZero 轴映射）
+2. **硬件测试照明系统**（上电验证各端口 TTL + DAC + LED 矩阵）
+3. **去掉 StepAxis homing debug 打印**（确认稳定后）
+4. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+5. **后续移植批次**：motion 命令、响应机制决策
+
+---
+
+## 上次会话（2026-02-26）
+
 **位置**: 照明系统移植 + 上位机照明控制面板
 
 ### 本次完成
