@@ -170,9 +170,10 @@ class TeensyControlGUI(QMainWindow):
         self.control_panel.previous_clicked.connect(self.previous_position)
         self.control_panel.next_clicked.connect(self.next_position)
         self.control_panel.test_clicked.connect(self.run_w_test)
-        self.control_panel.enable_toggled.connect(self.toggle_axis_enable)  # 新增
+        self.control_panel.enable_toggled.connect(self.toggle_axis_enable)
         self.control_panel.axis_changed.connect(self.on_axis_changed)
         self.control_panel.move_absolute_clicked.connect(self.moveto_axis)
+        self.control_panel.velocity_accel_set.connect(self.send_velocity_acceleration)
 
         layout.addWidget(self.control_panel)
 
@@ -943,6 +944,34 @@ class TeensyControlGUI(QMainWindow):
         cmd[1] = CMD_SET.SET_AXIS_DISABLE_ENABLE
         cmd[2] = protocol_axis
         cmd[3] = 1 if enable else 0
+        self.serial_thread.send_binary_command(cmd)
+        return True
+
+    def send_velocity_acceleration(self, vel_mm_s: float, acc_mm_s2: float):
+        """处理速度/加速度设置信号"""
+        axis = self.get_current_axis()
+        if self._set_max_velocity_acceleration(axis, vel_mm_s, acc_mm_s2):
+            self.log(f"Axis {axis}: vel={vel_mm_s:.2f} mm/s, acc={acc_mm_s2:.1f} mm/s²")
+
+    def _set_max_velocity_acceleration(self, axis_name, vel_mm_s, acc_mm_s2):
+        """发送 SET_MAX_VELOCITY_ACCELERATION 二进制命令，返回是否成功"""
+        if self.serial_thread is None:
+            return False
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W}
+        protocol_axis = _AXIS_PROTOCOL.get(axis_name)
+        if protocol_axis is None:
+            self.log(f"Axis {axis_name} does not support velocity/acceleration setting")
+            return False
+        # 编码：vel × 100 → uint16，acc × 10 → uint16
+        vel_uint16 = min(max(int(vel_mm_s * 100), 1), 65535)
+        acc_uint16 = min(max(int(acc_mm_s2 * 10), 1), 65535)
+        cmd = bytearray(8)
+        cmd[1] = CMD_SET.SET_MAX_VELOCITY_ACCELERATION
+        cmd[2] = protocol_axis
+        cmd[3] = (vel_uint16 >> 8) & 0xFF
+        cmd[4] = vel_uint16 & 0xFF
+        cmd[5] = (acc_uint16 >> 8) & 0xFF
+        cmd[6] = acc_uint16 & 0xFF
         self.serial_thread.send_binary_command(cmd)
         return True
 
