@@ -691,16 +691,16 @@ class IlluminationPanel(QGroupBox):
         global_layout.addWidget(self._factor_label)
 
         apply_factor_btn = QPushButton("Apply")
-        apply_factor_btn.setFixedWidth(48)
+        apply_factor_btn.setMinimumWidth(56)
         apply_factor_btn.clicked.connect(self._send_factor)
         global_layout.addWidget(apply_factor_btn)
 
         # 全部关闭
         off_all_btn = QPushButton("All OFF")
         off_all_btn.setStyleSheet(
-            "background-color: #c0392b; color: white; font-weight: bold;"
+            "background-color: #c0392b; color: white; font-weight: bold; font-size: 11px;"
         )
-        off_all_btn.setMinimumWidth(68)
+        off_all_btn.setMinimumWidth(62)
         off_all_btn.clicked.connect(self._on_turn_off_all)
         global_layout.addWidget(off_all_btn)
 
