@@ -687,7 +687,7 @@ class IlluminationPanel(QGroupBox):
         global_layout.addWidget(self._factor_slider, stretch=2)
 
         self._factor_label = QLabel("60%")
-        self._factor_label.setFixedWidth(32)
+        self._factor_label.setFixedWidth(44)
         global_layout.addWidget(self._factor_label)
 
         apply_factor_btn = QPushButton("Apply")
@@ -732,7 +732,7 @@ class IlluminationPanel(QGroupBox):
             self._port_sliders.append(slider)
 
             pct_lbl = QLabel(f"{self._port_intensity_pct[i]}%")
-            pct_lbl.setFixedWidth(34)
+            pct_lbl.setFixedWidth(44)
             pct_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             ports_grid.addWidget(pct_lbl, i, 2)
             self._port_pct_labels.append(pct_lbl)
