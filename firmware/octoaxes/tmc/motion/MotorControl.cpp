@@ -399,17 +399,6 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
     // 与 master 分支旧 API (tmc4361A_enableLimitSwitch) 保持一致：硬停车。
 
     tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
-
-    DEBUG_PRINT("[motor_configLimitSwitches] icID=");
-    DEBUG_PRINT(icID);
-    DEBUG_PRINT(" REFERENCE_CONF=0x");
-    Serial.print(refConf, HEX);
-    DEBUG_PRINT(" L_EN=");
-    DEBUG_PRINT(config->enableLeft);
-    DEBUG_PRINT(" R_EN=");
-    DEBUG_PRINT(config->enableRight);
-    DEBUG_PRINT(" INVERT_DIR=");
-    DEBUG_PRINTLN((config->leftFlipped || config->rightFlipped) ? 1 : 0);
 }
 
 void motor_setHardwareStopEnable(uint8_t icID, uint8_t side, bool enable)
