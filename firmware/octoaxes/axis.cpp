@@ -624,6 +624,80 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
   tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
 }
 
+// PID 控制
+void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) {
+  // ABN 编码器初始化（硬编码参数与旧架构一致）
+  motor_initABNEncoder(_icID, transitions_per_rev,
+                        32,    // filter_wait_time
+                        4,     // filter_exponent
+                        512,   // filter_vmean
+                        flip_direction);
+
+  // PID 参数初始化（按轴类型区分）
+  // pid_dclip = VMAX (内部单位), 已缓存在 motorParams 中
+  uint32_t vmax_usteps = (uint32_t)motorParams[_icID].vmax;
+  uint32_t target_tolerance, pid_tolerance, pid_iclip;
+
+  // 根据轴名称区分参数
+  if (strcmp(_axisName, "W") == 0 || strcmp(_axisName, "W2") == 0) {
+    target_tolerance = 2;
+    pid_tolerance = 2;
+    pid_iclip = 4096;
+  } else if (strcmp(_axisName, "Z") == 0) {
+    target_tolerance = 25;
+    pid_tolerance = 25;
+    pid_iclip = 4096;
+  } else {
+    // X, Y 及其他
+    target_tolerance = 25;
+    pid_tolerance = 25;
+    pid_iclip = 32767;
+  }
+
+  motor_initPID(_icID, target_tolerance, pid_tolerance,
+                _pidState.p, _pidState.i, _pidState.d,
+                vmax_usteps, pid_iclip, 2);  // pid_d_clkdiv = 2
+
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":CONFIGURE_STAGE_PID flip=");
+  DEBUG_PRINT(flip_direction);
+  DEBUG_PRINT(" tpr=");
+  DEBUG_PRINT(transitions_per_rev);
+  DEBUG_PRINT(" P=");
+  DEBUG_PRINT(_pidState.p);
+  DEBUG_PRINT(" I=");
+  DEBUG_PRINT(_pidState.i);
+  DEBUG_PRINT(" D=");
+  DEBUG_PRINTLN(_pidState.d);
+}
+
+void Axis::enableStagePID() {
+  _pidState.enabled = true;
+  motor_enablePID(_icID);
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINTLN(":ENABLE_STAGE_PID");
+}
+
+void Axis::disableStagePID() {
+  _pidState.enabled = false;
+  motor_disablePID(_icID);
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINTLN(":DISABLE_STAGE_PID");
+}
+
+void Axis::setPIDArguments(uint16_t p, uint8_t i, uint8_t d) {
+  _pidState.p = p;
+  _pidState.i = i;
+  _pidState.d = d;
+  DEBUG_PRINT(_axisName);
+  DEBUG_PRINT(":SET_PID_ARGUMENTS P=");
+  DEBUG_PRINT(p);
+  DEBUG_PRINT(" I=");
+  DEBUG_PRINT(i);
+  DEBUG_PRINT(" D=");
+  DEBUG_PRINTLN(d);
+}
+
 // 运行时更新丝杆导程
 void Axis::setLeadScrewPitch(float pitchMM) {
   _config.screwPitchMM = pitchMM;

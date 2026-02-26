@@ -452,6 +452,41 @@ void motor_enableSoftLimits(uint8_t icID, bool enableLower, bool enableUpper);
 // ============================================================================
 
 /**
+ * @brief Initialize ABN encoder interface
+ * @param icID  IC identifier
+ * @param transitions_per_rev  Encoder transitions per revolution
+ * @param filter_wait_time  Filter wait time (0-255)
+ * @param filter_exponent  Filter exponent (0-15)
+ * @param filter_vmean  Filter vmean integration (0-65535)
+ * @param invert_dir  Invert encoder direction
+ */
+void motor_initABNEncoder(uint8_t icID, uint32_t transitions_per_rev,
+                           uint8_t filter_wait_time, uint8_t filter_exponent,
+                           uint16_t filter_vmean, bool invert_dir);
+
+/**
+ * @brief Initialize PID parameters (write to TMC4361A registers)
+ * @param icID  IC identifier
+ * @param target_tolerance  Closed-loop target tolerance
+ * @param pid_tolerance  PID tolerance
+ * @param pid_p  Proportional gain
+ * @param pid_i  Integral gain
+ * @param pid_d  Derivative gain
+ * @param pid_dclip  PID velocity clip
+ * @param pid_iclip  PID integral clip
+ * @param pid_d_clkdiv  PID derivative clock divider
+ */
+void motor_initPID(uint8_t icID, uint32_t target_tolerance, uint32_t pid_tolerance,
+                    uint32_t pid_p, uint32_t pid_i, uint32_t pid_d,
+                    uint32_t pid_dclip, uint32_t pid_iclip, uint8_t pid_d_clkdiv);
+
+/**
+ * @brief Enable PID control mode
+ * @param icID  IC identifier
+ */
+void motor_enablePID(uint8_t icID);
+
+/**
  * @brief Disable PID control mode
  * @param icID  IC identifier
  */

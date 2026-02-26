@@ -93,6 +93,14 @@ protected:
   // 新增：轴使能状态
   bool _isEnabled;
 
+  // PID 状态（每轴独立）
+  struct PIDState {
+    bool enabled;         // PID 当前是否活跃
+    uint16_t p;           // 缓存的 P 参数
+    uint8_t  i;           // 缓存的 I 参数
+    uint8_t  d;           // 缓存的 D 参数
+  } _pidState = {false, 0, 0, 0};
+
   AxisConfig _config;
 
   // 超时设置
@@ -163,6 +171,13 @@ public:
   virtual void setSoftLimits(float lowerLimitMM, float upperLimitMM);
   virtual void enableSoftLimits(bool enable);
   void setOneSoftLimit(int direction, int32_t valueMicrosteps);
+
+  // PID 控制
+  void configureStagePID(bool flip_direction, uint16_t transitions_per_rev);
+  void enableStagePID();
+  void disableStagePID();
+  void setPIDArguments(uint16_t p, uint8_t i, uint8_t d);
+  bool isPIDEnabled() const { return _pidState.enabled; }
 
   // 运行时配置更新
   void setLeadScrewPitch(float pitchMM);

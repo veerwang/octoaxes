@@ -248,6 +248,13 @@ void StepAxis::performHomingSequence() {
         // 如果此时启用软限位但范围未设置（默认为0），会导致电机无法移动
         // enableSoftLimits(true);
 
+        // Homing 完成后自动恢复 PID（与旧架构一致）
+        if (_pidState.enabled) {
+          motor_enablePID(_icID);
+          DEBUG_PRINT(_axisName);
+          DEBUG_PRINTLN(":PID re-enabled after homing");
+        }
+
         setState(STATE_IDLE);
       } else {
         // 可选：添加进度显示

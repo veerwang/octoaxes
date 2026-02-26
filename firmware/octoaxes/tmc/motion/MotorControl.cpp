@@ -12,6 +12,7 @@
 #include "../hal/TMC_SPI.h"
 #include <Arduino.h>
 #include "../../build_opt.h"
+#include "../../TMC4361A_Register.h"
 
 // ============================================================================
 // Debug Helper
@@ -932,16 +933,77 @@ void motor_enableSoftLimits(uint8_t icID, bool enableLower, bool enableUpper)
 // Advanced Configuration Implementation
 // ============================================================================
 
+void motor_initABNEncoder(uint8_t icID, uint32_t transitions_per_rev,
+                           uint8_t filter_wait_time, uint8_t filter_exponent,
+                           uint16_t filter_vmean, bool invert_dir)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    // Set encoder resolution
+    tmc4361A_writeRegister(icID, TMC4361A_ENC_IN_RES_WR, transitions_per_rev);
+
+    // Set encoder velocity mean filter:
+    // ENC_VMEAN_FILTER = wait_time | (filter_exp << 8) | (vmean_int << 16)
+    uint32_t filterVal = (uint32_t)filter_wait_time
+                       | ((uint32_t)filter_exponent << 8)
+                       | ((uint32_t)filter_vmean << 16);
+    tmc4361A_writeRegister(icID, TMC4361A_ENC_VMEAN_FILTER_WR, filterVal);
+
+    // Set or clear INVERT_ENC_DIR bit (bit 29 of ENC_IN_CONF)
+    uint32_t enc_conf = tmc4361A_readRegister(icID, TMC4361A_ENC_IN_CONF);
+    if (invert_dir) {
+        enc_conf |= TMC4361A_INVERT_ENC_DIR_MASK;
+    } else {
+        enc_conf &= ~TMC4361A_INVERT_ENC_DIR_MASK;
+    }
+    tmc4361A_writeRegister(icID, TMC4361A_ENC_IN_CONF, enc_conf);
+}
+
+void motor_initPID(uint8_t icID, uint32_t target_tolerance, uint32_t pid_tolerance,
+                    uint32_t pid_p, uint32_t pid_i, uint32_t pid_d,
+                    uint32_t pid_dclip, uint32_t pid_iclip, uint8_t pid_d_clkdiv)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    // Closed-loop target tolerance
+    tmc4361A_writeRegister(icID, TMC4361A_CL_TR_TOLERANCE_WR, target_tolerance);
+    // PID tolerance
+    tmc4361A_writeRegister(icID, TMC4361A_PID_TOLERANCE_WR, pid_tolerance);
+    // PID gains (24-bit each)
+    tmc4361A_writeRegister(icID, TMC4361A_PID_P_WR, pid_p & 0xFFFFFF);
+    tmc4361A_writeRegister(icID, TMC4361A_PID_I_WR, pid_i & 0xFFFFFF);
+    tmc4361A_writeRegister(icID, TMC4361A_PID_D_WR, pid_d & 0xFFFFFF);
+    // PID velocity clip
+    tmc4361A_writeRegister(icID, TMC4361A_PID_DV_CLIP_WR, pid_dclip);
+    // PID integral clip + derivative clock divider
+    // PID_I_CLIP_WR (0x5D) = iclip | (d_clkdiv << 16)
+    tmc4361A_writeRegister(icID, TMC4361A_PID_I_CLIP_WR,
+                           pid_iclip | ((uint32_t)pid_d_clkdiv << 16));
+}
+
+void motor_enablePID(uint8_t icID)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+
+    // Set REGULATION_MODUS bits (22-23) of ENC_IN_CONF to 0b10 (PID via BPG0)
+    uint32_t enc_conf = tmc4361A_readRegister(icID, TMC4361A_ENC_IN_CONF);
+    enc_conf &= ~TMC4361A_REGULATION_MODUS_MASK;
+    enc_conf |= (0x02 << TMC4361A_REGULATION_MODUS_SHIFT);
+    tmc4361A_writeRegister(icID, TMC4361A_ENC_IN_CONF, enc_conf);
+}
+
 void motor_disablePID(uint8_t icID)
 {
     if (icID >= MOTOR_IC_COUNT)
         return;
 
-    // Clear PID mode bits in ENC_IN_CONF or relevant register
-    // TMC4361A PID is controlled via RAMPMODE and ENC_IN_CONF
-    uint32_t rampMode = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
-    rampMode &= ~(0x03 << 8);  // Clear PID mode bits
-    tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
+    // Clear REGULATION_MODUS bits (22-23) of ENC_IN_CONF to disable PID
+    uint32_t enc_conf = tmc4361A_readRegister(icID, TMC4361A_ENC_IN_CONF);
+    enc_conf &= ~TMC4361A_REGULATION_MODUS_MASK;
+    tmc4361A_writeRegister(icID, TMC4361A_ENC_IN_CONF, enc_conf);
 }
 
 void motor_configStallGuard(uint8_t icID, int8_t threshold, bool filterEnable, bool stopOnStall)

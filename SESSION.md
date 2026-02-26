@@ -6,33 +6,35 @@
 
 ## 最新会话
 
-**日期**: 2026-02-26（续 3）
+**日期**: 2026-02-26（续 4）
 **分支**: develop
-**位置**: 响应机制实现 + INITFILTERWHEEL + migration guide 收尾
+**位置**: P5 PID/编码器命令实现
 
 ### 本次完成
 
-#### 1. 响应机制（方案 A，与旧 Squid 完全兼容）
+#### P5 PID/编码器命令实现（命令 25/26/27/29）
 
-`serial.cpp`：
-- `sendResponse()` 新增 `w_pos` 参数，补全 byte[14-17]（W 轴位置）+ byte[22]（固件版本 v1.7）
-- 新增 `send_position_update()`：10ms 周期（`elapsedMicros`），读 X/Y/Z/W 微步位置，自动判断 IN_PROGRESS/COMPLETED/CRC_ERROR
-- 摇杆按钮失效安全：超过 1000ms 未 ACK 自动清除
+最后一组未实现的桩函数，全部完成。改动 7 个文件：
 
-`octoaxes.ino loop()`：新增 `serialProtocol.send_position_update()` 调用。
+**MotorControl 层** (`tmc/motion/MotorControl.h` + `.cpp`)：
+- 新增 `motor_initABNEncoder()` — 写 ENC_IN_RES_WR、ENC_VMEAN_FILTER_WR、INVERT_ENC_DIR
+- 新增 `motor_initPID()` — 写 CL_TR_TOLERANCE、PID_TOLERANCE、PID_P/I/D、PID_DV_CLIP、PID_I_CLIP
+- 新增 `motor_enablePID()` — 设置 ENC_IN_CONF 的 REGULATION_MODUS=0b10
+- 修正 `motor_disablePID()` — 旧实现错误操作 RAMPMODE，改为正确操作 ENC_IN_CONF
 
-**状态字节协议**：0=COMPLETED, 1=IN_PROGRESS（任意轴 isMoving/isHomingInProgress），2=CRC_ERROR
+**Axis 层** (`axis.h` + `axis.cpp`)：
+- 新增 `PIDState` 结构体（enabled/p/i/d），每轴独立缓存
+- `configureStagePID()` — ABN 编码器初始化 + PID 参数写入（按轴类型区分 X/Y vs Z vs W/W2）
+- `enableStagePID()` / `disableStagePID()` — PID 开关 + 状态跟踪
+- `setPIDArguments()` — 缓存 P/I/D 参数
 
-#### 2. INITFILTERWHEEL / INITFILTERWHEEL_W2 实现
+**CommandProcessor** (`commandprocessor.cpp`)：
+- 填充 4 个 handler：handleConfigureStagePID(25)、handleEnableStagePID(26)、handleDisableStagePID(27)、handleSetPIDArguments(29)
 
-- `handleInitFilterWheel(253)` — `findAxisByName("W")->startHoming()`，触发滤光轮延迟初始化
-- `handleInitFilterWheelW2(252)` — W2 未启用时 no-op
+**Homing PID 恢复** (`stepaxis.cpp` + `filterwheel.cpp`)：
+- homing 完成后若 `_pidState.enabled=true` 自动 `motor_enablePID()`
 
-#### 3. migration guide 收尾
-
-- 第 0 步（响应机制）、优先级 4（Homing/INITFILTERWHEEL）标注 ✅
-- 第 6 节更新为「已完成，方案 A」
-- migration guide 核心命令全部实现，协议层就绪
+编译通过，无新增警告。
 
 ### 下次继续
 
@@ -48,6 +50,11 @@
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-26（续 3）- 响应机制 + INITFILTERWHEEL + migration guide 收尾 (develop)
+- sendResponse() 补全 W 轴位置 + 固件版本，send_position_update() 10ms 周期上报
+- handleInitFilterWheel(253) / handleInitFilterWheelW2(252) 实现
+- migration guide 核心命令全部完成，协议层就绪
 
 ### 2026-02-26 - 响应机制 + INITFILTERWHEEL + 命令层 Bug 修复 (develop)
 - sendResponse() 补全 W 轴位置 + 固件版本，send_position_update() 10ms 周期上报

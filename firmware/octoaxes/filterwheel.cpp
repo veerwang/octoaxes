@@ -192,6 +192,14 @@ void FilterWheel::performHomingSequence() {
           restoreNormalMicrosteps();                      // 安全恢复细分和 VMAX/AMAX
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Homing completed! Current position set to 0");
+
+          // Homing 完成后自动恢复 PID（与旧架构一致）
+          if (_pidState.enabled) {
+            motor_enablePID(_icID);
+            DEBUG_PRINT(_axisName);
+            DEBUG_PRINTLN(":PID re-enabled after homing");
+          }
+
           setState(STATE_IDLE);
         }
       }

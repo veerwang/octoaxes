@@ -353,18 +353,30 @@ void CommandProcessor::handleSetOffsetVelocity(const byte *data) {
 }
 
 void CommandProcessor::handleConfigureStagePID(const byte *data) {
-  // TODO: 实现 CONFIGURE_STAGE_PID 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: CONFIGURE_STAGE_PID");
+  // data[2]: 协议轴; data[3]: flip_direction; data[4:5]: transitions_per_rev (大端序)
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (!axis) return;
+  bool flip_direction = data[3];
+  uint16_t transitions_per_rev = (uint16_t(data[4]) << 8) | uint16_t(data[5]);
+  axis->configureStagePID(flip_direction, transitions_per_rev);
 }
 
 void CommandProcessor::handleEnableStagePID(const byte *data) {
-  // TODO: 实现 ENABLE_STAGE_PID 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: ENABLE_STAGE_PID");
+  // data[2]: 协议轴
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (axis) axis->enableStagePID();
 }
 
 void CommandProcessor::handleDisableStagePID(const byte *data) {
-  // TODO: 实现 DISABLE_STAGE_PID 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: DISABLE_STAGE_PID");
+  // data[2]: 协议轴
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (axis) axis->disableStagePID();
 }
 
 void CommandProcessor::handleSetHomeSafetyMargin(const byte *data) {
@@ -379,8 +391,15 @@ void CommandProcessor::handleSetHomeSafetyMargin(const byte *data) {
 }
 
 void CommandProcessor::handleSetPIDArguments(const byte *data) {
-  // TODO: 实现 SET_PID_ARGUMENTS 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_PID_ARGUMENTS");
+  // data[2]: 协议轴; data[3:4]: P (大端序 uint16); data[5]: I (uint8); data[6]: D (uint8)
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (!axis) return;
+  uint16_t p = (uint16_t(data[3]) << 8) | uint16_t(data[4]);
+  uint8_t  i = data[5];
+  uint8_t  d = data[6];
+  axis->setPIDArguments(p, i, d);
 }
 
 void CommandProcessor::handleSendHardwareTrigger(const byte *data) {
