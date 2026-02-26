@@ -2,7 +2,12 @@
 #define INCLUDED_BUILD_OPT_H
 
 #define ENABLE_LED_INDICATOR
-#define ENABLE_DEBUG
+
+// ENABLE_DEBUG 仅在调试构建中启用（platformio.ini 的 debug env 传入 -D DEBUG）
+// 生产构建（teensy41）不定义 DEBUG，串口只输出二进制协议包，不输出 ASCII 文本
+#ifdef DEBUG
+  #define ENABLE_DEBUG
+#endif
 
 #ifdef ENABLE_DEBUG
   #define DEBUG_PRINT(x) SerialUSB.print(x)

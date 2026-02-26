@@ -550,6 +550,7 @@ class TeensyControlGUI(QMainWindow):
         try:
             self.serial_thread = SerialThread(teensy_port)
             self.serial_thread.data_received.connect(self.handle_received_data)
+            self.serial_thread.binary_response.connect(self.handle_binary_response)
             self.serial_thread.error_occurred.connect(self.handle_serial_error)
             self.serial_thread.debug_info.connect(self.handle_debug_info)
             self.serial_thread.start()
@@ -802,9 +803,44 @@ class TeensyControlGUI(QMainWindow):
                     self.axis_enabled_states[axis] = enabled
                     self.control_panel.set_enable_state(enabled)
 
-        # 记录到日志
-        if data:
-            self.log(f"Received: {data}")
+        # 只把未识别的 ASCII 调试行记录到日志（二进制位置包由 handle_binary_response 处理）
+        if data and not self.axis_manager.parse_axis_data(data):
+            self.log(f"[DBG] {data}")
+
+    def handle_binary_response(self, data: bytes):
+        """处理固件 24 字节二进制位置上报包（不写入日志，避免刷屏）。
+
+        响应包格式：
+          byte[0]     : cmd_id
+          byte[1]     : 状态 (0=完成, 1=运动中, 2=CRC错误)
+          byte[2-5]   : X 轴位置（int32 大端序，微步）
+          byte[6-9]   : Y 轴位置
+          byte[10-13] : Z 轴位置
+          byte[14-17] : W 轴位置
+          byte[22]    : 固件版本（高半字节=主版本，低半字节=次版本）
+          byte[23]    : CRC-8-CCITT
+        """
+        if len(data) < 24:
+            return
+
+        import struct
+        x_steps = struct.unpack('>i', data[2:6])[0]
+        y_steps = struct.unpack('>i', data[6:10])[0]
+        z_steps = struct.unpack('>i', data[10:14])[0]
+        w_steps = struct.unpack('>i', data[14:18])[0]
+        status  = data[1]   # 0=完成, 1=运动中, 2=CRC错误
+
+        # 更新位置标签（仅在 Motion 标签页显示）
+        # TODO: 根据 screwPitch/microstepping 换算为 mm（当前先显示微步数）
+        axis = self.get_current_axis()
+        if axis == "X":
+            self.steps_label.setText(f"Current Position: {x_steps} steps")
+        elif axis == "Y":
+            self.steps_label.setText(f"Current Position: {y_steps} steps")
+        elif axis == "Z":
+            self.steps_label.setText(f"Current Position: {z_steps} steps")
+        elif axis == "W":
+            self.steps_label.setText(f"Current Position: {w_steps} steps")
 
     def log(self, message):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]

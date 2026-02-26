@@ -22,10 +22,15 @@ class SerialThread(QThread):
     """串口通信线程（支持字符串和二进制命令）"""
 
     data_received = pyqtSignal(str)
+    # 固件 24 字节二进制位置上报包（字节级，不进日志）
+    binary_response = pyqtSignal(bytes)
     error_occurred = pyqtSignal(str)
     debug_info = pyqtSignal(str)
     # 添加定时器信号，用于在主线程启动定时器
     start_timer_signal = pyqtSignal()
+
+    # 固件响应包长度（与固件 MSG_LENGTH 一致）
+    RESPONSE_LENGTH = 24
 
     def __init__(self, port, baudrate=115200):
         super().__init__()
@@ -137,8 +142,8 @@ class SerialThread(QThread):
             return False
 
     def _read_data_loop(self):
-        """数据读取循环"""
-        buffer = ""
+        """数据读取循环（字节级解析，区分二进制响应包与 ASCII 调试行）"""
+        byte_buf = bytearray()
         error_count = 0
         max_errors = 10
 
@@ -149,28 +154,14 @@ class SerialThread(QThread):
                     continue
 
                 try:
-                    # 安全获取 in_waiting 值
                     bytes_waiting = self._get_bytes_waiting()
                     if bytes_waiting > 0:
-                        # 读取数据
                         data = self.ser.read(bytes_waiting)
                         if data:
-                            buffer += data.decode("utf-8", errors="ignore")
-
-                            # 处理完整的行
-                            while "\n" in buffer:
-                                line_end = buffer.find("\n")
-                                line = buffer[:line_end].strip()
-                                buffer = buffer[line_end + 1 :]
-
-                                if line:
-                                    self.data_received.emit(line)
-                                    self._log_debug(f"Received: {line}")
-
-                            error_count = 0  # 重置错误计数
-
+                            byte_buf.extend(data)
+                            byte_buf = self._parse_incoming(byte_buf)
+                        error_count = 0
                     else:
-                        # 没有数据时短暂休眠
                         time.sleep(0.01)
 
                 finally:
@@ -179,16 +170,59 @@ class SerialThread(QThread):
             except serial.SerialException as e:
                 error_count += 1
                 self._log_debug(f"Serial error #{error_count}: {e}")
-
                 if error_count > max_errors:
                     self._log_debug("Too many serial errors, closing port")
                     break
-
                 time.sleep(0.1)
 
             except Exception as e:
                 self._log_debug(f"Unexpected read error: {e}")
                 break
+
+    def _parse_incoming(self, buf: bytearray) -> bytearray:
+        """从字节缓冲区中识别并消费二进制响应包和 ASCII 文本行。
+
+        二进制响应包：RESPONSE_LENGTH(24) 字节，最后一字节是 CRC-8-CCITT。
+        ASCII 调试行：以可打印字符开头，\n 结尾。
+        两者交织出现（固件调试构建），逐字节判断。
+        """
+        RL = self.RESPONSE_LENGTH
+        while len(buf) > 0:
+            # ── 优先尝试匹配二进制响应包 ──────────────────────────────────
+            if len(buf) >= RL:
+                candidate = bytes(buf[:RL])
+                if self._validate_response_crc(candidate):
+                    self.binary_response.emit(candidate)
+                    del buf[:RL]
+                    continue
+
+            # ── 尝试匹配 ASCII 文本行（以 \n 结尾）────────────────────────
+            nl = buf.find(b'\n')
+            if nl >= 0:
+                line = buf[:nl].decode('utf-8', errors='ignore').strip()
+                del buf[:nl + 1]
+                if line:
+                    self.data_received.emit(line)
+                    self._log_debug(f"Received: {line}")
+                continue
+
+            # ── 数据不足，等待更多字节 ─────────────────────────────────────
+            # 缓冲区上限：若超过 4×RL 且无法消费，丢弃最旧的一字节（防止永久阻塞）
+            if len(buf) > 4 * RL:
+                self._log_debug(f"Parse stall, dropping byte: 0x{buf[0]:02x}")
+                del buf[0]
+                continue
+
+            break
+
+        return buf
+
+    def _validate_response_crc(self, data: bytes) -> bool:
+        """验证 24 字节响应包的 CRC-8-CCITT（对 byte[0..22] 计算，byte[23] 是校验）"""
+        if len(data) != self.RESPONSE_LENGTH:
+            return False
+        expected = self.crc_calculator.calculate_checksum(data[:-1])
+        return data[-1] == expected
 
     def _get_bytes_waiting(self):
         """安全获取等待字节数"""
