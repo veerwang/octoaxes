@@ -5,6 +5,23 @@
 #include "trigger.h"
 #include "config.h"
 
+// 协议常量（来自 Squid constants_protocol.h）
+static const int HOME_POSITIVE     = 0;
+static const int HOME_NEGATIVE     = 1;
+static const int HOME_OR_ZERO_ZERO = 2;
+
+// 协议轴值 → 轴名称（nullptr = 无效轴）
+static const char* protocolAxisToName(uint8_t protocolAxis) {
+  switch (protocolAxis) {
+    case 0: return "X";
+    case 1: return "Y";
+    case 2: return "Z";
+    case 5: return "W";
+    case 6: return "W2";
+    default: return nullptr;
+  }
+}
+
 CommandProcessor commandProcessor;
 
 CommandProcessor::CommandProcessor() {
@@ -66,10 +83,38 @@ void CommandProcessor::handleMoveW(const byte *data) {
 }
 
 void CommandProcessor::handleHomeOrZero(const byte *data) {
-  // TODO: 实现 HOME_OR_ZERO 命令处理
-  Axis *axis = axisManager.getAxis(data[2]);
-  if (axis)
-    axis->startHoming();
+  // data[2]: 协议轴值（0=X,1=Y,2=Z,4=XY,5=W,6=W2）
+  // data[3]: HOME_POSITIVE=0, HOME_NEGATIVE=1, HOME_OR_ZERO_ZERO=2
+  if (data[3] == HOME_OR_ZERO_ZERO) {
+    // 归零模式：将当前位置设为 0，不移动
+    if (data[2] == 4) {  // AXES_XY 联合
+      Axis *axX = axisManager.findAxisByName("X");
+      Axis *axY = axisManager.findAxisByName("Y");
+      if (axX) axX->setCurrentPosition(0.0f);
+      if (axY) axY->setCurrentPosition(0.0f);
+    } else {
+      const char *name = protocolAxisToName(data[2]);
+      if (name) {
+        Axis *axis = axisManager.findAxisByName(name);
+        if (axis) axis->setCurrentPosition(0.0f);
+      }
+    }
+    return;
+  }
+  // Homing 模式（HOME_POSITIVE / HOME_NEGATIVE）
+  // 方向由各轴 homing_direct 配置决定，忽略 data[3]
+  if (data[2] == 4) {  // AXES_XY 联合归位
+    Axis *axX = axisManager.findAxisByName("X");
+    Axis *axY = axisManager.findAxisByName("Y");
+    if (axX) axX->startHoming();
+    if (axY) axY->startHoming();
+  } else {
+    const char *name = protocolAxisToName(data[2]);
+    if (name) {
+      Axis *axis = axisManager.findAxisByName(name);
+      if (axis) axis->startHoming();
+    }
+  }
 }
 
 void CommandProcessor::handleMoveToX(const byte *data) {
@@ -213,8 +258,14 @@ void CommandProcessor::handleConfigureStepperDriver(const byte *data) {
 }
 
 void CommandProcessor::handleSetMaxVelocityAcceleration(const byte *data) {
-  // TODO: 实现 SET_MAX_VELOCITY_ACCELERATION 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_MAX_VELOCITY_ACCELERATION");
+  // data[2]: 协议轴; data[3:4]: 速度×100 (mm/s); data[5:6]: 加速度×10 (mm/s²)
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (!axis) return;
+  float vel_mm = float((uint16_t(data[3]) << 8) | data[4]) / 100.0f;
+  float acc_mm = float((uint16_t(data[5]) << 8) | data[6]) / 10.0f;
+  axis->setMotionParameters(vel_mm, acc_mm);
 }
 
 void CommandProcessor::handleSetLeadScrewPitch(const byte *data) {
@@ -285,8 +336,13 @@ void CommandProcessor::handleSetStrobeDelay(const byte *data) {
 }
 
 void CommandProcessor::handleSetAxisDisableEnable(const byte *data) {
-  // TODO: 实现 SET_AXIS_DISABLE_ENABLE 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: SET_AXIS_DISABLE_ENABLE");
+  // data[2]: 协议轴; data[3]: 0=禁用, 1=启用
+  const char *name = protocolAxisToName(data[2]);
+  if (!name) return;
+  Axis *axis = axisManager.findAxisByName(name);
+  if (!axis) return;
+  if (data[3] == 0) axis->disableAxis();
+  else              axis->enableAxis();
 }
 
 void CommandProcessor::handleSetPinLevel(const byte *data) {
@@ -303,11 +359,20 @@ void CommandProcessor::handleInitFilterWheelW2(const byte *data) {
 }
 
 void CommandProcessor::handleInitialize(const byte *data) {
-  // TODO: 实现 INITIALIZE 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: INITIALIZE");
+  // 重新初始化 DAC 和触发系统；TMC 轴已在 setup 中初始化，不重复
+  set_DAC8050x_config();
+  set_DAC8050x_default_gain();
+  trigger_mode = TRIGGER_MODE_NORMAL;
+  DEBUG_PRINTLN("INITIALIZE: DAC + trigger_mode reset");
 }
 
 void CommandProcessor::handleReset(const byte *data) {
-  // TODO: 实现 RESET 命令处理
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: RESET");
+  // 停止所有轴运动，复位触发状态
+  trigger_mode = TRIGGER_MODE_NORMAL;
+  uint8_t count = axisManager.getAxisCount();
+  for (uint8_t i = 0; i < count; i++) {
+    Axis *axis = axisManager.getAxis(i);
+    if (axis) axis->handleReset();
+  }
+  DEBUG_PRINTLN("RESET: all axes stopped, trigger_mode = 0");
 }
