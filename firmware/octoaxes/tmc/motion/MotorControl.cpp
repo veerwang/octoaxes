@@ -384,12 +384,32 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
         refConf |= TMC4361A_LATCH_X_ON_ACTIVE_R_MASK;  // bit 13
     }
 
+    // Invert stop direction: 交换左右限位开关的逻辑含义
+    // 与 master 分支旧 API (tmc4361A_enableLimitSwitch) 一致:
+    //   if (flipped != 0) setBits(INVERT_STOP_DIRECTION_MASK)
+    if (config->leftFlipped || config->rightFlipped) {
+        refConf |= TMC4361A_INVERT_STOP_DIRECTION_MASK;  // bit 4
+    } else {
+        refConf &= ~TMC4361A_INVERT_STOP_DIRECTION_MASK;
+    }
+
     // 注意：不设 SOFT_STOP_EN (bit 5)
     // SOFT_STOP_EN=1 会使限位触发时芯片进入内部软停车状态机，
     // 锁定 RAMPMODE/VMAX/XTARGET 写入，导致 homing 停车失败。
     // 与 master 分支旧 API (tmc4361A_enableLimitSwitch) 保持一致：硬停车。
 
     tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
+
+    DEBUG_PRINT("[motor_configLimitSwitches] icID=");
+    DEBUG_PRINT(icID);
+    DEBUG_PRINT(" REFERENCE_CONF=0x");
+    Serial.print(refConf, HEX);
+    DEBUG_PRINT(" L_EN=");
+    DEBUG_PRINT(config->enableLeft);
+    DEBUG_PRINT(" R_EN=");
+    DEBUG_PRINT(config->enableRight);
+    DEBUG_PRINT(" INVERT_DIR=");
+    DEBUG_PRINTLN((config->leftFlipped || config->rightFlipped) ? 1 : 0);
 }
 
 void motor_setHardwareStopEnable(uint8_t icID, uint8_t side, bool enable)

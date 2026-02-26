@@ -1,5 +1,6 @@
 #include "stepaxis.h"
 #include "build_opt.h"
+#include "tmc/ic/TMC4361A/TMC4361A.h"
 
 StepAxis::StepAxis(uint8_t csPin, uint8_t axisIndex, const char* axisName) 
   : Axis(csPin, axisIndex, axisName) {
@@ -124,8 +125,24 @@ void StepAxis::performHomingSequence() {
 
   switch (_currentState) {
     case STATE_HOMING_INIT:
-      enableSoftLimits(false);
-      switchToHomingMicrosteps();
+      {
+        enableSoftLimits(false);
+        switchToHomingMicrosteps();
+
+        // 打印 homing 关键配置，用于排查限位方向问题
+        uint32_t refConf = tmc4361A_readRegister(_icID, TMC4361A_REFERENCE_CONF);
+        DEBUG_PRINT(_axisName);
+        DEBUG_PRINT(":HOMING_INIT REFERENCE_CONF=0x");
+        Serial.print(refConf, HEX);
+        DEBUG_PRINT(" homingSwitch=0x");
+        Serial.print(_config.homingSwitch, HEX);
+        DEBUG_PRINT(" flipped=");
+        DEBUG_PRINT(_config.leftFlipped);
+        DEBUG_PRINT("/");
+        DEBUG_PRINT(_config.rightFlipped);
+        DEBUG_PRINT(" limit_state=0x");
+        Serial.println(limit_state, HEX);
+      }
 
       if (limit_state & _config.homingSwitch) {
         DEBUG_PRINT(_axisName);
