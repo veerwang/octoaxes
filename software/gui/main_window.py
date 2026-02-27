@@ -977,8 +977,15 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"Unknown axis for move command: {axis_name}")
             return False
 
+        # μm → microsteps: distance_um / 1000 → mm, mm / mm_per_step → microsteps
+        mm_per_step = AXIS_MM_PER_STEP.get(axis_name)
+        if mm_per_step is None or mm_per_step == 0:
+            self.log(f"No mm_per_step for axis: {axis_name}")
+            return False
+        microsteps = int(distance / 1000.0 / mm_per_step)
+
         cmd = bytearray(8)
-        payload = int_to_payload(distance, 4)
+        payload = int_to_payload(microsteps, 4)
         cmd[1] = move_cmd
         cmd[2] = payload >> 24
         cmd[3] = (payload >> 16) & 0xFF
@@ -1006,8 +1013,15 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"Unknown axis for moveto command: {axis_name}")
             return False
 
+        # μm → microsteps: position_um / 1000 → mm, mm / mm_per_step → microsteps
+        mm_per_step = AXIS_MM_PER_STEP.get(axis_name)
+        if mm_per_step is None or mm_per_step == 0:
+            self.log(f"No mm_per_step for axis: {axis_name}")
+            return False
+        microsteps = int(position / 1000.0 / mm_per_step)
+
         cmd = bytearray(8)
-        payload = int_to_payload(position, 4)
+        payload = int_to_payload(microsteps, 4)
         cmd[1] = moveto_cmd
         cmd[2] = payload >> 24
         cmd[3] = (payload >> 16) & 0xFF
@@ -1137,14 +1151,12 @@ class TeensyControlGUI(QMainWindow):
 
     def move_objective(self, is_next):
         distance_mm = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES
-        distance = -1 * int(1000 * distance_mm)
-        value = distance if is_next else -distance
-        from utils.helpers import pack_move_command
-
-        base_command = pack_move_command(value)
-        command = format_command(self.get_current_axis(), base_command)
+        distance_um = -1 * int(1000 * distance_mm)
+        value = distance_um if is_next else -distance_um
+        axis = self.get_current_axis()
+        self._move_step_axis_relative_position(axis, value)
         direction = "Next" if is_next else "Previous"
-        self.send_command(command, f"Sent objective move ({direction})")
+        self.log(f"Sent objective move ({direction}): {value} μm")
 
     # ====== 照明命令发送 ======
 

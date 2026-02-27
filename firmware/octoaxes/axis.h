@@ -148,6 +148,8 @@ public:
   // 运动控制
   virtual bool moveToPosition(float positionMM);
   virtual bool moveRelative(float distanceMM);
+  virtual bool moveToPositionMicrosteps(int32_t targetMicrosteps);
+  virtual bool moveRelativeMicrosteps(int32_t deltaMicrosteps);
   virtual void setSpeed(float speedMM);
   virtual void smoothStop();
 

@@ -315,19 +315,16 @@ int32_t Axis::hexStringToInt32(String hex) {
 
 bool Axis::moveAxis(int32_t value) {
   _cmdRecvMicros = micros();
-  float positionMM = float(value) / 1000.0f;
-  positionMM = 1 * positionMM;
-
   _moveDirection = sgn(value);
 
-  if (!moveRelative(positionMM)) {
+  if (!moveRelativeMicrosteps(value)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":MOVE_AXIS ERROR: Movement failed");
     return false;
   } else {
     DEBUG_PRINT(_axisName);
-    DEBUG_PRINT(":MOVE_AXIS: ");
-    DEBUG_PRINTLNF(positionMM, 3);
+    DEBUG_PRINT(":MOVE_AXIS (usteps): ");
+    DEBUG_PRINTLN(value);
   }
   return true;
 }
@@ -362,20 +359,17 @@ bool Axis::handleMoveToAxis(const String &command) {
   String hexData = command.substring(space2 + 1);
 
   int32_t value = hexStringToInt32(hexData);
-  float positionMM = float(value) / 1000.0f;
-  positionMM = 1 * positionMM;
-
   _moveDirection = sgn(value);
 
-  if (!moveToPosition(positionMM)) {
+  if (!moveToPositionMicrosteps(value)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":MOVETO_AXIS ERROR: Movement failed");
     return false;
   }
 
   DEBUG_PRINT(_axisName);
-  DEBUG_PRINT(":MOVETO_AXIS: ");
-  DEBUG_PRINTLNF(positionMM, 3);
+  DEBUG_PRINT(":MOVETO_AXIS (usteps): ");
+  DEBUG_PRINTLN(value);
   return true;
 }
 
@@ -475,8 +469,8 @@ bool Axis::handleReset() {
   return true;
 }
 
-// 移动到绝对位置
-bool Axis::moveToPosition(float positionMM) {
+// 移动到绝对位置（微步单位，协议层入口）
+bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
   // 自动从错误状态恢复（虚拟限位超时等非硬件故障）
   if (_currentState == STATE_ERROR) {
     DEBUG_PRINT(_axisName);
@@ -491,16 +485,7 @@ bool Axis::moveToPosition(float positionMM) {
     return false;
   }
 
-  if (!isValidPosition(positionMM)) {
-    DEBUG_PRINT(_axisName);
-    DEBUG_PRINTLN(":Movement rejected: Invalid position");
-    DEBUG_PRINTLN(positionMM);
-    return false;
-  }
-
-  int32_t microsteps = motor_mmToMicrosteps(_icID, positionMM);
-
-  if (!isWithinSoftLimits(microsteps)) {
+  if (!isWithinSoftLimits(targetMicrosteps)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Movement rejected: Outside soft limits");
     return false;
@@ -511,7 +496,7 @@ bool Axis::moveToPosition(float positionMM) {
   bool vstopWasActive = (preStatus & TMC4361A_VSTOPL_ACTIVE_F_MASK) ||
                         (preStatus & TMC4361A_VSTOPR_ACTIVE_F_MASK);
 
-  motor_moveToMicrosteps(_icID, microsteps);
+  motor_moveToMicrosteps(_icID, targetMicrosteps);
   startMovement(); // 设置移动状态
 
   if (vstopWasActive && _softLimitsEnabled) {
@@ -521,8 +506,19 @@ bool Axis::moveToPosition(float positionMM) {
   return true;
 }
 
-// 相对移动
-bool Axis::moveRelative(float distanceMM) {
+// 移动到绝对位置（mm 单位，薄包装）
+bool Axis::moveToPosition(float positionMM) {
+  if (!isValidPosition(positionMM)) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINTLN(":Movement rejected: Invalid position");
+    DEBUG_PRINTLN(positionMM);
+    return false;
+  }
+  return moveToPositionMicrosteps(motor_mmToMicrosteps(_icID, positionMM));
+}
+
+// 相对移动（微步单位，协议层入口）
+bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
   // 自动从错误状态恢复
   if (_currentState == STATE_ERROR) {
     DEBUG_PRINT(_axisName);
@@ -535,7 +531,7 @@ bool Axis::moveRelative(float distanceMM) {
   }
 
   int32_t currentPos = motor_getPositionMicrosteps(_icID);
-  int32_t targetPos = currentPos + motor_mmToMicrosteps(_icID, distanceMM);
+  int32_t targetPos = currentPos + deltaMicrosteps;
 
   if (!isWithinSoftLimits(targetPos)) {
     return false;
@@ -554,6 +550,11 @@ bool Axis::moveRelative(float distanceMM) {
   }
 
   return true;
+}
+
+// 相对移动（mm 单位，薄包装）
+bool Axis::moveRelative(float distanceMM) {
+  return moveRelativeMicrosteps(motor_mmToMicrosteps(_icID, distanceMM));
 }
 
 // 设置速度

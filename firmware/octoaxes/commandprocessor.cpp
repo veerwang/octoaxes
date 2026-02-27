@@ -139,10 +139,9 @@ void CommandProcessor::handleMoveToX(const byte *data) {
   int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
-  float absolute_position_mm = float(absolute_position) / 1000.0f;  // μm → mm
   Axis *axis = axisManager.findAxisByName("X");
   if (axis)
-    axis->moveToPosition(absolute_position_mm);
+    axis->moveToPositionMicrosteps(absolute_position);
 
   DEBUG_PRINTLN("Get MoveToX Command");
 }
@@ -151,10 +150,9 @@ void CommandProcessor::handleMoveToY(const byte *data) {
   int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
-  float absolute_position_mm = float(absolute_position) / 1000.0f;  // μm → mm
   Axis *axis = axisManager.findAxisByName("Y");
   if (axis)
-    axis->moveToPosition(absolute_position_mm);
+    axis->moveToPositionMicrosteps(absolute_position);
 
   DEBUG_PRINTLN("Get MoveToY Command");
 }
@@ -163,10 +161,9 @@ void CommandProcessor::handleMoveToZ(const byte *data) {
   int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
-  float absolute_position_mm = float(absolute_position) / 1000.0f;  // μm → mm
   Axis *axis = axisManager.findAxisByName("Z");
   if (axis)
-    axis->moveToPosition(absolute_position_mm);
+    axis->moveToPositionMicrosteps(absolute_position);
 
   DEBUG_PRINTLN("Get MoveToZ Command");
 }
@@ -272,10 +269,9 @@ void CommandProcessor::handleMoveToW(const byte *data) {
   int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
-  float absolute_position_float = float(absolute_position) / 1000.0;
   Axis *axis = axisManager.findAxisByName("W");
   if (axis)
-    axis->moveToPosition(absolute_position_float);
+    axis->moveToPositionMicrosteps(absolute_position);
 
   DEBUG_PRINTLN("Get MoveToW Command");
 }

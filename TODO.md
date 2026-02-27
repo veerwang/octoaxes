@@ -47,7 +47,8 @@
 - [x] 上位机 SET_LIMITS 改为二进制协议 (2026-02-27) - LIMIT_CODE + μm→微步转换
 - [x] 修复虚拟限位 (VSTOP) 恢复机制 (2026-02-27) - STATUS 寄存器延迟恢复策略，参照 §10.4
 - [ ] 硬件验证 VSTOP 恢复（反复测试到达限位→反向→再到达）
-- [ ] 旧上位机兼容性验证（Squid Python configure_actuators → Octoaxes 固件）
+- [x] MOVE/MOVETO 协议单位改为微步 (2026-02-27) - 固件接受微步，上位机 μm→微步转换
+- [x] 旧上位机兼容性验证 (2026-02-27) - Squid Python configure_actuators → Octoaxes 固件
 
 ### 代码清理（可选）
 - [x] 修正 calculateCurrentScale 注释和变量名（峰值 vs RMS 区分）(2026-02-12)

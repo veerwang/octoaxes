@@ -8,50 +8,40 @@
 
 **日期**: 2026-02-27
 **分支**: develop
-**位置**: 虚拟限位 (VSTOP) 恢复机制修复
+**位置**: MOVE/MOVETO 协议单位改为微步 (microsteps)
 
 ### 本次完成
 
-#### 虚拟限位 (VSTOP) 恢复机制修复
+#### MOVE/MOVETO 协议单位改为微步
 
-**问题**：电机到达虚拟限位（VIRT_STOP_LEFT/RIGHT）后，反向移动和 homing 均被阻塞，最终进入 STATE_ERROR 死锁。
+**背景**：旧 Squid 上位机发送 MOVE/MOVETO 命令时使用微步 (microsteps) 作为单位，但 Octoaxes 固件将收到的值当作 μm 处理（`/1000.0f` 转 mm 再转微步），导致旧软件无法直接控制新固件。
 
-**根因分析**（参照 TMC4361A Programming Guide §10.4）：
-1. motor_moveToMicrosteps() 恢复时立即重新使能限位 → XACTUAL 仍在边界 → VSTOP 立即重触发
-2. checkLimitPosition() 的方向检查在 VSTOP 场景下误判（VSTOP 由硬件保证方向性）
-3. STATE_ERROR 无自动恢复，后续所有命令被拒绝
-
-**修复方案**（STATUS 寄存器延迟恢复策略）：
+**方案**：固件接受微步作为线协议单位（与旧 Squid 一致），新 Octoaxes 软件在发送前完成 μm→微步转换。
 
 | 文件 | 修改内容 |
 |------|----------|
-| `axis.h` | 新增 `_softLimitsEnabled` + `_needReenableLimits` 状态标志 |
-| `axis.cpp` | checkLimitPosition() 虚拟限位去掉方向检查；update() STATE_MOVING 中用 STATUS 寄存器检测电机离开边界后再恢复限位；moveToPosition/moveRelative/startHoming 增加 STATE_ERROR 自动恢复 |
-| `MotorControl.cpp` | motor_moveToMicrosteps() VSTOP 恢复：禁用限位→清事件→写 XTARGET，**不**立即恢复（交由 Axis 层管理） |
-| `stepaxis.cpp` | homing 期间用 motor_enableSoftLimits() 直接操作硬件，不改变 _softLimitsEnabled 标志；homing 完成后按标志恢复 |
-| `filterwheel.cpp` | 同 stepaxis.cpp 的 homing 软限位处理模式 |
-| `main_window.py` | send_homing() 完成后对步进轴调用 set_limits() 重设限位值 |
-
-**关键恢复流程**：
-```
-电机触碰 VSTOP → checkLimitPosition() 检测 → completeMovement() → STATE_IDLE
-→ 反向 moveToPosition() → 检测 STATUS VSTOP_ACTIVE → 设 _needReenableLimits=true
-→ motor_moveToMicrosteps() 禁用限位、清事件、写 XTARGET
-→ update() 循环检查 STATUS：VSTOP flags 清除 → motor_enableSoftLimits() 恢复
-```
+| `axis.h` | 新增 `moveToPositionMicrosteps(int32_t)` + `moveRelativeMicrosteps(int32_t)` 声明 |
+| `axis.cpp` | 新增微步方法（含完整核心逻辑），简化 mm 方法为薄包装；`moveAxis()` / `handleMoveToAxis()` 去掉 `/1000.0f` 转换 |
+| `commandprocessor.cpp` | `handleMoveToX/Y/Z/W` 去掉 `/1000.0f`，直接调用 `moveToPositionMicrosteps()` |
+| `main_window.py` | `_move_step_axis_relative/absolute_position()` 添加 μm→微步转换；`move_objective()` 改用二进制路径 |
 
 ### 下次继续
 
-1. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位，确认多次循环正常）
-2. **旧上位机兼容性验证**（Squid Python → Octoaxes 固件）
-3. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-4. **去掉 homing debug 打印**（确认稳定后）
+1. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+2. **去掉 homing debug 打印**（确认稳定后）
+3. **优化 W 轴换孔时间**（当前 61.3ms，目标 ≤ 60ms）
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-27 - 虚拟限位 (VSTOP) 恢复机制修复 (develop)
+- VSTOP recovery：STATUS 寄存器延迟恢复策略，参照 TMC4361A §10.4
+- motor_moveToMicrosteps() VSTOP 恢复：禁用限位→清事件→写 XTARGET
+- checkLimitPosition() 虚拟限位去掉方向检查
+- homing 期间软限位标志与硬件操作分离
 
 ### 2026-02-27 - 上位机协议修复 (develop)
 - 修复固件版本号不显示：sendDebugInfo() 改为 SerialUSB.println()
