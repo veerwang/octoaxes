@@ -269,8 +269,10 @@ void SerialProtocolHandler::processSerialDebugCommands() {
 
   if (command.length() > 0) {
     if (command == "S:VERSION") {
-      // 发送版本信息，使用新的调试信息发送方法
-      sendDebugInfo("S:VERSION:%d", VERSION);
+      // 版本回复始终发送（不受 ENABLE_DEBUG 控制）
+      char vbuf[32];
+      snprintf(vbuf, sizeof(vbuf), "S:VERSION:%lu", (unsigned long)VERSION);
+      SerialUSB.println(vbuf);
       return;
     }
 
