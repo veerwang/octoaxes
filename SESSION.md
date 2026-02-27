@@ -6,11 +6,34 @@
 
 ## 最新会话
 
-**日期**: 2026-02-27
+**日期**: 2026-02-27（续）
 **分支**: develop
-**位置**: MOVE/MOVETO 协议单位改为微步 (microsteps)
+**位置**: W 轴换孔性能验证
 
 ### 本次完成
+
+#### W 轴换孔时间回归测试
+
+分析上位机日志 `motor_control_log_20260227_114614.txt`，验证大量代码修改后 W 轴换孔性能是否退化。
+
+**测试条件**：Debug 固件，上位机自动测试（homing → 7 次 Next → 7 次 Previous）
+
+**结果**：换孔时间 **~60ms 平均**，与之前 61.3ms 基本一致，代码修改未影响运动性能。
+
+| 方向 | 7 次测量 (ms) | 范围 |
+|------|--------------|------|
+| Next | 64, 58, 61, 60, 61, 64, 58 | 58~64ms |
+| Previous | 63, 64, 62, 53, 52, 64, 61 | 52~64ms |
+
+**注意**：计时通过事件时间戳估算（`Get MoveW Command` → 最后一个 `Axis Event`），非固件内部 micros() 精确值。
+
+**发现异常**：日志中缺少 `W:DONE: total=Xus motor=Xus` 和 `W:MOVE_AXIS: 12.500` 输出。
+
+#### 上位机日志吞掉轴前缀 DEBUG 输出 Bug 修复
+
+**根因**：`axis_manager.py` 的 `parse_axis_data()` 只要匹配到轴前缀（如 `W:`）就返回 `True`，`main_window.py` 的 `handle_received_data()` 据此认为"已解析"而跳过日志记录。但 `parse_axis_content()` 只处理 `STATE:`、`IS_MOVING:` 等已知格式，对 `DONE:`、`MOVE_AXIS:` 等未知内容静默忽略。
+
+**修复**（`axis_manager.py`）：`parse_axis_content()` 改为返回 bool，已知格式返回 True，未知格式返回 False；`parse_axis_data()` 传递此返回值。修复后所有以轴名开头的 DEBUG 行（`W:DONE:`, `W:MOVE_AXIS:`, `W:CMD_RECV:` 等）均会被记录到 `[DBG]` 日志。
 
 #### MOVE/MOVETO 协议单位改为微步
 
@@ -27,9 +50,9 @@
 
 ### 下次继续
 
-1. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-2. **去掉 homing debug 打印**（确认稳定后）
-3. **优化 W 轴换孔时间**（当前 61.3ms，目标 ≤ 60ms）
+1. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位）
+2. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+3. **去掉 homing debug 打印**（确认稳定后）
 
 ---
 
@@ -37,7 +60,7 @@
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
 
-### 2026-02-27 - 虚拟限位 (VSTOP) 恢复机制修复 (develop)
+### 2026-02-27 - VSTOP 恢复机制修复 (develop)
 - VSTOP recovery：STATUS 寄存器延迟恢复策略，参照 TMC4361A §10.4
 - motor_moveToMicrosteps() VSTOP 恢复：禁用限位→清事件→写 XTARGET
 - checkLimitPosition() 虚拟限位去掉方向检查
