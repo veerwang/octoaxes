@@ -688,8 +688,11 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"Axis {axis} homing timeout")
             return
 
-        # 滤光轮 homing 完成后需要移动 offset
-        if axis in ("W", "E4"):
+        # Homing 完成后重新设置软限位（homing 过程中固件会禁用虚拟限位）
+        if axis not in ("W", "E4"):
+            self.set_limits()
+        else:
+            # 滤光轮 homing 完成后需要移动 offset
             offset_um = int(SQUID_FILTERWHEEL_OFFSET * 1000)  # mm -> μm
             self._move_step_axis_relative_position(axis, offset_um)
             self.log(f"Filter wheel {axis} moving offset: {offset_um} μm")

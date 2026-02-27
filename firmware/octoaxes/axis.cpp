@@ -36,6 +36,8 @@ Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char *axisName)
   _isMoving = false;
   _lastPosition = 0;
   _moveDirection = 0;
+  _softLimitsEnabled = false;
+  _needReenableLimits = false;
 
   // 初始化配置结构体
   memset(&_config, 0, sizeof(_config));
@@ -153,6 +155,19 @@ void Axis::update() {
     // 极限状态检测
     checkLimitPosition();
 
+    // VSTOP recovery 后延迟恢复虚拟限位：
+    // 等电机离开边界（STATUS 中 VSTOP flags 清除）后才重新使能限位，
+    // 避免在边界上立即重新触发 VSTOP。
+    if (_needReenableLimits) {
+      uint32_t st = motor_readStatus(_icID);
+      bool vstopStillActive = (st & TMC4361A_VSTOPL_ACTIVE_F_MASK) ||
+                              (st & TMC4361A_VSTOPR_ACTIVE_F_MASK);
+      if (!vstopStillActive) {
+        motor_enableSoftLimits(_icID, true, true);
+        _needReenableLimits = false;
+      }
+    }
+
     // 移动状态下的超时检查
     if (checkTimeout(MOVEMENT_TIMEOUT_MS)) {
       handleError("Movement timeout");
@@ -208,31 +223,27 @@ void Axis::reportStateIfChanged(bool force) {
 void Axis::checkLimitPosition() {
   uint32_t event = readAxisEvent();
 
-  // 软件限位
-  uint32_t i_datagram =
+  // 虚拟限位（软件限位）：不检查方向，因为 TMC4361A 硬件已保证
+  // VSTOPR 仅在正向越界时触发，VSTOPL 仅在负向越界时触发。
+  // 移除方向检查可避免 recovery 路径重新触发 VSTOP 后方向不匹配的问题。
+  uint32_t vstop_bits =
       event & (TMC4361A_VSTOPL_ACTIVE_MASK | TMC4361A_VSTOPR_ACTIVE_MASK);
-  i_datagram >>= TMC4361A_VSTOPL_ACTIVE_SHIFT;
-  uint8_t result = i_datagram & 0xff;
-
-  // 添加方向的内容
-  if ((result == RGHT_SW && _moveDirection == RGHT_DIR) ||
-      (result == LEFT_SW && _moveDirection == LEFT_DIR)) {
-    DEBUG_PRINT("Software Limit Stop: ");
-    DEBUG_PRINTLN(result);
+  if (vstop_bits) {
+    DEBUG_PRINT("Software Limit Stop: event=0x");
+    DEBUG_PRINTLNF(event, HEX);
     completeMovement();
     return;
   }
 
-  // 硬件件限位
-  i_datagram = event & (TMC4361A_STOPL_EVENT_MASK | TMC4361A_STOPR_EVENT_MASK);
-  i_datagram >>= TMC4361A_STOPL_EVENT_SHIFT;
-  result = i_datagram & 0xff;
+  // 硬件限位（保留方向检查，硬件限位需要方向匹配）
+  uint32_t hw_datagram = event & (TMC4361A_STOPL_EVENT_MASK | TMC4361A_STOPR_EVENT_MASK);
+  hw_datagram >>= TMC4361A_STOPL_EVENT_SHIFT;
+  uint8_t hw_result = hw_datagram & 0xff;
 
-  // 添加方向的内容
-  if ((result == RGHT_SW && _moveDirection == RGHT_DIR) ||
-      (result == LEFT_SW && _moveDirection == LEFT_DIR)) {
+  if ((hw_result == RGHT_SW && _moveDirection == RGHT_DIR) ||
+      (hw_result == LEFT_SW && _moveDirection == LEFT_DIR)) {
     DEBUG_PRINT("Hardware Limit Stop: ");
-    DEBUG_PRINTLN(result);
+    DEBUG_PRINTLN(hw_result);
     completeMovement();
     return;
   }
@@ -404,6 +415,12 @@ void Axis::completeMovement() {
   _isMoving = false;
   setState(STATE_IDLE);
 
+  // 移动完成时恢复虚拟限位（如果 recovery 路径禁用了限位且 update 循环未及时恢复）
+  if (_needReenableLimits && _softLimitsEnabled) {
+    motor_enableSoftLimits(_icID, true, true);
+    _needReenableLimits = false;
+  }
+
   // 格式: DONE: total=Xus prep=Yus motor=Zus pos=N tgt=N err=N
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":DONE: total=");
@@ -460,6 +477,13 @@ bool Axis::handleReset() {
 
 // 移动到绝对位置
 bool Axis::moveToPosition(float positionMM) {
+  // 自动从错误状态恢复（虚拟限位超时等非硬件故障）
+  if (_currentState == STATE_ERROR) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINTLN(":Auto-recovery from error state");
+    handleReset();
+  }
+
   if (_currentState != STATE_IDLE) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":Movement rejected: Axis is busy, current state: ");
@@ -482,13 +506,30 @@ bool Axis::moveToPosition(float positionMM) {
     return false;
   }
 
+  // 检查是否需要 VSTOP recovery（motor_moveToMicrosteps 会禁用限位）
+  uint32_t preStatus = motor_readStatus(_icID);
+  bool vstopWasActive = (preStatus & TMC4361A_VSTOPL_ACTIVE_F_MASK) ||
+                        (preStatus & TMC4361A_VSTOPR_ACTIVE_F_MASK);
+
   motor_moveToMicrosteps(_icID, microsteps);
   startMovement(); // 设置移动状态
+
+  if (vstopWasActive && _softLimitsEnabled) {
+    _needReenableLimits = true;
+  }
+
   return true;
 }
 
 // 相对移动
 bool Axis::moveRelative(float distanceMM) {
+  // 自动从错误状态恢复
+  if (_currentState == STATE_ERROR) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINTLN(":Auto-recovery from error state");
+    handleReset();
+  }
+
   if (_currentState != STATE_IDLE) {
     return false;
   }
@@ -500,8 +541,18 @@ bool Axis::moveRelative(float distanceMM) {
     return false;
   }
 
+  // 检查是否需要 VSTOP recovery（motor_moveToMicrosteps 会禁用限位）
+  uint32_t preStatus = motor_readStatus(_icID);
+  bool vstopWasActive = (preStatus & TMC4361A_VSTOPL_ACTIVE_F_MASK) ||
+                        (preStatus & TMC4361A_VSTOPR_ACTIVE_F_MASK);
+
   motor_moveToMicrosteps(_icID, targetPos);
   startMovement(); // 设置移动状态
+
+  if (vstopWasActive && _softLimitsEnabled) {
+    _needReenableLimits = true;
+  }
+
   return true;
 }
 
@@ -574,6 +625,13 @@ void Axis::restoreNormalMicrosteps() {
 
 // 开始归位
 bool Axis::startHoming() {
+  // 自动从错误状态恢复
+  if (_currentState == STATE_ERROR) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINTLN(":Auto-recovery from error state for homing");
+    handleReset();
+  }
+
   if (_currentState != STATE_IDLE) {
     return false;
   }
@@ -607,6 +665,7 @@ void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
 // 启用/禁用软限位 (使用新 API)
 void Axis::enableSoftLimits(bool enable) {
   motor_enableSoftLimits(_icID, enable, enable);
+  _softLimitsEnabled = enable;
 }
 
 // 设置单侧软限位 (direction: +1=上限/右, -1=下限/左)
@@ -622,6 +681,7 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
   }
   tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
+  _softLimitsEnabled = true;
 }
 
 // PID 控制

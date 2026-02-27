@@ -124,7 +124,8 @@ void StepAxis::performHomingSequence() {
 
   switch (_currentState) {
     case STATE_HOMING_INIT:
-      enableSoftLimits(false);
+      // 直接操作硬件禁用虚拟限位，不改变 _softLimitsEnabled 标志
+      motor_enableSoftLimits(_icID, false, false);
       switchToHomingMicrosteps();
 
       if (limit_state & _config.homingSwitch) {
@@ -244,9 +245,10 @@ void StepAxis::performHomingSequence() {
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Homing Set Current Position to safe position Timeout");
         }
-        // 注意：不自动启用软限位，等待上位机发送 SET_LIMITS 命令设置范围后再启用
-        // 如果此时启用软限位但范围未设置（默认为0），会导致电机无法移动
-        // enableSoftLimits(true);
+        // 恢复 homing 前的软限位状态（上位机初始化时已设置 VIRT_STOP 值）
+        if (_softLimitsEnabled) {
+          enableSoftLimits(true);
+        }
 
         // Homing 完成后自动恢复 PID（与旧架构一致）
         if (_pidState.enabled) {

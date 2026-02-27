@@ -45,6 +45,8 @@
 - [x] P5 PID/编码器命令实现 (2026-02-26) - CONFIGURE_STAGE_PID(25)/ENABLE(26)/DISABLE(27)/SET_PID_ARGUMENTS(29)
 - [x] 修复固件版本号不显示 (2026-02-27) - sendDebugInfo 改为 SerialUSB.println
 - [x] 上位机 SET_LIMITS 改为二进制协议 (2026-02-27) - LIMIT_CODE + μm→微步转换
+- [x] 修复虚拟限位 (VSTOP) 恢复机制 (2026-02-27) - STATUS 寄存器延迟恢复策略，参照 §10.4
+- [ ] 硬件验证 VSTOP 恢复（反复测试到达限位→反向→再到达）
 - [ ] 旧上位机兼容性验证（Squid Python configure_actuators → Octoaxes 固件）
 
 ### 代码清理（可选）

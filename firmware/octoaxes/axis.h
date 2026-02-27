@@ -93,6 +93,14 @@ protected:
   // 新增：轴使能状态
   bool _isEnabled;
 
+  // 软限位状态追踪（homing 后自动恢复用）
+  bool _softLimitsEnabled;
+
+  // 虚拟限位 recovery 后延迟恢复标志
+  // motor_moveToMicrosteps() 在 VSTOP 恢复时禁用限位，
+  // 需等电机离开边界后（STATUS 中 VSTOP flags 清除）才能重新使能
+  bool _needReenableLimits;
+
   // PID 状态（每轴独立）
   struct PIDState {
     bool enabled;         // PID 当前是否活跃

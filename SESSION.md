@@ -8,39 +8,54 @@
 
 **日期**: 2026-02-27
 **分支**: develop
-**位置**: 上位机协议修复
+**位置**: 虚拟限位 (VSTOP) 恢复机制修复
 
 ### 本次完成
 
-#### 1. 修复固件版本号不显示 (serial.cpp)
+#### 虚拟限位 (VSTOP) 恢复机制修复
 
-**根因**：`sendDebugInfo()` 使用 `DEBUG_PRINTLN()`，生产构建中为空宏，`S:VERSION` 回复永远不会发出。
-**修复**：版本回复改为直接 `SerialUSB.println()`，不经过 `sendDebugInfo()`。
+**问题**：电机到达虚拟限位（VIRT_STOP_LEFT/RIGHT）后，反向移动和 homing 均被阻塞，最终进入 STATE_ERROR 死锁。
 
-#### 2. 上位机 SET_LIMITS 改为二进制协议 (define.py + main_window.py)
+**根因分析**（参照 TMC4361A Programming Guide §10.4）：
+1. motor_moveToMicrosteps() 恢复时立即重新使能限位 → XACTUAL 仍在边界 → VSTOP 立即重触发
+2. checkLimitPosition() 的方向检查在 VSTOP 场景下误判（VSTOP 由硬件保证方向性）
+3. STATE_ERROR 无自动恢复，后续所有命令被拒绝
 
-**原状**：`set_limits()` 发 ASCII 命令 `"X:SET_LIMITS int <hex> <hex>"`，走调试协议。
-**修改**：改为标准二进制协议 SET_LIM(9)，与 Squid 原版一致。
+**修复方案**（STATUS 寄存器延迟恢复策略）：
 
-- `define.py` 新增 `LIMIT_CODE` 类 + `AXIS_LIMIT_CODE_MAP`
-- `main_window.py` `set_limits()` 改为构造 8 字节二进制包，每侧一条
-- 上位机负责 μm→微步转换（使用 `AXIS_MM_PER_STEP`），考虑 `movement_sign`
-- 固件端 `handleSetLim()` 无需改动
+| 文件 | 修改内容 |
+|------|----------|
+| `axis.h` | 新增 `_softLimitsEnabled` + `_needReenableLimits` 状态标志 |
+| `axis.cpp` | checkLimitPosition() 虚拟限位去掉方向检查；update() STATE_MOVING 中用 STATUS 寄存器检测电机离开边界后再恢复限位；moveToPosition/moveRelative/startHoming 增加 STATE_ERROR 自动恢复 |
+| `MotorControl.cpp` | motor_moveToMicrosteps() VSTOP 恢复：禁用限位→清事件→写 XTARGET，**不**立即恢复（交由 Axis 层管理） |
+| `stepaxis.cpp` | homing 期间用 motor_enableSoftLimits() 直接操作硬件，不改变 _softLimitsEnabled 标志；homing 完成后按标志恢复 |
+| `filterwheel.cpp` | 同 stepaxis.cpp 的 homing 软限位处理模式 |
+| `main_window.py` | send_homing() 完成后对步进轴调用 set_limits() 重设限位值 |
+
+**关键恢复流程**：
+```
+电机触碰 VSTOP → checkLimitPosition() 检测 → completeMovement() → STATE_IDLE
+→ 反向 moveToPosition() → 检测 STATUS VSTOP_ACTIVE → 设 _needReenableLimits=true
+→ motor_moveToMicrosteps() 禁用限位、清事件、写 XTARGET
+→ update() 循环检查 STATUS：VSTOP flags 清除 → motor_enableSoftLimits() 恢复
+```
 
 ### 下次继续
 
-1. **旧上位机兼容性验证**（用 Squid Python 连接 Octoaxes 固件，跑 `configure_actuators()`）
-2. **硬件验证 homing 修复**（X/Y 归位不再互换）
-3. **硬件验证速度/加速度设置**（Z 轴调速测试）
-4. **硬件验证 TTL 端口 + DAC**
-5. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-6. **去掉 homing debug 打印**（确认稳定后）
+1. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位，确认多次循环正常）
+2. **旧上位机兼容性验证**（Squid Python → Octoaxes 固件）
+3. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+4. **去掉 homing debug 打印**（确认稳定后）
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-27 - 上位机协议修复 (develop)
+- 修复固件版本号不显示：sendDebugInfo() 改为 SerialUSB.println()
+- 上位机 SET_LIMITS 改为二进制协议 SET_LIM(9)，与 Squid 原版一致
 
 ### 2026-02-26（续 4）- P5 PID/编码器命令实现 (develop)
 - 最后一组桩函数全部完成：CONFIGURE_STAGE_PID(25)/ENABLE(26)/DISABLE(27)/SET_PID_ARGUMENTS(29)

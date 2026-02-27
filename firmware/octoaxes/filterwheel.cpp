@@ -147,7 +147,8 @@ void FilterWheel::performHomingSequence() {
 
   switch (_currentState) {
     case STATE_HOMING_INIT:
-      enableSoftLimits(false);
+      // 直接操作硬件禁用虚拟限位，不改变 _softLimitsEnabled 标志
+      motor_enableSoftLimits(_icID, false, false);
       _slowApproach = false;
       switchToHomingMicrosteps();
       DEBUG_PRINT(_axisName);
@@ -193,7 +194,10 @@ void FilterWheel::performHomingSequence() {
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Homing completed! Current position set to 0");
 
-          // Homing 完成后自动恢复 PID（与旧架构一致）
+          // Homing 完成后恢复软限位和 PID
+          if (_softLimitsEnabled) {
+            enableSoftLimits(true);
+          }
           if (_pidState.enabled) {
             motor_enablePID(_icID);
             DEBUG_PRINT(_axisName);

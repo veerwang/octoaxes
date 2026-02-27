@@ -492,10 +492,36 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
     // 写入目标位置 (与旧 API tmc4361A_moveTo 一致)
     // ========================================================================
 
-    // Read events before and after to clear the register
-    tmc4361A_readRegister(icID, TMC4361A_EVENTS);
-    tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
-    tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+    // 虚拟限位恢复（TMC4361A Programming Guide §10.4）：
+    // "前提：停止开关不再激活 或 已禁用停止开关。然后清除事件。"
+    //
+    // 策略：禁用被激活的 virtual_limit_en → 清除事件 → 写 XTARGET。
+    // 不在此处恢复使能位：必须等电机离开边界后才能恢复（由 Axis 层管理）。
+    // 如果立即恢复，XACTUAL 仍在边界上 → VSTOP 立即重新触发 → 电机无法移动。
+    uint32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
+    bool vstopL = status & TMC4361A_VSTOPL_ACTIVE_F_MASK;
+    bool vstopR = status & TMC4361A_VSTOPR_ACTIVE_F_MASK;
+
+    if (vstopL || vstopR) {
+        uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
+
+        // 禁用被激活的虚拟限位（满足恢复前提条件）
+        if (vstopL)
+            refConf &= ~TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
+        if (vstopR)
+            refConf &= ~TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
+
+        tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
+        tmc4361A_readRegister(icID, TMC4361A_EVENTS);  // 清除事件（恢复动作）
+
+        tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
+        tmc4361A_readRegister(icID, TMC4361A_EVENTS);  // 清除可能的新事件
+    } else {
+        // 正常路径（无虚拟限位激活）
+        tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+        tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
+        tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+    }
 
     // Read X_ACTUAL to get it to refresh
     tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
