@@ -3,7 +3,7 @@ import datetime
 import os
 from typing import Optional
 
-from define import CMD_SET, AXIS, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP
+from define import CMD_SET, AXIS, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP, AXIS_LIMIT_CODE_MAP
 
 CMDS = CMD_SET
 from define import OBJECTIVE_RATIO, SCREW_PITCH_W_MM, OBJECTIVE_HOLES
@@ -910,7 +910,7 @@ class TeensyControlGUI(QMainWindow):
 
     # ====== 其他功能 ======
     def set_limits(self):
-        if not self.is_connected():
+        if not self.is_connected() or self.serial_thread is None:
             self.log("Not connected to Teensy")
             return
 
@@ -919,11 +919,41 @@ class TeensyControlGUI(QMainWindow):
             self.log("Invalid limit values")
             return
 
-        low, high = limits
-        from utils.helpers import pack_limit_command
+        low, high = limits  # μm
+        axis_name = self.get_current_axis()
 
-        command = format_command(self.get_current_axis(), pack_limit_command(low, high))
-        self.send_command(command, f"Sent limits: Low={low} μm, High={high} μm")
+        codes = AXIS_LIMIT_CODE_MAP.get(axis_name)
+        if codes is None:
+            self.log(f"Axis {axis_name} does not support soft limits")
+            return
+
+        # μm → microsteps: um / 1000 = mm, mm / mm_per_step = steps
+        mm_per_step = AXIS_MM_PER_STEP.get(axis_name, 0.0)
+        if mm_per_step == 0:
+            self.log(f"Axis {axis_name}: mm_per_step not configured")
+            return
+
+        sign = AXIS_CONFIG[axis_name]["movement_sign"]
+        low_usteps = int((low / 1000.0) / mm_per_step) * sign
+        high_usteps = int((high / 1000.0) / mm_per_step) * sign
+
+        # sign < 0 时正负方向翻转，确保 positive > negative
+        if low_usteps > high_usteps:
+            low_usteps, high_usteps = high_usteps, low_usteps
+
+        pos_code, neg_code = codes
+        for limit_code, usteps in [(pos_code, high_usteps), (neg_code, low_usteps)]:
+            cmd = bytearray(8)
+            cmd[1] = CMD_SET.SET_LIM
+            cmd[2] = limit_code
+            payload = int_to_payload(usteps, 4)
+            cmd[3] = (payload >> 24) & 0xFF
+            cmd[4] = (payload >> 16) & 0xFF
+            cmd[5] = (payload >> 8) & 0xFF
+            cmd[6] = payload & 0xFF
+            self.serial_thread.send_binary_command(cmd)
+
+        self.log(f"Set limits [{axis_name}]: Low={low} μm, High={high} μm")
 
     def _move_step_axis_relative_position(self, axis_name: str, distance: int) -> bool:
         """发送相对移动命令

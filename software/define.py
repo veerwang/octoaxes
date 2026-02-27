@@ -21,6 +21,24 @@ class AXIS:
     W2 = 6
 
 
+class LIMIT_CODE:
+    """SET_LIM 命令的限位码（与固件 commandprocessor.cpp LIM_CODE_* 一致）"""
+    X_POSITIVE = 0
+    X_NEGATIVE = 1
+    Y_POSITIVE = 2
+    Y_NEGATIVE = 3
+    Z_POSITIVE = 4
+    Z_NEGATIVE = 5
+
+
+# 轴名称 → (正向限位码, 负向限位码) 映射
+AXIS_LIMIT_CODE_MAP = {
+    "X": (LIMIT_CODE.X_POSITIVE, LIMIT_CODE.X_NEGATIVE),
+    "Y": (LIMIT_CODE.Y_POSITIVE, LIMIT_CODE.Y_NEGATIVE),
+    "Z": (LIMIT_CODE.Z_POSITIVE, LIMIT_CODE.Z_NEGATIVE),
+}
+
+
 class CMD_SET:
     # 相对移动命令
     MOVE_X = 0

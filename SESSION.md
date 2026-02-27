@@ -6,35 +6,26 @@
 
 ## 最新会话
 
-**日期**: 2026-02-26（续 4）
+**日期**: 2026-02-27
 **分支**: develop
-**位置**: P5 PID/编码器命令实现
+**位置**: 上位机协议修复
 
 ### 本次完成
 
-#### P5 PID/编码器命令实现（命令 25/26/27/29）
+#### 1. 修复固件版本号不显示 (serial.cpp)
 
-最后一组未实现的桩函数，全部完成。改动 7 个文件：
+**根因**：`sendDebugInfo()` 使用 `DEBUG_PRINTLN()`，生产构建中为空宏，`S:VERSION` 回复永远不会发出。
+**修复**：版本回复改为直接 `SerialUSB.println()`，不经过 `sendDebugInfo()`。
 
-**MotorControl 层** (`tmc/motion/MotorControl.h` + `.cpp`)：
-- 新增 `motor_initABNEncoder()` — 写 ENC_IN_RES_WR、ENC_VMEAN_FILTER_WR、INVERT_ENC_DIR
-- 新增 `motor_initPID()` — 写 CL_TR_TOLERANCE、PID_TOLERANCE、PID_P/I/D、PID_DV_CLIP、PID_I_CLIP
-- 新增 `motor_enablePID()` — 设置 ENC_IN_CONF 的 REGULATION_MODUS=0b10
-- 修正 `motor_disablePID()` — 旧实现错误操作 RAMPMODE，改为正确操作 ENC_IN_CONF
+#### 2. 上位机 SET_LIMITS 改为二进制协议 (define.py + main_window.py)
 
-**Axis 层** (`axis.h` + `axis.cpp`)：
-- 新增 `PIDState` 结构体（enabled/p/i/d），每轴独立缓存
-- `configureStagePID()` — ABN 编码器初始化 + PID 参数写入（按轴类型区分 X/Y vs Z vs W/W2）
-- `enableStagePID()` / `disableStagePID()` — PID 开关 + 状态跟踪
-- `setPIDArguments()` — 缓存 P/I/D 参数
+**原状**：`set_limits()` 发 ASCII 命令 `"X:SET_LIMITS int <hex> <hex>"`，走调试协议。
+**修改**：改为标准二进制协议 SET_LIM(9)，与 Squid 原版一致。
 
-**CommandProcessor** (`commandprocessor.cpp`)：
-- 填充 4 个 handler：handleConfigureStagePID(25)、handleEnableStagePID(26)、handleDisableStagePID(27)、handleSetPIDArguments(29)
-
-**Homing PID 恢复** (`stepaxis.cpp` + `filterwheel.cpp`)：
-- homing 完成后若 `_pidState.enabled=true` 自动 `motor_enablePID()`
-
-编译通过，无新增警告。
+- `define.py` 新增 `LIMIT_CODE` 类 + `AXIS_LIMIT_CODE_MAP`
+- `main_window.py` `set_limits()` 改为构造 8 字节二进制包，每侧一条
+- 上位机负责 μm→微步转换（使用 `AXIS_MM_PER_STEP`），考虑 `movement_sign`
+- 固件端 `handleSetLim()` 无需改动
 
 ### 下次继续
 
@@ -50,6 +41,11 @@
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-26（续 4）- P5 PID/编码器命令实现 (develop)
+- 最后一组桩函数全部完成：CONFIGURE_STAGE_PID(25)/ENABLE(26)/DISABLE(27)/SET_PID_ARGUMENTS(29)
+- MotorControl 层新增 ABN 编码器初始化 + PID 参数写入 + PID 开关
+- Axis 层 PIDState 结构体 + homing 后自动恢复 PID
 
 ### 2026-02-26（续 3）- 响应机制 + INITFILTERWHEEL + migration guide 收尾 (develop)
 - sendResponse() 补全 W 轴位置 + 固件版本，send_position_update() 10ms 周期上报
