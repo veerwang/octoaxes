@@ -62,7 +62,8 @@ void Objectives::performHomingSequence() {
 
   switch (_currentState) {
     case STATE_HOMING_INIT:
-      enableSoftLimits(false);
+      // 直接操作硬件禁用虚拟限位，不改变 _softLimitsEnabled 标志
+      motor_enableSoftLimits(_icID, false, false);
       switchToHomingMicrosteps();
 
       if (limit_state == OBSW_SW) {
@@ -105,6 +106,16 @@ void Objectives::performHomingSequence() {
           DEBUG_PRINTLN(":Homing Set Current Position to 0 position Timeout");
 
         DEBUG_PRINTLN(":Homing completed! Current position set to 0");
+
+        // Homing 完成后恢复软限位和 PID
+        if (_softLimitsEnabled) {
+          enableSoftLimits(true);
+        }
+        if (_pidState.enabled) {
+          motor_enablePID(_icID);
+          DEBUG_PRINT(_axisName);
+          DEBUG_PRINTLN(":PID re-enabled after homing");
+        }
 
         setState(STATE_IDLE);
       } else {
