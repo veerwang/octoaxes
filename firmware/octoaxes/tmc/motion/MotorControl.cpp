@@ -12,7 +12,6 @@
 #include "../hal/TMC_SPI.h"
 #include <Arduino.h>
 #include "../../build_opt.h"
-#include "../../TMC4361A_Register.h"
 
 // ============================================================================
 // Debug Helper
@@ -967,14 +966,14 @@ void motor_initABNEncoder(uint8_t icID, uint32_t transitions_per_rev,
         return;
 
     // Set encoder resolution
-    tmc4361A_writeRegister(icID, TMC4361A_ENC_IN_RES_WR, transitions_per_rev);
+    tmc4361A_writeRegister(icID, TMC4361A_ENC_IN_RES, transitions_per_rev);
 
     // Set encoder velocity mean filter:
     // ENC_VMEAN_FILTER = wait_time | (filter_exp << 8) | (vmean_int << 16)
     uint32_t filterVal = (uint32_t)filter_wait_time
                        | ((uint32_t)filter_exponent << 8)
                        | ((uint32_t)filter_vmean << 16);
-    tmc4361A_writeRegister(icID, TMC4361A_ENC_VMEAN_FILTER_WR, filterVal);
+    tmc4361A_writeRegister(icID, TMC4361A_ENC_VMEAN_FILTER, filterVal);
 
     // Set or clear INVERT_ENC_DIR bit (bit 29 of ENC_IN_CONF)
     uint32_t enc_conf = tmc4361A_readRegister(icID, TMC4361A_ENC_IN_CONF);
@@ -994,18 +993,18 @@ void motor_initPID(uint8_t icID, uint32_t target_tolerance, uint32_t pid_toleran
         return;
 
     // Closed-loop target tolerance
-    tmc4361A_writeRegister(icID, TMC4361A_CL_TR_TOLERANCE_WR, target_tolerance);
+    tmc4361A_writeRegister(icID, TMC4361A_CL_TR_TOLERANCE, target_tolerance);
     // PID tolerance
-    tmc4361A_writeRegister(icID, TMC4361A_PID_TOLERANCE_WR, pid_tolerance);
+    tmc4361A_writeRegister(icID, TMC4361A_PID_TOLERANCE, pid_tolerance);
     // PID gains (24-bit each)
-    tmc4361A_writeRegister(icID, TMC4361A_PID_P_WR, pid_p & 0xFFFFFF);
-    tmc4361A_writeRegister(icID, TMC4361A_PID_I_WR, pid_i & 0xFFFFFF);
-    tmc4361A_writeRegister(icID, TMC4361A_PID_D_WR, pid_d & 0xFFFFFF);
+    tmc4361A_writeRegister(icID, TMC4361A_PID_P, pid_p & 0xFFFFFF);
+    tmc4361A_writeRegister(icID, TMC4361A_PID_I, pid_i & 0xFFFFFF);
+    tmc4361A_writeRegister(icID, TMC4361A_PID_D, pid_d & 0xFFFFFF);
     // PID velocity clip
-    tmc4361A_writeRegister(icID, TMC4361A_PID_DV_CLIP_WR, pid_dclip);
+    tmc4361A_writeRegister(icID, TMC4361A_PID_DV_CLIP, pid_dclip);
     // PID integral clip + derivative clock divider
     // PID_I_CLIP_WR (0x5D) = iclip | (d_clkdiv << 16)
-    tmc4361A_writeRegister(icID, TMC4361A_PID_I_CLIP_WR,
+    tmc4361A_writeRegister(icID, TMC4361A_PID_I_CLIP,
                            pid_iclip | ((uint32_t)pid_d_clkdiv << 16));
 }
 

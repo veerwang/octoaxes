@@ -6,47 +6,35 @@
 
 ## 最新会话
 
-**日期**: 2026-02-27（续）
+**日期**: 2026-02-27（续 2）
 **分支**: develop
-**位置**: W 轴换孔性能验证
+**位置**: TMC-API 兼容层迁移
 
 ### 本次完成
 
-#### W 轴换孔时间回归测试
+#### 删除旧 TMC-API 兼容层，统一到新 HW_Abstraction.h
 
-分析上位机日志 `motor_control_log_20260227_114614.txt`，验证大量代码修改后 W 轴换孔性能是否退化。
+**背景**：固件编译有 248 个宏重定义警告，来自旧 TMC-API（Squid 初始导入的 `TMC4361A_Fields.h`）和新 TMC-API（2024 ADI 的 `TMC4361A_HW_Abstraction.h`）之间 738 个重复宏定义。
 
-**测试条件**：Debug 固件，上位机自动测试（homing → 7 次 Next → 7 次 Previous）
+**分析结论**：
+- 旧文件中 1181 个宏，实际使用的全部在新 API 中有同名定义
+- 唯一例外：`TMC4361A_VSTOPR_ACTIVE_MASK`（EVENTS 寄存器 bit 14, 0x4000）缺失于 HW_Abstraction.h
+- Register.h 中 9 个 `_WR` 后缀 PID/编码器寄存器宏需改名为新 API 无后缀版本
+- Constants.h 完全未被引用
 
-**结果**：换孔时间 **~60ms 平均**，与之前 61.3ms 基本一致，代码修改未影响运动性能。
+**改动**：
 
-| 方向 | 7 次测量 (ms) | 范围 |
-|------|--------------|------|
-| Next | 64, 58, 61, 60, 61, 64, 58 | 58~64ms |
-| Previous | 63, 64, 62, 53, 52, 64, 61 | 52~64ms |
+| 文件 | 操作 |
+|------|------|
+| `TMC4361A_HW_Abstraction.h` | 补充 `VSTOPR_ACTIVE_MASK/SHIFT/FIELD`（bit 14, 0x4000） |
+| `MotorControl.cpp` | 9 个 `_WR` 后缀宏改名（PID_P/I/D/DV_CLIP/I_CLIP/TOLERANCE, CL_TR_TOLERANCE, ENC_IN_RES, ENC_VMEAN_FILTER），删除 Register.h include |
+| `axis.h` | 删除 `#include "TMC4361A_Fields.h"` |
+| `axis.cpp` | 删除 `#include "TMC4361A_Register.h"` |
+| `TMC4361A_Fields.h` | **删除**（1247 行，来自 Squid 初始导入） |
+| `TMC4361A_Register.h` | **删除**（199 行） |
+| `TMC4361A_Constants.h` | **删除**（28 行，零引用） |
 
-**注意**：计时通过事件时间戳估算（`Get MoveW Command` → 最后一个 `Axis Event`），非固件内部 micros() 精确值。
-
-**发现异常**：日志中缺少 `W:DONE: total=Xus motor=Xus` 和 `W:MOVE_AXIS: 12.500` 输出。
-
-#### 上位机日志吞掉轴前缀 DEBUG 输出 Bug 修复
-
-**根因**：`axis_manager.py` 的 `parse_axis_data()` 只要匹配到轴前缀（如 `W:`）就返回 `True`，`main_window.py` 的 `handle_received_data()` 据此认为"已解析"而跳过日志记录。但 `parse_axis_content()` 只处理 `STATE:`、`IS_MOVING:` 等已知格式，对 `DONE:`、`MOVE_AXIS:` 等未知内容静默忽略。
-
-**修复**（`axis_manager.py`）：`parse_axis_content()` 改为返回 bool，已知格式返回 True，未知格式返回 False；`parse_axis_data()` 传递此返回值。修复后所有以轴名开头的 DEBUG 行（`W:DONE:`, `W:MOVE_AXIS:`, `W:CMD_RECV:` 等）均会被记录到 `[DBG]` 日志。
-
-#### MOVE/MOVETO 协议单位改为微步
-
-**背景**：旧 Squid 上位机发送 MOVE/MOVETO 命令时使用微步 (microsteps) 作为单位，但 Octoaxes 固件将收到的值当作 μm 处理（`/1000.0f` 转 mm 再转微步），导致旧软件无法直接控制新固件。
-
-**方案**：固件接受微步作为线协议单位（与旧 Squid 一致），新 Octoaxes 软件在发送前完成 μm→微步转换。
-
-| 文件 | 修改内容 |
-|------|----------|
-| `axis.h` | 新增 `moveToPositionMicrosteps(int32_t)` + `moveRelativeMicrosteps(int32_t)` 声明 |
-| `axis.cpp` | 新增微步方法（含完整核心逻辑），简化 mm 方法为薄包装；`moveAxis()` / `handleMoveToAxis()` 去掉 `/1000.0f` 转换 |
-| `commandprocessor.cpp` | `handleMoveToX/Y/Z/W` 去掉 `/1000.0f`，直接调用 `moveToPositionMicrosteps()` |
-| `main_window.py` | `_move_step_axis_relative/absolute_position()` 添加 μm→微步转换；`move_objective()` 改用二进制路径 |
+**结果**：Production + Debug 编译成功，**248 个警告 → 0 个**。
 
 ### 下次继续
 
@@ -59,6 +47,11 @@
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-27（续）- W 轴回归测试 + 上位机 Bug 修复 + 协议对齐 (develop)
+- W 轴换孔时间回归测试：~60ms 平均，与 61.3ms 一致，无性能退化
+- 上位机 axis_manager.py 日志吞掉轴前缀 DEBUG 行 Bug 修复
+- MOVE/MOVETO 协议单位改为微步，与 Squid 原版一致
 
 ### 2026-02-27 - VSTOP 恢复机制修复 (develop)
 - VSTOP recovery：STATUS 寄存器延迟恢复策略，参照 TMC4361A §10.4

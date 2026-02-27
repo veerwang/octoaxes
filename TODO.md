@@ -57,7 +57,7 @@
 - [x] MotorControl.cpp debug 打印统一使用 DEBUG 宏 (2026-02-14)
 - [x] motor_moveToMicrosteps 移除未使用的 rampModeBefore 变量 (2026-02-14)
 - [x] CommandProcessor 27 个空桩函数添加 NOT_IMPLEMENTED 日志 (2026-02-14)
-- [ ] 移除兼容层中不再需要的代码
+- [x] 移除兼容层中不再需要的代码 (2026-02-27) - 删除 Fields.h/Register.h/Constants.h，统一到 HW_Abstraction.h，248 警告→0
 - [ ] 清理注释和文档
 
 ---

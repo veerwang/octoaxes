@@ -1,6 +1,5 @@
 #include "axis.h"
 #include "build_opt.h"
-#include "TMC4361A_Register.h"
 #include "tmc/ic/TMC4361A/TMC4361A.h"
 #include <SPI.h>
 
