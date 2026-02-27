@@ -27,17 +27,20 @@
 
 **注意**：计时通过事件时间戳估算（`Get MoveW Command` → 最后一个 `Axis Event`），非固件内部 micros() 精确值。
 
-**发现异常**：日志中缺少 `W:DONE: total=Xus motor=Xus` 输出。DEBUG 构建下其他 DEBUG_PRINT 正常（motor_adjustBows、Get MoveW Command、Axis Event 等均可见），但 `completeMovement()` 的计时打印未出现。可能原因：
-1. VSTOP 恢复机制修改影响了状态机路径，`completeMovement()` 未被调用
-2. 二进制/文本混合串口导致上位机 log 抓取遗漏
+**发现异常**：日志中缺少 `W:DONE: total=Xus motor=Xus` 和 `W:MOVE_AXIS: 12.500` 输出。
+
+#### 上位机日志吞掉轴前缀 DEBUG 输出 Bug 修复
+
+**根因**：`axis_manager.py` 的 `parse_axis_data()` 只要匹配到轴前缀（如 `W:`）就返回 `True`，`main_window.py` 的 `handle_received_data()` 据此认为"已解析"而跳过日志记录。但 `parse_axis_content()` 只处理 `STATE:`、`IS_MOVING:` 等已知格式，对 `DONE:`、`MOVE_AXIS:` 等未知内容静默忽略。
+
+**修复**（`axis_manager.py`）：`parse_axis_content()` 改为返回 bool，已知格式返回 True，未知格式返回 False；`parse_axis_data()` 传递此返回值。修复后所有以轴名开头的 DEBUG 行（`W:DONE:`, `W:MOVE_AXIS:`, `W:CMD_RECV:` 等）均会被记录到 `[DBG]` 日志。
 
 ### 下次继续
 
-1. **排查 `completeMovement()` 未输出问题** — 确认 VSTOP 修改是否影响了运动完成检测路径
-2. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位）
-3. **旧上位机兼容性验证**（Squid Python → Octoaxes 固件）
-4. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-5. **去掉 homing debug 打印**（确认稳定后）
+1. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位）
+2. **旧上位机兼容性验证**（Squid Python → Octoaxes 固件）
+3. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+4. **去掉 homing debug 打印**（确认稳定后）
 
 ---
 
