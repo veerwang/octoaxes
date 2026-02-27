@@ -6,52 +6,48 @@
 
 ## 最新会话
 
-**日期**: 2026-02-27
+**日期**: 2026-02-27（续）
 **分支**: develop
-**位置**: 虚拟限位 (VSTOP) 恢复机制修复
+**位置**: W 轴换孔性能验证
 
 ### 本次完成
 
-#### 虚拟限位 (VSTOP) 恢复机制修复
+#### W 轴换孔时间回归测试
 
-**问题**：电机到达虚拟限位（VIRT_STOP_LEFT/RIGHT）后，反向移动和 homing 均被阻塞，最终进入 STATE_ERROR 死锁。
+分析上位机日志 `motor_control_log_20260227_114614.txt`，验证大量代码修改后 W 轴换孔性能是否退化。
 
-**根因分析**（参照 TMC4361A Programming Guide §10.4）：
-1. motor_moveToMicrosteps() 恢复时立即重新使能限位 → XACTUAL 仍在边界 → VSTOP 立即重触发
-2. checkLimitPosition() 的方向检查在 VSTOP 场景下误判（VSTOP 由硬件保证方向性）
-3. STATE_ERROR 无自动恢复，后续所有命令被拒绝
+**测试条件**：Debug 固件，上位机自动测试（homing → 7 次 Next → 7 次 Previous）
 
-**修复方案**（STATUS 寄存器延迟恢复策略）：
+**结果**：换孔时间 **~60ms 平均**，与之前 61.3ms 基本一致，代码修改未影响运动性能。
 
-| 文件 | 修改内容 |
-|------|----------|
-| `axis.h` | 新增 `_softLimitsEnabled` + `_needReenableLimits` 状态标志 |
-| `axis.cpp` | checkLimitPosition() 虚拟限位去掉方向检查；update() STATE_MOVING 中用 STATUS 寄存器检测电机离开边界后再恢复限位；moveToPosition/moveRelative/startHoming 增加 STATE_ERROR 自动恢复 |
-| `MotorControl.cpp` | motor_moveToMicrosteps() VSTOP 恢复：禁用限位→清事件→写 XTARGET，**不**立即恢复（交由 Axis 层管理） |
-| `stepaxis.cpp` | homing 期间用 motor_enableSoftLimits() 直接操作硬件，不改变 _softLimitsEnabled 标志；homing 完成后按标志恢复 |
-| `filterwheel.cpp` | 同 stepaxis.cpp 的 homing 软限位处理模式 |
-| `main_window.py` | send_homing() 完成后对步进轴调用 set_limits() 重设限位值 |
+| 方向 | 7 次测量 (ms) | 范围 |
+|------|--------------|------|
+| Next | 64, 58, 61, 60, 61, 64, 58 | 58~64ms |
+| Previous | 63, 64, 62, 53, 52, 64, 61 | 52~64ms |
 
-**关键恢复流程**：
-```
-电机触碰 VSTOP → checkLimitPosition() 检测 → completeMovement() → STATE_IDLE
-→ 反向 moveToPosition() → 检测 STATUS VSTOP_ACTIVE → 设 _needReenableLimits=true
-→ motor_moveToMicrosteps() 禁用限位、清事件、写 XTARGET
-→ update() 循环检查 STATUS：VSTOP flags 清除 → motor_enableSoftLimits() 恢复
-```
+**注意**：计时通过事件时间戳估算（`Get MoveW Command` → 最后一个 `Axis Event`），非固件内部 micros() 精确值。
+
+**发现异常**：日志中缺少 `W:DONE: total=Xus motor=Xus` 输出。DEBUG 构建下其他 DEBUG_PRINT 正常（motor_adjustBows、Get MoveW Command、Axis Event 等均可见），但 `completeMovement()` 的计时打印未出现。可能原因：
+1. VSTOP 恢复机制修改影响了状态机路径，`completeMovement()` 未被调用
+2. 二进制/文本混合串口导致上位机 log 抓取遗漏
 
 ### 下次继续
 
-1. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位，确认多次循环正常）
-2. **旧上位机兼容性验证**（Squid Python → Octoaxes 固件）
-3. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-4. **去掉 homing debug 打印**（确认稳定后）
+1. **排查 `completeMovement()` 未输出问题** — 确认 VSTOP 修改是否影响了运动完成检测路径
+2. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位）
+3. **旧上位机兼容性验证**（Squid Python → Octoaxes 固件）
+4. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
+5. **去掉 homing debug 打印**（确认稳定后）
 
 ---
 
 ## 历史记录
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-02-27 - VSTOP 恢复机制修复 (develop)
+- VSTOP 触发后反向移动和 homing 死锁修复（STATUS 寄存器延迟恢复策略）
+- 涉及 axis.h/cpp、MotorControl.cpp、stepaxis.cpp、filterwheel.cpp、main_window.py
 
 ### 2026-02-27 - 上位机协议修复 (develop)
 - 修复固件版本号不显示：sendDebugInfo() 改为 SerialUSB.println()
