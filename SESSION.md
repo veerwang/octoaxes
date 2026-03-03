@@ -6,41 +6,39 @@
 
 ## 最新会话
 
-**日期**: 2026-02-27（续 2）
+**日期**: 2026-03-03
 **分支**: develop
-**位置**: TMC-API 兼容层迁移
+**位置**: 手控盒 (Joystick) 移植
 
 ### 本次完成
 
-#### 删除旧 TMC-API 兼容层，统一到新 HW_Abstraction.h
+#### 手控盒模块移植 + motor_moveToMicrosteps VMAX 恢复修复
 
-**背景**：固件编译有 248 个宏重定义警告，来自旧 TMC-API（Squid 初始导入的 `TMC4361A_Fields.h`）和新 TMC-API（2024 ADI 的 `TMC4361A_HW_Abstraction.h`）之间 738 个重复宏定义。
+**新增文件**：
+- `joystick.h` / `joystick.cpp` — Serial5 + PacketSerial 接收手控盒数据
+  - XY 摇杆速度控制（30ms 周期，安全条件守卫）
+  - Z 焦点轮位置跟随（绝对编码器差值追踪，软限位钳位）
+  - `flag_read_joystick` 每包置位/处理后清除（与 Squid 一致）
 
-**分析结论**：
-- 旧文件中 1181 个宏，实际使用的全部在新 API 中有同名定义
-- 唯一例外：`TMC4361A_VSTOPR_ACTIVE_MASK`（EVENTS 寄存器 bit 14, 0x4000）缺失于 HW_Abstraction.h
-- Register.h 中 9 个 `_WR` 后缀 PID/编码器寄存器宏需改名为新 API 无后缀版本
-- Constants.h 完全未被引用
+**修复 Bug — motor_moveToMicrosteps() VMAX 不恢复**：
 
-**改动**：
+排查过程：加入 joystick 代码后 XY 轴第二次移动卡住 → 二分排查定位到 `check_joystick()` → 发现 Serial5 RX 浮空收到噪声触发回调 → `motor_stop()` 将 VMAX 写 0 但未设 `velocity_mode` → 下次位置命令跳过 sRampInit → VMAX 仍为 0 → 电机无法运动。
 
-| 文件 | 操作 |
-|------|------|
-| `TMC4361A_HW_Abstraction.h` | 补充 `VSTOPR_ACTIVE_MASK/SHIFT/FIELD`（bit 14, 0x4000） |
-| `MotorControl.cpp` | 9 个 `_WR` 后缀宏改名（PID_P/I/D/DV_CLIP/I_CLIP/TOLERANCE, CL_TR_TOLERANCE, ENC_IN_RES, ENC_VMEAN_FILTER），删除 Register.h include |
-| `axis.h` | 删除 `#include "TMC4361A_Fields.h"` |
-| `axis.cpp` | 删除 `#include "TMC4361A_Register.h"` |
-| `TMC4361A_Fields.h` | **删除**（1247 行，来自 Squid 初始导入） |
-| `TMC4361A_Register.h` | **删除**（199 行） |
-| `TMC4361A_Constants.h` | **删除**（28 行，零引用） |
+根因差异：旧 Squid `tmc4361A_moveTo()` 每次都传入 `velocityMax` 并写入 VMAX 寄存器；新 `motor_moveToMicrosteps()` 仅在 `velocity_mode == true` 时才通过 sRampInit 恢复 VMAX。
 
-**结果**：Production + Debug 编译成功，**248 个警告 → 0 个**。
+修复：`motor_moveToMicrosteps()` 无条件写回 `motorParams[icID].vmax`，与旧架构行为对齐。硬件验证通过。
 
 ### 下次继续
 
 1. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位）
 2. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
 3. **去掉 homing debug 打印**（确认稳定后）
+4. **手控盒硬件测试**（连接手控盒验证摇杆 XY 速度 + 焦点轮 Z 跟随）
+
+---
+
+### 2026-02-27（续 2）- 删除旧 TMC-API 兼容层 (develop)
+- 删除 Fields.h/Register.h/Constants.h，统一到 HW_Abstraction.h，248 警告→0
 
 ---
 

@@ -36,6 +36,7 @@
 - [ ] 修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW + 极性修正）
 
 ### 命令移植
+- [x] 手控盒模块移植 (2026-03-03) - joystick.h/cpp + motor_moveToMicrosteps VMAX 修复
 - [x] 照明系统移植 (2026-02-26) - illumination.h/cpp + 11 个 handler
 - [x] 相机触发系统移植 (2026-02-26) - trigger.h/cpp + 6 个 handler
 - [x] 优先级 3 运动配置命令移植 (2026-02-26) - SET_LIM/POLARITY/DRIVER/PITCH/MARGIN 5 个 handler
