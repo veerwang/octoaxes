@@ -2,6 +2,7 @@
 #include "build_opt.h"
 #include "filterwheel.h"
 #include "illumination.h"
+#include "joystick.h"
 #include "trigger.h"
 #include "objectives.h"
 #include "serial.h"
@@ -102,6 +103,9 @@ bool initializeSystem() {
     return false;
   }
 
+  // 初始化手控盒（Serial5 + PacketSerial）
+  joystick_init();
+
   return true;
 }
 
@@ -148,6 +152,9 @@ void loop() {
 
   // 10ms 周期位置上报（与旧 Squid 协议兼容）
   serialProtocol.send_position_update();
+
+  // 更新手控盒（PacketSerial 接收 + 摇杆/焦点轮控制）
+  joystick_update();
 
   // 更新所有轴状态机
   axisManager.updateAll();

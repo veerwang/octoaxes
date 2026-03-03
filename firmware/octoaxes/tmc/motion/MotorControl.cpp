@@ -487,6 +487,11 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
 
     }
 
+    // 无条件写回 VMAX（与旧 API tmc4361A_moveTo 一致）
+    // 旧 API 每次 moveTo 都写 VMAX，确保即使被外部（如 motor_stop）
+    // 清零后也能恢复正确速度
+    tmc4361A_writeRegister(icID, TMC4361A_VMAX, motorParams[icID].vmax);
+
     // ========================================================================
     // 写入目标位置 (与旧 API tmc4361A_moveTo 一致)
     // ========================================================================
