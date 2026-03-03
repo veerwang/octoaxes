@@ -20,7 +20,7 @@
   - Z 焦点轮位置跟随（绝对编码器差值追踪，软限位钳位）
   - `flag_read_joystick` 每包置位/处理后清除（与 Squid 一致）
 
-**修复 Bug — motor_moveToMicrosteps() VMAX 不恢复**：
+**修复 Bug 1 — motor_moveToMicrosteps() VMAX 不恢复**：
 
 排查过程：加入 joystick 代码后 XY 轴第二次移动卡住 → 二分排查定位到 `check_joystick()` → 发现 Serial5 RX 浮空收到噪声触发回调 → `motor_stop()` 将 VMAX 写 0 但未设 `velocity_mode` → 下次位置命令跳过 sRampInit → VMAX 仍为 0 → 电机无法运动。
 
@@ -28,12 +28,17 @@
 
 修复：`motor_moveToMicrosteps()` 无条件写回 `motorParams[icID].vmax`，与旧架构行为对齐。硬件验证通过。
 
+**修复 Bug 2 — Z 焦点轮无动作**：
+
+根因：旧 Squid 中 Z 焦点轮控制在 `flag_read_joystick` **外面**，每次 loop 无条件运行 `moveTo(focusPosition)`。新代码错误地将 `do_focus_control()` 放在 `flag_read_joystick` 内部。
+
+修复：将 `do_focus_control()` 移到 `flag_read_joystick` 外面，与 Squid 结构一致。硬件验证通过。
+
 ### 下次继续
 
 1. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位）
 2. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
 3. **去掉 homing debug 打印**（确认稳定后）
-4. **手控盒硬件测试**（连接手控盒验证摇杆 XY 速度 + 焦点轮 Z 跟随）
 
 ---
 

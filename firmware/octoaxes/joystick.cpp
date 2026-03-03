@@ -193,13 +193,15 @@ void joystick_update() {
   // 接收 PacketSerial 数据
   joystickSerial.update();
 
-  // 仅在收到新数据包时处理（与 Squid flag_read_joystick 一致）
+  // XY 摇杆：仅在收到新数据包时处理（与 Squid flag_read_joystick 一致）
   if (flag_read_joystick) {
     if (joystickTimer >= JOYSTICK_UPDATE_INTERVAL_US) {
       joystickTimer -= JOYSTICK_UPDATE_INTERVAL_US;
       check_joystick();
-      do_focus_control();
     }
     flag_read_joystick = false;
   }
+
+  // Z 焦点轮：每次 loop 无条件运行（与 Squid 一致，在 flag_read_joystick 外面）
+  do_focus_control();
 }
