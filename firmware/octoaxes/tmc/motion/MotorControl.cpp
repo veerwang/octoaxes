@@ -145,15 +145,31 @@ static uint8_t calculateMresValue(uint16_t microsteps)
     }
 }
 
-// Calculate TMC2240 current scale (IRUN/IHOLD value 0-31)
-// TMC2240 公式:
-//   I_rms = (GLOBALSCALER / 256) × (CS + 1) / 32 × V_FS / (R_sense × √2)
-//   简化（GLOBALSCALER=0 即 256，等效 1.0）:
-//   I_peak = (CS + 1) / 32 × V_FS / R_sense
-// TMC2240 V_FS = 0.325V (CURRENT_RANGE=0, default)
-static uint8_t calculateCurrentScale_TMC2240(float currentMA, float rSense)
+// Get TMC2240 full-scale current (A) from CURRENT_RANGE setting
+// TMC2240 使用集成电流传感 (ICS)，无外部检流电阻
+// I_FS 由 DRV_CONF.CURRENT_RANGE 决定（假设 RREF=默认值）
+static float getTMC2240_IFS(uint8_t currentRange)
 {
-    float cs = (currentMA / 1000.0f) * rSense * 32.0f / 0.325f - 1.0f;
+    switch (currentRange & 0x03) {
+        case 0:  return 1.0f;   // CURRENT_RANGE=0: ~1.0A
+        case 1:  return 2.0f;   // CURRENT_RANGE=1: ~2.0A
+        default: return 3.0f;   // CURRENT_RANGE=2/3: ~3.0A
+    }
+}
+
+// Calculate TMC2240 current scale (IRUN/IHOLD value 0-31)
+// TMC2240 公式 (数据手册 §3):
+//   I_RMS = (CS_ACTUAL + 1) / 32 × (GLOBALSCALER / 256) × I_FS
+//   简化 (GLOBALSCALER=0 即 256):
+//   IRUN = round(I_peak / I_FS × 32) - 1
+// 注意: currentMA 是峰值电流 (mA)，I_FS 由 CURRENT_RANGE 决定
+static uint8_t calculateCurrentScale_TMC2240(float currentMA, uint8_t currentRange, uint8_t globalScaler)
+{
+    float ifs = getTMC2240_IFS(currentRange);
+    float gs = (globalScaler == 0) ? 1.0f : (float)globalScaler / 256.0f;
+
+    // IRUN = (I_peak / I_FS / GLOBALSCALER_ratio) × 32 - 1
+    float cs = (currentMA / 1000.0f) / ifs / gs * 32.0f - 1.0f;
 
     if (cs < 0) cs = 0;
     if (cs > 31) cs = 31;
@@ -340,24 +356,26 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     tmc4361A_writeRegister(icID, TMC4361A_STEP_CONF, stepConf);
 
     // ========================================================================
-    // 关键配置: 电流缩放 (与旧 API tmc4361A_cScaleInit 一致)
+    // 关键配置: 电流缩放
+    // TMC2660: TMC4361A 通过 SPI 自动转发 SCALE_VALUES 到驱动器
+    // TMC2240: 电流由 TMC2240 自身的 IHOLD_IRUN 寄存器控制，不需要 TMC4361A 转发
     // ========================================================================
 
-    // SCALE_VALUES: 与旧 API tmc4361A_tmc2660_config() 调用参数一致
-    // 旧 API 传入: hold=0.5, drv2=1.0, drv1=1.0, boost=1.0
-    uint32_t scaleValues = (128 << TMC4361A_HOLD_SCALE_VAL_SHIFT) |   // hold = 50%
-                           (255 << TMC4361A_DRV2_SCALE_VAL_SHIFT) |   // drv2 = 100%
-                           (255 << TMC4361A_DRV1_SCALE_VAL_SHIFT) |   // drv1 = 100%
-                           (255 << TMC4361A_BOOST_SCALE_VAL_SHIFT);   // boost = 100%
-    tmc4361A_writeRegister(icID, TMC4361A_SCALE_VALUES, scaleValues);
+    if (motorParams[icID].driverType != DRIVER_TMC2240) {
+        // TMC2660: SCALE_VALUES + CURRENT_CONF (与旧 API tmc4361A_cScaleInit 一致)
+        uint32_t scaleValues = (128 << TMC4361A_HOLD_SCALE_VAL_SHIFT) |   // hold = 50%
+                               (255 << TMC4361A_DRV2_SCALE_VAL_SHIFT) |   // drv2 = 100%
+                               (255 << TMC4361A_DRV1_SCALE_VAL_SHIFT) |   // drv1 = 100%
+                               (255 << TMC4361A_BOOST_SCALE_VAL_SHIFT);   // boost = 100%
+        tmc4361A_writeRegister(icID, TMC4361A_SCALE_VALUES, scaleValues);
 
-    // CURRENT_CONF: 使能驱动电流缩放、保持电流缩放和加速boost
-    uint32_t currentConf = tmc4361A_readRegister(icID, TMC4361A_CURRENT_CONF);
-    currentConf |= TMC4361A_DRIVE_CURRENT_SCALE_EN_MASK;       // bit 1
-    currentConf |= TMC4361A_HOLD_CURRENT_SCALE_EN_MASK;        // bit 0
-    currentConf |= TMC4361A_BOOST_CURRENT_ON_ACC_EN_MASK;      // bit 2 - 加速段使用boost电流
-    currentConf |= TMC4361A_BOOST_CURRENT_AFTER_START_EN_MASK;  // bit 4 - 启动后使用boost电流
-    tmc4361A_writeRegister(icID, TMC4361A_CURRENT_CONF, currentConf);
+        uint32_t currentConf = tmc4361A_readRegister(icID, TMC4361A_CURRENT_CONF);
+        currentConf |= TMC4361A_DRIVE_CURRENT_SCALE_EN_MASK;       // bit 1
+        currentConf |= TMC4361A_HOLD_CURRENT_SCALE_EN_MASK;        // bit 0
+        currentConf |= TMC4361A_BOOST_CURRENT_ON_ACC_EN_MASK;      // bit 2
+        currentConf |= TMC4361A_BOOST_CURRENT_AFTER_START_EN_MASK;  // bit 4
+        tmc4361A_writeRegister(icID, TMC4361A_CURRENT_CONF, currentConf);
+    }
 
     return true;
 }
@@ -383,6 +401,9 @@ bool motor_initDriver(uint8_t icID, const MotorConfig *config)
 // ========================================================================
 static bool motor_initDriver_TMC2660(uint8_t icID, const MotorConfig *config)
 {
+    // 缓存 toff 用于 enableDriver 恢复
+    motorParams[icID].toff = config->toff;
+
     // Calculate current scale
     uint8_t cs = calculateCurrentScale(config->runCurrentMA, config->rSense);
 
@@ -426,47 +447,61 @@ static bool motor_initDriver_TMC2660(uint8_t icID, const MotorConfig *config)
 // ========================================================================
 static bool motor_initDriver_TMC2240(uint8_t icID, const MotorConfig *config)
 {
-    // 计算电流 (TMC2240 V_FS = 0.325V, CURRENT_RANGE=0)
-    uint8_t irun = calculateCurrentScale_TMC2240(config->runCurrentMA, config->rSense);
+    // 缓存 TMC2240 专用参数（运行时 setRunCurrent / enableDriver 需要）
+    motorParams[icID].currentRange = config->currentRange;
+    motorParams[icID].toff = config->toff;
+
+    // 1. DRV_CONF - 设置 CURRENT_RANGE 和 SLOPE_CONTROL
+    // CURRENT_RANGE: 0=1A, 1=2A, 2=3A, 3=3A
+    // SLOPE_CONTROL: 1 = 200V/μs (默认)
+    uint32_t drvConf = ((uint32_t)(config->currentRange & 0x03) << 0) |
+                       (1 << 4);  // SLOPE_CONTROL=1
+    tmc2240_writeRegister(icID, TMC2240_DRV_CONF, drvConf);
+
+    // 2. GLOBAL_SCALER (0=256 即全量程, 32-255 缩放)
+    tmc2240_writeRegister(icID, TMC2240_GLOBAL_SCALER,
+                          config->globalScaler == 0 ? 0 : config->globalScaler);
+
+    // 3. 计算电流 — 基于 CURRENT_RANGE 的 I_FS
+    uint8_t irun = calculateCurrentScale_TMC2240(config->runCurrentMA,
+                                                  config->currentRange,
+                                                  config->globalScaler);
     uint8_t ihold = (uint8_t)(irun * config->holdCurrentRatio);
     if (ihold > 31) ihold = 31;
 
-    // 1. GCONF - 全局配置
+    // 4. IHOLD_IRUN - 电流配置
+    uint32_t iholdIrun = ((uint32_t)ihold << TMC2240_IHOLD_SHIFT) |
+                         ((uint32_t)irun << TMC2240_IRUN_SHIFT) |
+                         ((uint32_t)(config->iholdDelay & 0x0F) << TMC2240_IHOLDDELAY_SHIFT);
+    tmc2240_writeRegister(icID, TMC2240_IHOLD_IRUN, iholdIrun);
+
+    // 5. TPOWERDOWN - 保持电流延时 (默认 10)
+    tmc2240_writeRegister(icID, TMC2240_TPOWERDOWN, 10);
+
+    // 6. GCONF - 全局配置
     uint32_t gconf = 0x00000000;
     if (config->enableStealthChop) {
         gconf |= TMC2240_EN_PWM_MODE_MASK;  // bit 2: StealthChop 使能
     }
     tmc2240_writeRegister(icID, TMC2240_GCONF, gconf);
 
-    // 2. GLOBAL_SCALER (0=256, 即全量程)
-    tmc2240_writeRegister(icID, TMC2240_GLOBAL_SCALER,
-                          config->globalScaler == 0 ? 0 : config->globalScaler);
+    // 7. CHOPCONF - Chopper 配置 (含 MRES 微步设置)
+    // MRES 编码: 0=256, 1=128, 2=64, ..., 8=全步 (与 TMC4361A STEP_CONF 一致)
+    uint8_t mresVal = config->microstepRes;  // 由 Axis::begin() 传入，通常为 0 (256微步)
 
-    // 3. IHOLD_IRUN - 电流配置
-    uint32_t iholdIrun = ((uint32_t)ihold << TMC2240_IHOLD_SHIFT) |
-                         ((uint32_t)irun << TMC2240_IRUN_SHIFT) |
-                         ((uint32_t)(config->iholdDelay & 0x0F) << TMC2240_IHOLDDELAY_SHIFT);
-    tmc2240_writeRegister(icID, TMC2240_IHOLD_IRUN, iholdIrun);
-
-    // 4. TPOWERDOWN - 保持电流延时 (默认 10)
-    tmc2240_writeRegister(icID, TMC2240_TPOWERDOWN, 10);
-
-    // 5. CHOPCONF - Chopper 配置
-    // TMC2240 CHOPCONF 布局与 TMC2660 不同，使用 32 位直接写入
     uint32_t chopconf = ((uint32_t)(config->toff & 0x0F) << TMC2240_TOFF_SHIFT) |
                         ((uint32_t)(config->hstrt & 0x07) << TMC2240_HSTRT_TFD210_SHIFT) |
                         ((uint32_t)((config->hend + 3) & 0x0F) << TMC2240_HEND_OFFSET_SHIFT) |
                         ((uint32_t)(config->tbl & 0x03) << TMC2240_TBL_SHIFT) |
-                        (1 << TMC2240_INTPOL_SHIFT);  // 256 微步插值
+                        ((uint32_t)(mresVal & 0x0F) << TMC2240_MRES_SHIFT) |
+                        (config->interpolation ? (1 << TMC2240_INTPOL_SHIFT) : 0);
     tmc2240_writeRegister(icID, TMC2240_CHOPCONF, chopconf);
 
-    // 6. PWMCONF - StealthChop PWM 配置 (使用默认值)
+    // 8. PWMCONF - StealthChop PWM 配置
     if (config->enableStealthChop) {
-        tmc2240_writeRegister(icID, TMC2240_PWMCONF, 0xC44C001E);  // 默认值
+        // 默认值: pwm_autoscale=1, pwm_autograd=1
+        tmc2240_writeRegister(icID, TMC2240_PWMCONF, 0xC44C001E);
     }
-
-    // 7. DRV_CONF (默认)
-    tmc2240_writeRegister(icID, TMC2240_DRV_CONF, 0x00000020);
 
     return true;
 }
@@ -903,6 +938,11 @@ void motor_setMicrosteps(uint8_t icID, uint16_t microsteps)
     uint32_t stepConf = (mstepVal & TMC4361A_MSTEP_PER_FS_MASK) |
                         ((uint32_t)motorParams[icID].fullStepsPerRev << TMC4361A_FS_PER_REV_SHIFT);
     tmc4361A_writeRegister(icID, TMC4361A_STEP_CONF, stepConf);
+
+    // TMC2240: 同步更新 CHOPCONF.MRES（TMC2240 的 MRES 必须与 TMC4361A 的 STEP_CONF 一致）
+    if (motorParams[icID].driverType == DRIVER_TMC2240) {
+        tmc2240_fieldWrite(icID, TMC2240_MRES_FIELD, mstepVal);
+    }
 }
 
 void motor_setRunCurrent(uint8_t icID, float currentMA)
@@ -910,12 +950,12 @@ void motor_setRunCurrent(uint8_t icID, float currentMA)
     if (icID >= MOTOR_IC_COUNT)
         return;
 
-    float rSense = motorParams[icID].rSense > 0 ? motorParams[icID].rSense : 0.22f;
-
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
-        uint8_t irun = calculateCurrentScale_TMC2240(currentMA, rSense);
+        uint8_t irun = calculateCurrentScale_TMC2240(currentMA,
+                                                      motorParams[icID].currentRange, 0);
         tmc2240_setRunCurrent(icID, irun);
     } else {
+        float rSense = motorParams[icID].rSense > 0 ? motorParams[icID].rSense : 0.22f;
         uint8_t cs = calculateCurrentScale(currentMA, rSense);
         tmc2660_setRunCurrent(icID, cs);
     }
@@ -927,7 +967,17 @@ void motor_enableDriver(uint8_t icID, bool enable)
         return;
 
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
-        tmc2240_enableDriver(icID, enable);
+        if (enable) {
+            // 使用缓存的 TOFF 恢复驱动（而非硬编码默认值）
+            uint32_t chopconf = tmc2240_readRegister(icID, TMC2240_CHOPCONF);
+            uint8_t currentToff = (chopconf & TMC2240_TOFF_MASK) >> TMC2240_TOFF_SHIFT;
+            if (currentToff == 0) {
+                uint8_t toff = motorParams[icID].toff > 0 ? motorParams[icID].toff : 3;
+                tmc2240_fieldWrite(icID, TMC2240_TOFF_FIELD, toff);
+            }
+        } else {
+            tmc2240_fieldWrite(icID, TMC2240_TOFF_FIELD, 0);
+        }
     } else {
         tmc2660_enableDriver(icID, enable);
     }

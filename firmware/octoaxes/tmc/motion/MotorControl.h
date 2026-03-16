@@ -70,6 +70,7 @@ typedef struct {
     bool     enableStealthChop;  // EN_PWM_MODE (StealthChop)
     uint8_t  globalScaler;       // GLOBAL_SCALER (0=256, 1-255), 0 表示全量程
     uint8_t  iholdDelay;         // IHOLDDELAY (0-15)
+    uint8_t  currentRange;       // DRV_CONF.CURRENT_RANGE: 0=1A, 1=2A, 2=3A, 3=3A
 } MotorConfig;
 
 /**
@@ -124,7 +125,9 @@ typedef struct {
     uint32_t dfinal;             // Final deceleration
     int32_t  vmax;               // Maximum velocity (internal units)
     uint8_t  driverType;         // 该轴驱动芯片类型 (DRIVER_TMC2660 / DRIVER_TMC2240)
-    float    rSense;             // 缓存 rSense 值，用于运行时电流计算
+    float    rSense;             // 缓存 rSense 值，用于 TMC2660 运行时电流计算
+    uint8_t  currentRange;       // 缓存 TMC2240 CURRENT_RANGE，用于运行时电流计算
+    uint8_t  toff;               // 缓存 TOFF 值，用于 enableDriver 恢复
 } MotorParams;
 
 extern MotorParams motorParams[MOTOR_IC_COUNT];

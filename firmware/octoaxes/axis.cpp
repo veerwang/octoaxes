@@ -91,7 +91,8 @@ bool Axis::begin(const AxisConfig &config) {
       .stallFilter = true,
       .enableStealthChop = false,
       .globalScaler = 0,   // 全量程 (256)
-      .iholdDelay = 7};
+      .iholdDelay = 7,
+      .currentRange = 0};  // TMC2240: CURRENT_RANGE (0=1A, 1=2A, 2=3A)
   motor_initDriver(_icID, &motorConfig);
 
   // 配置限位开关
@@ -800,7 +801,8 @@ void Axis::configureDriver(uint16_t microstepping, float currentMA,
       .stallFilter = true,
       .enableStealthChop = false,
       .globalScaler = 0,
-      .iholdDelay = 7};
+      .iholdDelay = 7,
+      .currentRange = 0};
   motor_initDriver(_icID, &motorConfig);
 
   // 微步变化导致 stepsPerMM 变化，重新计算运动参数
