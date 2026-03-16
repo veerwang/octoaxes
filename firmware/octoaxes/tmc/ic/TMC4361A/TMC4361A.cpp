@@ -198,15 +198,58 @@ static int32_t readRegisterSPI(uint16_t icID, uint8_t address)
 }
 
 // ============================================================================
-// Cover Interface (for TMC2660 communication)
+// Cover Interface (for TMC2660 / TMC2240 communication)
 // ============================================================================
 
 void tmc4361A_readWriteCover(uint16_t icID, uint8_t *data, size_t length)
 {
-    // Write cover datagram
-    // TMC2660 uses 20-bit datagrams, padded to 24 bits (3 bytes)
-    if (length >= 3)
+    // Wait helper
+    auto waitCover = []() {
+        volatile uint32_t dummy;
+        for (uint32_t i = 0; i < 100; i++) {
+            dummy = i;
+        }
+        (void)dummy;
+    };
+
+    if (length >= 5)
     {
+        // ====================================================================
+        // TMC2240: 40-bit cover datagram (5 bytes)
+        // data[0] = address byte (bit 7 = write flag)
+        // data[1..4] = 32-bit data (MSB first)
+        // ====================================================================
+
+        // 先写 COVER_HIGH (地址字节)
+        int32_t coverHigh = (int32_t)data[0];
+        tmc4361A_writeRegister(icID, TMC4361A_COVER_HIGH, coverHigh);
+
+        // 再写 COVER_LOW (32-bit 数据) — 写 COVER_LOW 触发 SPI 传输
+        int32_t coverLow = ((int32_t)data[1] << 24) |
+                           ((int32_t)data[2] << 16) |
+                           ((int32_t)data[3] << 8)  |
+                           ((int32_t)data[4]);
+        tmc4361A_writeRegister(icID, TMC4361A_COVER_LOW, coverLow);
+
+        // 等待传输完成
+        waitCover();
+
+        // 读取响应
+        int32_t responseHigh = tmc4361A_readRegister(icID, TMC4361A_COVER_DRV_HIGH);
+        int32_t responseLow  = tmc4361A_readRegister(icID, TMC4361A_COVER_DRV_LOW);
+
+        data[0] = (uint8_t)(responseHigh & 0xFF);
+        data[1] = (responseLow >> 24) & 0xFF;
+        data[2] = (responseLow >> 16) & 0xFF;
+        data[3] = (responseLow >> 8)  & 0xFF;
+        data[4] = (responseLow >> 0)  & 0xFF;
+    }
+    else if (length >= 3)
+    {
+        // ====================================================================
+        // TMC2660: 20-bit cover datagram (3 bytes, padded to 24 bits)
+        // ====================================================================
+
         // Write to COVER_LOW register (lower 24 bits of cover datagram)
         int32_t coverValue = ((int32_t)data[0] << 16) |
                              ((int32_t)data[1] << 8)  |
@@ -215,13 +258,7 @@ void tmc4361A_readWriteCover(uint16_t icID, uint8_t *data, size_t length)
         tmc4361A_writeRegister(icID, TMC4361A_COVER_LOW, coverValue);
 
         // Wait for cover transfer to complete
-        // 使用与旧 API 相同的简单延时方式（旧 API 循环 100 次）
-        // COVER_DONE 位轮询在此硬件上不工作
-        volatile uint32_t dummy;
-        for (uint32_t i = 0; i < 100; i++) {
-            dummy = i;  // 简单延时，防止编译器优化
-        }
-        (void)dummy;  // 防止 unused variable 警告
+        waitCover();
 
         // Read response from COVER_DRV_LOW
         int32_t response = tmc4361A_readRegister(icID, TMC4361A_COVER_DRV_LOW);

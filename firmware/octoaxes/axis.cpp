@@ -54,6 +54,9 @@ bool Axis::begin(const AxisConfig &config) {
   digitalWrite(_csPin, HIGH);
 
   // ========== 新架构初始化 ==========
+  // 提前设置驱动类型，motor_initMotionController 需要用来选择 SPI_OUT_CONF
+  motorParams[_icID].driverType = _config.driverType;
+
   // 初始化运动参数缓存 (用于新 API 的单位转换)
   MotionConfig motionConfig = {
       .clockFrequency = _config.clockFrequency,
@@ -72,19 +75,23 @@ bool Axis::begin(const AxisConfig &config) {
       .bow4 = 0};
   motor_initMotionController(_icID, &motionConfig);
 
-  // 初始化驱动器配置 (与旧 API 一致: CHOPCONF = 0x100C3)
+  // 初始化驱动器配置
   MotorConfig motorConfig = {
+      .driverType = _config.driverType,
       .rSense = _config.r_sense,
       .runCurrentMA = _config.motorCurrentMA,
       .holdCurrentRatio = _config.holdCurrent,
       .microstepRes = 0,  // 256 microsteps
       .interpolation = true,
-      .toff = 3,   // 旧 API: TOFF = 3
-      .hstrt = 4,  // 旧 API: HSTRT = 4
-      .hend = -2,  // 旧 API: HEND 寄存器值 = 1, 实际值 = 1 + (-3) = -2
-      .tbl = 2,    // 旧 API: TBL = 2
+      .toff = 3,   // TOFF = 3
+      .hstrt = 4,  // HSTRT = 4
+      .hend = -2,  // HEND 寄存器值 = 1, 实际值 = 1 + (-3) = -2
+      .tbl = 2,    // TBL = 2
       .stallThreshold = (int8_t)_config.stallSensitivity,
-      .stallFilter = true};
+      .stallFilter = true,
+      .enableStealthChop = false,
+      .globalScaler = 0,   // 全量程 (256)
+      .iholdDelay = 7};
   motor_initDriver(_icID, &motorConfig);
 
   // 配置限位开关
@@ -777,8 +784,9 @@ void Axis::configureDriver(uint16_t microstepping, float currentMA,
   // 更新 TMC4361A 控制器侧微步 + stepsPerMM 缓存
   motor_setMicrosteps(_icID, microstepping);
 
-  // 重新初始化 TMC2660 驱动器（电流 + chopper 参数）
+  // 重新初始化驱动器（电流 + chopper 参数）
   MotorConfig motorConfig = {
+      .driverType = _config.driverType,
       .rSense = _config.r_sense,
       .runCurrentMA = currentMA,
       .holdCurrentRatio = holdCurrentRatio,
@@ -789,7 +797,10 @@ void Axis::configureDriver(uint16_t microstepping, float currentMA,
       .hend = -2,
       .tbl = 2,
       .stallThreshold = (int8_t)_config.stallSensitivity,
-      .stallFilter = true};
+      .stallFilter = true,
+      .enableStealthChop = false,
+      .globalScaler = 0,
+      .iholdDelay = 7};
   motor_initDriver(_icID, &motorConfig);
 
   // 微步变化导致 stepsPerMM 变化，重新计算运动参数

@@ -11,6 +11,8 @@
 #define RGHT_DIR 1
 #define OBSW_SW 0b01 // 用于 Objectives 类
 
+// 驱动芯片类型: DRIVER_TMC2660 / DRIVER_TMC2240 (定义在 MotorControl.h)
+
 // 状态定义 - 使用更明确的状态命名
 enum AxisState {
   STATE_IDLE,
@@ -56,6 +58,7 @@ public:
     float dfinalMM;              // 终止减速度 (mm/s²), 0=同 astart
     uint32_t homing_timeout_ms;
     int8_t homing_direct;
+    uint8_t driverType;          // 驱动芯片型号，默认 DRIVER_TMC2660
   };
 
 protected:

@@ -6,41 +6,51 @@
 
 ## 最新会话
 
-**日期**: 2026-03-03
-**分支**: develop
-**位置**: 手控盒 (Joystick) 移植
+**日期**: 2026-03-16
+**分支**: maxpro
+**位置**: TMC2240 驱动芯片支持
 
 ### 本次完成
 
-#### 手控盒模块移植 + motor_moveToMicrosteps VMAX 恢复修复
+#### 添加 TMC4361A + TMC2240 驱动支持
 
-**新增文件**：
-- `joystick.h` / `joystick.cpp` — Serial5 + PacketSerial 接收手控盒数据
-  - XY 摇杆速度控制（30ms 周期，安全条件守卫）
-  - Z 焦点轮位置跟随（绝对编码器差值追踪，软限位钳位）
-  - `flag_read_joystick` 每包置位/处理后清除（与 Squid 一致）
+在现有 TMC4361A + TMC2660 架构基础上，添加 TMC2240 驱动芯片支持。每轴可通过配置文件选择驱动芯片型号，默认 TMC2660，完全向后兼容。
 
-**修复 Bug 1 — motor_moveToMicrosteps() VMAX 不恢复**：
+**新增文件 (3 个)**：
+- `tmc/ic/TMC2240/TMC2240.h` — 驱动头文件，cache/寄存器 API/field 操作/高层 API
+- `tmc/ic/TMC2240/TMC2240.cpp` — 驱动实现，SPI 读写 (通过 Cover)、cache、enableDriver/setCurrent
+- `tmc/ic/TMC2240/TMC2240_HW_Abstraction.h` — 寄存器/字段定义 (来自 TMC-API)
 
-排查过程：加入 joystick 代码后 XY 轴第二次移动卡住 → 二分排查定位到 `check_joystick()` → 发现 Serial5 RX 浮空收到噪声触发回调 → `motor_stop()` 将 VMAX 写 0 但未设 `velocity_mode` → 下次位置命令跳过 sRampInit → VMAX 仍为 0 → 电机无法运动。
+**修改文件 (6 个)**：
+- `axis.h` — 新增 `DRIVER_TMC2660`/`DRIVER_TMC2240` 常量定义引用；AxisConfig 添加 `driverType` 字段
+- `axis.cpp` — begin() 中传递 driverType 到 MotorConfig；configureDriver() 同步更新
+- `config.h` — 7 个轴配置全部添加 `.driverType = DRIVER_TMC2660`
+- `tmc/motion/MotorControl.h` — MotorConfig 添加 `driverType` + TMC2240 专用字段；MotorParams 添加 `driverType`/`rSense` 缓存；新增 `DRIVER_TMC2660`/`DRIVER_TMC2240` 宏定义
+- `tmc/motion/MotorControl.cpp` — include TMC2240.h；HAL 回调 (`tmc2240_readWriteSPI` → Cover)；`motor_initSubsystem` 初始化 TMC2240 cache；`motor_initMotionController` 按驱动类型选择 SPI_OUT_CONF (0x0A vs 0x09)；`motor_initDriver`/`motor_setRunCurrent`/`motor_enableDriver`/`motor_configStallGuard` 全部按驱动类型分发
+- `tmc/ic/TMC4361A/TMC4361A.cpp` — `tmc4361A_readWriteCover()` 新增 5 字节 (40-bit) 路径支持 TMC2240
+- `tmc/ic/TMC4361A/TMC4361A.h` — RegisterField typedef 添加 `REGISTER_FIELD_DEFINED` 防重复定义
 
-根因差异：旧 Squid `tmc4361A_moveTo()` 每次都传入 `velocityMax` 并写入 VMAX 寄存器；新 `motor_moveToMicrosteps()` 仅在 `velocity_mode == true` 时才通过 sRampInit 恢复 VMAX。
+**编译验证**：安装 PlatformIO Teensy 平台后编译通过，零错误。
 
-修复：`motor_moveToMicrosteps()` 无条件写回 `motorParams[icID].vmax`，与旧架构行为对齐。硬件验证通过。
-
-**修复 Bug 2 — Z 焦点轮无动作**：
-
-根因：旧 Squid 中 Z 焦点轮控制在 `flag_read_joystick` **外面**，每次 loop 无条件运行 `moveTo(focusPosition)`。新代码错误地将 `do_focus_control()` 放在 `flag_read_joystick` 内部。
-
-修复：将 `do_focus_control()` 移到 `flag_read_joystick` 外面，与 Squid 结构一致。硬件验证通过。
+**关键技术点**：
+- TMC2660 通过 20-bit Cover (SPI_OUTPUT_FORMAT=0x0A)，TMC2240 通过 40-bit Cover (SPI_OUTPUT_FORMAT=0x09)
+- TMC2240 电流公式 V_FS=0.325V (TMC2660 V_FS=0.310V)
+- RegisterField 类型共享，使用 `#ifndef REGISTER_FIELD_DEFINED` 防冲突
 
 ### 下次继续
 
-1. **硬件验证 VSTOP 恢复**（反复测试：到达限位→反向→再到达限位）
-2. **修正 W 轴 config.h 配置**（LEFT_SW → RGHT_SW + 极性修正）
-3. **去掉 homing debug 打印**（确认稳定后）
+1. **硬件验证 TMC2240**（需要实际 TMC2240 硬件板）
+2. **验证 SPI_OUT_CONF = 0x44400009 是否正确驱动 TMC2240**
+3. **验证 40-bit Cover 通信时序**
+4. **TMC2240 StealthChop 参数调优**（如果使用静音模式）
+5. 继续上次遗留：硬件验证 VSTOP 恢复、修正 W 轴 config.h 配置、去掉 homing debug 打印
 
 ---
+
+### 2026-03-03 - 手控盒模块移植 (develop)
+- joystick.h/cpp 新增：XY 摇杆速度控制 + Z 焦点轮跟随
+- 修复 motor_moveToMicrosteps() VMAX 不恢复（Serial5 浮空噪声触发 motor_stop）
+- 修复 Z 焦点轮无动作（do_focus_control 应在 flag_read_joystick 外面）
 
 ### 2026-02-27（续 2）- 删除旧 TMC-API 兼容层 (develop)
 - 删除 Fields.h/Register.h/Constants.h，统一到 HW_Abstraction.h，248 警告→0
@@ -62,51 +72,19 @@
 - checkLimitPosition() 虚拟限位去掉方向检查
 - homing 期间软限位标志与硬件操作分离
 
-### 2026-02-27 - 上位机协议修复 (develop)
-- 修复固件版本号不显示：sendDebugInfo() 改为 SerialUSB.println()
-- 上位机 SET_LIMITS 改为二进制协议 SET_LIM(9)，与 Squid 原版一致
-
 ### 2026-02-26（续 4）- P5 PID/编码器命令实现 (develop)
 - 最后一组桩函数全部完成：CONFIGURE_STAGE_PID(25)/ENABLE(26)/DISABLE(27)/SET_PID_ARGUMENTS(29)
 - MotorControl 层新增 ABN 编码器初始化 + PID 参数写入 + PID 开关
 - Axis 层 PIDState 结构体 + homing 后自动恢复 PID
 
-### 2026-02-26（续 3）- 响应机制 + INITFILTERWHEEL + migration guide 收尾 (develop)
-- sendResponse() 补全 W 轴位置 + 固件版本，send_position_update() 10ms 周期上报
-- handleInitFilterWheel(253) / handleInitFilterWheelW2(252) 实现
-- migration guide 核心命令全部完成，协议层就绪
-
-### 2026-02-26 - 响应机制 + INITFILTERWHEEL + 命令层 Bug 修复 (develop)
-- sendResponse() 补全 W 轴位置 + 固件版本，send_position_update() 10ms 周期上报
-- handleInitFilterWheel(253) / handleInitFilterWheelW2(252) 实现
-- HOME_OR_ZERO 轴值修复、enable/disable 二进制协议、Vel/Acc UI 功能
-- migration guide 核心命令全部完成，协议层就绪
-
-### 2026-02-26 - 相机触发系统移植 + 上位机 UI 标签化重构 (develop)
-- 新建 trigger.h/cpp：4 路相机触发脉冲 + 频闪定时器 ISR
-- 实现 6 个命令 handler：SEND_HARDWARE_TRIGGER/SET_STROBE_DELAY/SET_TRIGGER_MODE 等
-- main_window.py 改为 QTabWidget 三标签页（Motion/Illumination/Log）
-
-### 2026-02-26 - LED 矩阵调试 + Bug 修复 + 文档更新 (develop)
-- LED 矩阵不亮两处根因修复：去掉 illumination_is_on 门控 + 联锁不碰 LED 矩阵
-- handleMoveToX/Y/Z 变量名清理，handleHomeOrZero 轴映射提交后回退
-- 迁移指南 Bug 状态标注更新
-
 ### 2026-02-26 - 照明系统完整移植 + 上位机照明面板 (develop)
 - 新建 illumination.h/cpp：DAC80508 驱动、APA102 LED 矩阵、5 端口控制、新旧双 API
 - 实现 11 个照明 handler（命令 10-17 旧 API + 命令 34-39 新多端口 API）
-- config.h 添加照明引脚、命令码、IlluminationConfig 命名空间
-- octoaxes.ino 添加 illumination_init() + 安全联锁检查
 - 上位机 IlluminationPanel：5 路 TTL 端口 + LED 矩阵 + 全局因子
 
 ### 2026-02-25 - Z 轴 homing SOFT_STOP_EN Bug 修复 (develop)
 - 修复 Z 轴 homing 停车失败：移除 REFERENCE_CONF 中的 SOFT_STOP_EN 位
-- 根因：SOFT_STOP_EN=1 锁定了后续 VMAX/XTARGET 写入，导致停车命令被忽略
 - 硬件验证通过，提交 5652bc3
-
-### 2026-02-14 - 固件代码清理 (develop)
-- MotorControl.cpp debug 打印统一 DEBUG 宏
-- CommandProcessor 27 个空桩函数添加 NOT_IMPLEMENTED 日志
 
 ---
 

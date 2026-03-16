@@ -1,7 +1,7 @@
 /*
  * MotorControl.h
  *
- * High-level motion control layer for TMC4361A + TMC2660.
+ * High-level motion control layer for TMC4361A + TMC2660/TMC2240.
  * Provides unified API for motor initialization, motion control,
  * and unit conversion.
  *
@@ -17,6 +17,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// ============================================================================
+// Driver Type Constants
+// ============================================================================
+
+#define DRIVER_TMC2660  0
+#define DRIVER_TMC2240  1
 
 // ============================================================================
 // Configuration Structures
@@ -43,20 +50,26 @@ typedef struct {
 } MotionConfig;
 
 /**
- * @brief TMC2660 motor/driver configuration
+ * @brief Motor/driver configuration (supports TMC2660 and TMC2240)
  */
 typedef struct {
+    uint8_t  driverType;         // DRIVER_TMC2660 (default) or DRIVER_TMC2240
     float    rSense;             // Sense resistor value (Ohms)
     float    runCurrentMA;       // Peak run current (mA), NOT RMS
     float    holdCurrentRatio;   // Hold current as ratio of run (0.0-1.0)
     uint8_t  microstepRes;       // Microstep resolution (0=256, 1=128, ... 8=1)
     bool     interpolation;      // Enable 256 microstep interpolation
+    // Chopper 参数 (TMC2660 和 TMC2240 通用)
     uint8_t  toff;               // Chopper off time (1-15)
     uint8_t  hstrt;              // Hysteresis start (0-7)
     int8_t   hend;               // Hysteresis end (-3 to 12)
     uint8_t  tbl;                // Blanking time (0-3)
     int8_t   stallThreshold;     // StallGuard threshold (-64 to 63)
     bool     stallFilter;        // Enable StallGuard filter
+    // TMC2240 专用参数 (TMC2660 时忽略)
+    bool     enableStealthChop;  // EN_PWM_MODE (StealthChop)
+    uint8_t  globalScaler;       // GLOBAL_SCALER (0=256, 1-255), 0 表示全量程
+    uint8_t  iholdDelay;         // IHOLDDELAY (0-15)
 } MotorConfig;
 
 /**
@@ -110,6 +123,8 @@ typedef struct {
     uint32_t astart;             // Initial acceleration
     uint32_t dfinal;             // Final deceleration
     int32_t  vmax;               // Maximum velocity (internal units)
+    uint8_t  driverType;         // 该轴驱动芯片类型 (DRIVER_TMC2660 / DRIVER_TMC2240)
+    float    rSense;             // 缓存 rSense 值，用于运行时电流计算
 } MotorParams;
 
 extern MotorParams motorParams[MOTOR_IC_COUNT];

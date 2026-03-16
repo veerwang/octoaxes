@@ -39,15 +39,18 @@ extern "C" {
 #endif
 
 // ============================================================================
-// RegisterField Type Definition
+// RegisterField Type Definition (shared with TMC2240)
 // ============================================================================
 
+#ifndef REGISTER_FIELD_DEFINED
+#define REGISTER_FIELD_DEFINED
 typedef struct {
     uint32_t mask;
     uint8_t  shift;
     uint8_t  address;
     bool     isSigned;
 } RegisterField;
+#endif
 
 // ============================================================================
 // SPI Callback Declarations (implemented in HAL layer)

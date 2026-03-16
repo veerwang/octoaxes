@@ -14,6 +14,16 @@
 
 <!-- 计划要做但尚未开始的任务 -->
 
+### TMC2240 支持
+- [x] TMC2240 驱动层代码实现 (2026-03-16) - TMC2240.h/cpp + HW_Abstraction.h
+- [x] MotorControl 层多驱动分发 (2026-03-16) - initDriver/setRunCurrent/enableDriver/configStallGuard
+- [x] TMC4361A Cover 接口扩展 40-bit (2026-03-16) - COVER_HIGH+COVER_LOW 5字节路径
+- [x] AxisConfig 添加 driverType 字段 (2026-03-16) - 所有轴默认 DRIVER_TMC2660
+- [x] 编译验证通过 (2026-03-16) - PlatformIO Teensy 4.1 零错误
+- [ ] 硬件验证 TMC2240 通信（需要 TMC2240 硬件板）
+- [ ] 验证 SPI_OUT_CONF=0x44400009 是否正确驱动 TMC2240
+- [ ] TMC2240 StealthChop 参数调优
+
 ### 硬件测试
 - [ ] 硬件测试触发系统（示波器验证 pin 29-32 脉冲波形）
 - [ ] 硬件测试照明系统（TTL 端口 + DAC 输出 + LED 矩阵图案）
