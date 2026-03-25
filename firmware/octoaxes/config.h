@@ -265,7 +265,8 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 30000,
 				.homing_direct = -1,
-				.driverType = DRIVER_TMC2660
+				.driverType = DRIVER_TMC2660,
+				.currentRange = 0
     };
 
     // Y轴配置
@@ -299,7 +300,8 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 40000,
 				.homing_direct = -1,
-				.driverType = DRIVER_TMC2660
+				.driverType = DRIVER_TMC2660,
+				.currentRange = 0
     };
 
     // Z轴配置
@@ -333,7 +335,8 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 20000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2660
+				.driverType = DRIVER_TMC2660,
+				.currentRange = 0
     };
 
     // W轴4配置 (filter wheel)
@@ -367,7 +370,8 @@ namespace AxisConfigs {
         .dfinalMM = 0,                                   // 同 astart
         .homing_timeout_ms = 80000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2660
+				.driverType = DRIVER_TMC2240,
+				.currentRange = 2
     };
 
     // 扩展轴1配置 (objectives)
@@ -401,7 +405,8 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2660
+				.driverType = DRIVER_TMC2660,
+				.currentRange = 0
     };
 
     // 扩展轴3配置 (Z轴配置)
@@ -435,7 +440,8 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 20000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2660
+				.driverType = DRIVER_TMC2660,
+				.currentRange = 0
     };
 
     // 扩展轴4配置 (filter wheel)
@@ -469,7 +475,8 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2660
+				.driverType = DRIVER_TMC2660,
+				.currentRange = 0
     };
 }
 

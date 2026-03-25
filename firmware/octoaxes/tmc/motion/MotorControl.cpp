@@ -260,9 +260,11 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     // Configure SPI_OUT_CONF - 根据驱动芯片类型选择 SPI 输出格式
     uint32_t spiOutConf;
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
-        // TMC2240: SPI_OUTPUT_FORMAT=0x09 (TMC516x/TMC216x 40-bit SPI 模式)
-        // SPI timing 与 TMC2660 相同 (block=4, high=4, low=4)
-        spiOutConf = 0x44400009;
+        // TMC2240: SPI_OUTPUT_FORMAT=0x0D (TMC2130/TMC2240 SPI 电流传输模式, 40-bit)
+        // 等价于 TMC2660 的 SDOFF 模式: TMC4361A 直接控制线圈电流
+        // SPI timing: block=4, high=4, low=4
+        // COVER_DATA_LENGTH=40 (bits[19:13]), 显式指定 40-bit Cover 长度
+        spiOutConf = 0x4445000D;
     } else {
         // TMC2660: SPI_OUTPUT_FORMAT=0x0A (TMC26x 20-bit SPI 模式)
         // 0x4440108A: SCALE_VAL_TRANSFER_EN=1, COVER_DATA_LENGTH for 20-bit
@@ -357,25 +359,25 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
 
     // ========================================================================
     // 关键配置: 电流缩放
-    // TMC2660: TMC4361A 通过 SPI 自动转发 SCALE_VALUES 到驱动器
-    // TMC2240: 电流由 TMC2240 自身的 IHOLD_IRUN 寄存器控制，不需要 TMC4361A 转发
+    // TMC4361A 内部使用 SCALE_VALUES 计算线圈电流幅值，适用于所有 SPI 输出格式：
+    //   - TMC2660 (format 0x0A): 20-bit SPI 数据包含缩放后的电流值
+    //   - TMC2240 (format 0x0D): 40-bit SPI 写入 DIRECT_MODE 寄存器，同样需要缩放
+    // 不配置 SCALE_VALUES 会导致发送零电流 → 电机不动
     // ========================================================================
 
-    if (motorParams[icID].driverType != DRIVER_TMC2240) {
-        // TMC2660: SCALE_VALUES + CURRENT_CONF (与旧 API tmc4361A_cScaleInit 一致)
-        uint32_t scaleValues = (128 << TMC4361A_HOLD_SCALE_VAL_SHIFT) |   // hold = 50%
-                               (255 << TMC4361A_DRV2_SCALE_VAL_SHIFT) |   // drv2 = 100%
-                               (255 << TMC4361A_DRV1_SCALE_VAL_SHIFT) |   // drv1 = 100%
-                               (255 << TMC4361A_BOOST_SCALE_VAL_SHIFT);   // boost = 100%
-        tmc4361A_writeRegister(icID, TMC4361A_SCALE_VALUES, scaleValues);
+    // SCALE_VALUES + CURRENT_CONF (与旧 API tmc4361A_cScaleInit 一致)
+    uint32_t scaleValues = (128 << TMC4361A_HOLD_SCALE_VAL_SHIFT) |   // hold = 50%
+                           (255 << TMC4361A_DRV2_SCALE_VAL_SHIFT) |   // drv2 = 100%
+                           (255 << TMC4361A_DRV1_SCALE_VAL_SHIFT) |   // drv1 = 100%
+                           (255 << TMC4361A_BOOST_SCALE_VAL_SHIFT);   // boost = 100%
+    tmc4361A_writeRegister(icID, TMC4361A_SCALE_VALUES, scaleValues);
 
-        uint32_t currentConf = tmc4361A_readRegister(icID, TMC4361A_CURRENT_CONF);
-        currentConf |= TMC4361A_DRIVE_CURRENT_SCALE_EN_MASK;       // bit 1
-        currentConf |= TMC4361A_HOLD_CURRENT_SCALE_EN_MASK;        // bit 0
-        currentConf |= TMC4361A_BOOST_CURRENT_ON_ACC_EN_MASK;      // bit 2
-        currentConf |= TMC4361A_BOOST_CURRENT_AFTER_START_EN_MASK;  // bit 4
-        tmc4361A_writeRegister(icID, TMC4361A_CURRENT_CONF, currentConf);
-    }
+    uint32_t currentConf = tmc4361A_readRegister(icID, TMC4361A_CURRENT_CONF);
+    currentConf |= TMC4361A_DRIVE_CURRENT_SCALE_EN_MASK;       // bit 1
+    currentConf |= TMC4361A_HOLD_CURRENT_SCALE_EN_MASK;        // bit 0
+    currentConf |= TMC4361A_BOOST_CURRENT_ON_ACC_EN_MASK;      // bit 2
+    currentConf |= TMC4361A_BOOST_CURRENT_AFTER_START_EN_MASK;  // bit 4
+    tmc4361A_writeRegister(icID, TMC4361A_CURRENT_CONF, currentConf);
 
     return true;
 }
@@ -451,6 +453,10 @@ static bool motor_initDriver_TMC2240(uint8_t icID, const MotorConfig *config)
     motorParams[icID].currentRange = config->currentRange;
     motorParams[icID].toff = config->toff;
 
+    // 注意: SPI_OUTPUT_FORMAT=0x0D 保持活跃，不能禁用 (format=0 会关闭 SPI 输出硬件)
+    // Cover 写入与自动 SPI 输出由 TMC4361A 硬件串行化，写入应可靠
+    // Cover 读取可能受自动 SPI 干扰（读回值不可靠），但不影响配置写入
+
     // 1. DRV_CONF - 设置 CURRENT_RANGE 和 SLOPE_CONTROL
     // CURRENT_RANGE: 0=1A, 1=2A, 2=3A, 3=3A
     // SLOPE_CONTROL: 1 = 200V/μs (默认)
@@ -480,6 +486,9 @@ static bool motor_initDriver_TMC2240(uint8_t icID, const MotorConfig *config)
 
     // 6. GCONF - 全局配置
     uint32_t gconf = 0x00000000;
+    // direct_mode (bit 16): TMC4361A 通过 SPI 直接控制线圈电流 (DIRECT_MODE 寄存器)
+    // 必须启用，否则 TMC2240 等待 Step/Dir 信号而不响应 SPI 电流指令
+    gconf |= TMC2240_DIRECT_MODE_MASK;  // bit 16: direct coil current control via SPI
     if (config->enableStealthChop) {
         gconf |= TMC2240_EN_PWM_MODE_MASK;  // bit 2: StealthChop 使能
     }
@@ -502,6 +511,10 @@ static bool motor_initDriver_TMC2240(uint8_t icID, const MotorConfig *config)
         // 默认值: pwm_autoscale=1, pwm_autograd=1
         tmc2240_writeRegister(icID, TMC2240_PWMCONF, 0xC44C001E);
     }
+
+    // 清 GSTAT reset 标志
+    tmc2240_writeRegister(icID, TMC2240_GSTAT, 0x07);
+    // ---- END DEBUG ----
 
     return true;
 }

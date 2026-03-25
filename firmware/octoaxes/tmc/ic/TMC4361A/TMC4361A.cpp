@@ -8,6 +8,7 @@
  */
 
 #include "TMC4361A.h"
+#include <Arduino.h>
 
 // ============================================================================
 // Cache Implementation
@@ -231,8 +232,8 @@ void tmc4361A_readWriteCover(uint16_t icID, uint8_t *data, size_t length)
                            ((int32_t)data[4]);
         tmc4361A_writeRegister(icID, TMC4361A_COVER_LOW, coverLow);
 
-        // 等待传输完成
-        waitCover();
+        // 等待传输完成 (40-bit 比 20-bit 需要更长等待)
+        delayMicroseconds(50);
 
         // 读取响应
         int32_t responseHigh = tmc4361A_readRegister(icID, TMC4361A_COVER_DRV_HIGH);

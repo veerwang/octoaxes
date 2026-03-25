@@ -6,44 +6,58 @@
 
 ## 最新会话
 
-**日期**: 2026-03-16
+**日期**: 2026-03-24
 **分支**: maxpro
-**位置**: TMC2240 驱动芯片支持
+**位置**: TMC2240 W 轴硬件调试
 
 ### 本次完成
 
-#### 添加 TMC4361A + TMC2240 驱动支持
+#### W 轴 TMC2240 硬件调试
 
-在现有 TMC4361A + TMC2660 架构基础上，添加 TMC2240 驱动芯片支持。每轴可通过配置文件选择驱动芯片型号，默认 TMC2660，完全向后兼容。
+将 W 轴驱动从 TMC2660 切换到 TMC2240，进行固件适配和硬件调试。
 
-**新增文件 (3 个)**：
-- `tmc/ic/TMC2240/TMC2240.h` — 驱动头文件，cache/寄存器 API/field 操作/高层 API
-- `tmc/ic/TMC2240/TMC2240.cpp` — 驱动实现，SPI 读写 (通过 Cover)、cache、enableDriver/setCurrent
-- `tmc/ic/TMC2240/TMC2240_HW_Abstraction.h` — 寄存器/字段定义 (来自 TMC-API)
+**固件修改**：
+1. `config.h` — W 轴 `.driverType = DRIVER_TMC2240`, `.currentRange = 2` (3A)；所有轴补上 `.currentRange = 0` 消除警告
+2. `axis.h` — AxisConfig 新增 `currentRange` 字段
+3. `axis.cpp` — 两处 MotorConfig 初始化使用 `_config.currentRange`
+4. `MotorControl.cpp` — 多处修复：
+   - SPI_OUTPUT_FORMAT: 0x09→0x0D (TMC2130/TMC2240 SPI 电流传输模式)
+   - GCONF: 启用 direct_mode (bit 16) 用于 SPI 直接线圈电流控制
+   - SCALE_VALUES + CURRENT_CONF: 改为所有驱动类型统一配置（之前 TMC2240 跳过导致零电流）
+   - SPI_OUT_CONF: COVER_DATA_LENGTH=40 显式设置 (0x4445000D)
+   - 添加 TMC2240 初始化调试输出（寄存器回读 + Cover 传输详情）
+5. `TMC4361A.cpp` — Cover 40-bit 路径: waitCover 改为 delayMicroseconds(50)；添加 Cover40 调试打印；添加 `#include <Arduino.h>`
 
-**修改文件 (6 个)**：
-- `axis.h` — 新增 `DRIVER_TMC2660`/`DRIVER_TMC2240` 常量定义引用；AxisConfig 添加 `driverType` 字段
-- `axis.cpp` — begin() 中传递 driverType 到 MotorConfig；configureDriver() 同步更新
-- `config.h` — 7 个轴配置全部添加 `.driverType = DRIVER_TMC2660`
-- `tmc/motion/MotorControl.h` — MotorConfig 添加 `driverType` + TMC2240 专用字段；MotorParams 添加 `driverType`/`rSense` 缓存；新增 `DRIVER_TMC2660`/`DRIVER_TMC2240` 宏定义
-- `tmc/motion/MotorControl.cpp` — include TMC2240.h；HAL 回调 (`tmc2240_readWriteSPI` → Cover)；`motor_initSubsystem` 初始化 TMC2240 cache；`motor_initMotionController` 按驱动类型选择 SPI_OUT_CONF (0x0A vs 0x09)；`motor_initDriver`/`motor_setRunCurrent`/`motor_enableDriver`/`motor_configStallGuard` 全部按驱动类型分发
-- `tmc/ic/TMC4361A/TMC4361A.cpp` — `tmc4361A_readWriteCover()` 新增 5 字节 (40-bit) 路径支持 TMC2240
-- `tmc/ic/TMC4361A/TMC4361A.h` — RegisterField typedef 添加 `REGISTER_FIELD_DEFINED` 防重复定义
+**调试脚本**：
+- 新增 `software/tests/test_tmc2240_debug.py` — TMC2240 专用调试脚本
 
-**编译验证**：安装 PlatformIO Teensy 平台后编译通过，零错误。
+**调试发现**：
+1. ✅ **SPI 通信成功** — TMC2240 返回有效状态字节 (0x99/0xB9/0x98)，Cover 40-bit 写入正常
+2. ✅ **寄存器写入确认** — CHOPCONF、GCONF、IHOLD_IRUN 等写入成功
+3. ❌ **电机无力矩** — DIRECT_MODE 手动写入 coilA=200 后电机无锁定力矩
+4. 🔍 **根因定位**: IOIN 寄存器读到 DRV_ENN=1 (bit 4)，**TMC2240 功率级被禁用**
 
-**关键技术点**：
-- TMC2660 通过 20-bit Cover (SPI_OUTPUT_FORMAT=0x0A)，TMC2240 通过 40-bit Cover (SPI_OUTPUT_FORMAT=0x09)
-- TMC2240 电流公式 V_FS=0.325V (TMC2660 V_FS=0.310V)
-- RegisterField 类型共享，使用 `#ifndef REGISTER_FIELD_DEFINED` 防冲突
+**根因分析**：
+- TMC2240 DRV_ENN (Pin 9, TQFN32) 连接到 TMC4361A NFREEZE (Pin 19)
+- TMC4361A NFREEZE 有内部上拉 → 默认 HIGH
+- TMC2240 DRV_ENN 也有内部上拉 → 默认 HIGH
+- **DRV_ENN=HIGH → 功率级关闭，所有电机输出浮空**
+- TMC2660 不受影响：SDOFF=1 (SPI模式) 下忽略 ENN 引脚
+- TMC2240 始终尊重 ENN 引脚，无法通过软件覆盖
+
+**硬件矛盾**：
+- TMC4361A NFREEZE: HIGH=正常工作, LOW=冻结寄存器(SPI写入失效)
+- TMC2240 DRV_ENN: HIGH=驱动禁用, LOW=驱动使能
+- 两引脚连在同一网络，无法同时满足
 
 ### 下次继续
 
-1. **硬件验证 TMC2240**（需要实际 TMC2240 硬件板）
-2. **验证 SPI_OUT_CONF = 0x44400009 是否正确驱动 TMC2240**
-3. **验证 40-bit Cover 通信时序**
-4. **TMC2240 StealthChop 参数调优**（如果使用静音模式）
-5. 继续上次遗留：硬件验证 VSTOP 恢复、修正 W 轴 config.h 配置、去掉 homing debug 打印
+1. **⚠ 硬件修改（阻塞项）**: 断开 TMC2240 DRV_ENN 与 TMC4361A NFREEZE 的连接，将 DRV_ENN 单独接 GND
+2. 硬件修改完成后验证电机力矩（DIRECT_MODE 测试）
+3. 验证 FORMAT=0x0D 自动 SPI 输出是否能驱动电机运动
+4. 清理调试代码（Cover40 debug 打印、reliableRead 等）
+5. 验证寄存器读取（读取 IOIN 获取芯片版本号 0x40）
+6. 遗留：修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW）、去掉 homing debug 打印
 
 ---
 

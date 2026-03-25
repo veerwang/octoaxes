@@ -20,8 +20,14 @@
 - [x] TMC4361A Cover 接口扩展 40-bit (2026-03-16) - COVER_HIGH+COVER_LOW 5字节路径
 - [x] AxisConfig 添加 driverType 字段 (2026-03-16) - 所有轴默认 DRIVER_TMC2660
 - [x] 编译验证通过 (2026-03-16) - PlatformIO Teensy 4.1 零错误
-- [ ] 硬件验证 TMC2240 通信（需要 TMC2240 硬件板）
-- [ ] 验证 SPI_OUT_CONF=0x44400009 是否正确驱动 TMC2240
+- [x] 硬件验证 TMC2240 SPI 通信 (2026-03-24) - Cover 40-bit 通信成功，状态字节 0x99/0xB9
+- [x] SPI_OUTPUT_FORMAT 修正 (2026-03-24) - 0x09→0x0D (TMC2130 SPI电流传输模式)
+- [x] SCALE_VALUES 修复 (2026-03-24) - TMC2240 之前跳过导致零电流，改为统一配置
+- [x] GCONF direct_mode 启用 (2026-03-24) - bit 16 使能 SPI 直接线圈电流控制
+- [ ] **⚠ 硬件修改: DRV_ENN 接地** — TMC2240 DRV_ENN(Pin9) 连接 TMC4361A NFREEZE(Pin19)，内部上拉→HIGH→功率级禁用。需断开连接，DRV_ENN 单独接 GND
+- [ ] DRV_ENN 修改后验证电机力矩和运动
+- [ ] 清理 TMC2240 调试代码（Cover40 debug 打印等）
+- [ ] 验证 IOIN 芯片版本号读取
 - [ ] TMC2240 StealthChop 参数调优
 
 ### 硬件测试
@@ -180,6 +186,7 @@
 <!-- 遇到的问题或阻塞项，需要解决后才能继续 -->
 
 - W 轴 config.h 中 homingSwitch=LEFT_SW 与实际硬件（RIGHT switch）不匹配，暂不影响功能但 latch 位置不准确
+- **⚠ TMC2240 DRV_ENN 硬件问题** — TMC2240 DRV_ENN(TQFN Pin9) 连接到 TMC4361A NFREEZE(Pin19)，两者内部上拉→HIGH→TMC2240 功率级被禁用。TMC2660 不受影响（SDOFF=1 忽略 ENN）。**需要硬件修改：断开 DRV_ENN 与 NFREEZE 的走线，DRV_ENN 单独接 GND**
 
 ---
 
