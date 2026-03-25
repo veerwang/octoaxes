@@ -265,7 +265,7 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 30000,
 				.homing_direct = -1,
-				.driverType = DRIVER_TMC2660,
+				.driverType = DRIVER_AUTO,
 				.currentRange = 0
     };
 
@@ -300,7 +300,7 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 40000,
 				.homing_direct = -1,
-				.driverType = DRIVER_TMC2660,
+				.driverType = DRIVER_AUTO,
 				.currentRange = 0
     };
 
@@ -335,7 +335,7 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 20000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2660,
+				.driverType = DRIVER_AUTO,
 				.currentRange = 0
     };
 
@@ -370,7 +370,7 @@ namespace AxisConfigs {
         .dfinalMM = 0,                                   // 同 astart
         .homing_timeout_ms = 80000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2240,
+				.driverType = DRIVER_AUTO,
 				.currentRange = 2
     };
 
@@ -405,7 +405,7 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2660,
+				.driverType = DRIVER_AUTO,
 				.currentRange = 0
     };
 
@@ -440,7 +440,7 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 20000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2660,
+				.driverType = DRIVER_AUTO,
 				.currentRange = 0
     };
 
@@ -475,7 +475,7 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
 				.homing_direct = 1,
-				.driverType = DRIVER_TMC2660,
+				.driverType = DRIVER_AUTO,
 				.currentRange = 0
     };
 }

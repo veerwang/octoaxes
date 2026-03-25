@@ -24,6 +24,7 @@ extern "C" {
 
 #define DRIVER_TMC2660  0
 #define DRIVER_TMC2240  1
+#define DRIVER_AUTO     0xFF   // 初始化时自动检测驱动芯片类型
 
 // ============================================================================
 // Configuration Structures
@@ -157,6 +158,13 @@ bool motor_init(uint8_t icID, const AxisMotionConfig *config);
  * @return true if successful
  */
 bool motor_initMotionController(uint8_t icID, const MotionConfig *config);
+
+/**
+ * @brief 自动检测驱动芯片类型 (TMC2240 或 TMC2660)
+ * @param icID  IC identifier (TMC4361A 必须已 reset 且通信正常)
+ * @return DRIVER_TMC2240 或 DRIVER_TMC2660
+ */
+uint8_t motor_detectDriverType(uint8_t icID);
 
 /**
  * @brief Initialize TMC2660 driver

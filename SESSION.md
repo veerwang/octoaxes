@@ -6,60 +6,64 @@
 
 ## 最新会话
 
-**日期**: 2026-03-24
+**日期**: 2026-03-25
 **分支**: maxpro
-**位置**: TMC2240 W 轴硬件调试
+**位置**: TMC2240 驱动自动检测 + Homing 修复
 
 ### 本次完成
 
-#### W 轴 TMC2240 硬件调试
+#### 1. DRV_ENN 硬件修改完成（用户手工）
 
-将 W 轴驱动从 TMC2660 切换到 TMC2240，进行固件适配和硬件调试。
+TMC2240 DRV_ENN 已从 TMC4361A NFREEZE 断开并接 GND，W 轴电机可正常运动。
 
-**固件修改**：
-1. `config.h` — W 轴 `.driverType = DRIVER_TMC2240`, `.currentRange = 2` (3A)；所有轴补上 `.currentRange = 0` 消除警告
-2. `axis.h` — AxisConfig 新增 `currentRange` 字段
-3. `axis.cpp` — 两处 MotorConfig 初始化使用 `_config.currentRange`
-4. `MotorControl.cpp` — 多处修复：
-   - SPI_OUTPUT_FORMAT: 0x09→0x0D (TMC2130/TMC2240 SPI 电流传输模式)
-   - GCONF: 启用 direct_mode (bit 16) 用于 SPI 直接线圈电流控制
-   - SCALE_VALUES + CURRENT_CONF: 改为所有驱动类型统一配置（之前 TMC2240 跳过导致零电流）
-   - SPI_OUT_CONF: COVER_DATA_LENGTH=40 显式设置 (0x4445000D)
-   - 添加 TMC2240 初始化调试输出（寄存器回读 + Cover 传输详情）
-5. `TMC4361A.cpp` — Cover 40-bit 路径: waitCover 改为 delayMicroseconds(50)；添加 Cover40 调试打印；添加 `#include <Arduino.h>`
+#### 2. TMC2240 Homing CHOPCONF 损坏修复
 
-**调试脚本**：
-- 新增 `software/tests/test_tmc2240_debug.py` — TMC2240 专用调试脚本
+**问题**: W 轴 homing 时电机完全不动
+**根因**: `motor_setMicrosteps()` 中 `tmc2240_fieldWrite()` 做 read-modify-write，但 `SPI_OUTPUT_FORMAT=0x0D` 自动 SPI 干扰 Cover 读取，读回垃圾值损坏 CHOPCONF（TOFF=0 → 驱动关闭）
+**修复**: 改用 `tmc2240_shadowRegister` 获取上次写入值，安全更新 MRES 字段
 
-**调试发现**：
-1. ✅ **SPI 通信成功** — TMC2240 返回有效状态字节 (0x99/0xB9/0x98)，Cover 40-bit 写入正常
-2. ✅ **寄存器写入确认** — CHOPCONF、GCONF、IHOLD_IRUN 等写入成功
-3. ❌ **电机无力矩** — DIRECT_MODE 手动写入 coilA=200 后电机无锁定力矩
-4. 🔍 **根因定位**: IOIN 寄存器读到 DRV_ENN=1 (bit 4)，**TMC2240 功率级被禁用**
+#### 3. 驱动芯片自动检测 (DRIVER_AUTO)
 
-**根因分析**：
-- TMC2240 DRV_ENN (Pin 9, TQFN32) 连接到 TMC4361A NFREEZE (Pin 19)
-- TMC4361A NFREEZE 有内部上拉 → 默认 HIGH
-- TMC2240 DRV_ENN 也有内部上拉 → 默认 HIGH
-- **DRV_ENN=HIGH → 功率级关闭，所有电机输出浮空**
-- TMC2660 不受影响：SDOFF=1 (SPI模式) 下忽略 ENN 引脚
-- TMC2240 始终尊重 ENN 引脚，无法通过软件覆盖
+实现初始化时自动检测 TMC2660/TMC2240，无需修改 config.h 即可切换驱动板。
 
-**硬件矛盾**：
-- TMC4361A NFREEZE: HIGH=正常工作, LOW=冻结寄存器(SPI写入失效)
-- TMC2240 DRV_ENN: HIGH=驱动禁用, LOW=驱动使能
-- 两引脚连在同一网络，无法同时满足
+**修改文件**:
+1. `MotorControl.h` — 新增 `DRIVER_AUTO (0xFF)` + `motor_detectDriverType()` 声明
+2. `MotorControl.cpp` — 实现检测函数 + `motor_initMotionController` 集成
+3. `axis.h` — 新增 `getDriverType()` 访问器
+4. `axis.cpp` — 检测后回写 `_config.driverType`
+5. `config.h` — 所有 7 轴改为 `DRIVER_AUTO`
+6. `serial.cpp` — 新增 `S:HWINFO` 命令查询各轴驱动芯片
+
+**检测原理**:
+- TMC4361A reset 后，设 CLK_FREQ + `SPI_OUT_CONF=0x4445000A`（format=0x0A 20-bit auto SPI + CDL=40 手动 Cover）
+- 通过 40-bit Cover 读取 TMC2240 IOIN 寄存器，检查 VERSION[31:24] == 0x40
+- 关键发现: format=0x0D 的 40-bit auto SPI 会覆盖 COVER_DRV 寄存器导致 Cover READ 不可靠；改用 format=0x0A (20-bit) 解决
+
+**测试脚本**: `software/tests/test_hwinfo.py` — 发送 Engine Start + S:HWINFO，打印各轴芯片型号
+
+#### 4. TMC4361A + TMC2240 SPI 通信特性总结
+
+| 操作 | format=0x0A (20-bit) | format=0x0D (40-bit) |
+|------|----------------------|----------------------|
+| Cover WRITE | ✅ 可靠 | ✅ 可靠 |
+| Cover READ | ✅ 可靠（用于检测） | ❌ 不可靠（auto SPI 覆盖 COVER_DRV） |
+| Auto SPI 输出 | 20-bit TMC2660 格式 | 40-bit TMC2240 电流控制 |
 
 ### 下次继续
 
-1. **⚠ 硬件修改（阻塞项）**: 断开 TMC2240 DRV_ENN 与 TMC4361A NFREEZE 的连接，将 DRV_ENN 单独接 GND
-2. 硬件修改完成后验证电机力矩（DIRECT_MODE 测试）
-3. 验证 FORMAT=0x0D 自动 SPI 输出是否能驱动电机运动
-4. 清理调试代码（Cover40 debug 打印、reliableRead 等）
-5. 验证寄存器读取（读取 IOIN 获取芯片版本号 0x40）
-6. 遗留：修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW）、去掉 homing debug 打印
+1. TMC2240 StealthChop 参数调优
+2. 清理 TMC2240 调试代码（Cover40 debug 打印等）
+3. 修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW + 极性修正）
+4. 去掉 StepAxis/FilterWheel homing debug 打印（确认稳定后）
+5. 硬件验证 VSTOP 恢复（反复测试到达限位→反向→再到达）
 
 ---
+
+### 2026-03-24 - TMC2240 W 轴硬件调试 (maxpro)
+- W 轴 TMC2240 SPI 通信成功（Cover 40-bit，状态字节 0x99/0xB9）
+- 修复 SPI_OUTPUT_FORMAT、SCALE_VALUES、GCONF direct_mode
+- 发现 DRV_ENN 硬件问题（连接 NFREEZE 内部上拉→HIGH→驱动禁用）
+- 新增 test_tmc2240_debug.py 调试脚本
 
 ### 2026-03-03 - 手控盒模块移植 (develop)
 - joystick.h/cpp 新增：XY 摇杆速度控制 + Z 焦点轮跟随

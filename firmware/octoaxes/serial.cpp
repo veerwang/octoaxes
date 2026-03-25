@@ -3,6 +3,7 @@
 #include "build_opt.h"
 #include "commandprocessor.h"
 #include "trigger.h"
+#include "tmc/motion/MotorControl.h"
 #include <stdarg.h>
 
 // 协议状态字节
@@ -279,6 +280,26 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     if (command == "S:Engine Start") {
       engineStarted = true;
       sendDebugInfo("Engine Start command received. Starting system...");
+      return;
+    }
+
+    if (command == "S:HWINFO") {
+      char buf[64];
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (axis) {
+          const char *driverName;
+          switch (axis->getDriverType()) {
+            case DRIVER_TMC2660: driverName = "TMC2660"; break;
+            case DRIVER_TMC2240: driverName = "TMC2240"; break;
+            default:             driverName = "UNKNOWN"; break;
+          }
+          snprintf(buf, sizeof(buf), "S:HWINFO:%s:TMC4361A+%s",
+                   axis->getAxisName(), driverName);
+          SerialUSB.println(buf);
+        }
+      }
+      SerialUSB.println("S:HWINFO:END");
       return;
     }
 

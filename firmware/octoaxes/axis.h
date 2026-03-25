@@ -206,6 +206,7 @@ public:
   // 状态查询
   virtual AxisState getCurrentState() const;
   virtual const char *getAxisName() const;
+  uint8_t getDriverType() const { return _config.driverType; }
   virtual bool isInErrorState() const;
   virtual uint32_t readAxisEvent() const;
 

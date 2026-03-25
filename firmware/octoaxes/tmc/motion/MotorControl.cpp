@@ -227,6 +227,42 @@ bool motor_init(uint8_t icID, const AxisMotionConfig *config)
     return true;
 }
 
+// ============================================================================
+// 驱动芯片自动检测
+// ============================================================================
+
+uint8_t motor_detectDriverType(uint8_t icID)
+{
+    // 使用 TMC2660 格式 (format=0x0A, 20-bit auto SPI) 配合手动 40-bit Cover
+    // 20-bit auto SPI 不覆盖 40-bit Cover 的完整响应，解决 format=0x0D 干扰问题
+    // COVER_DATA_LENGTH=40 确保 Cover 传输使用 40-bit
+    // SPI timing: block=4, high=4, low=4
+    uint32_t spiOutConf_detect = 0x4445000A;  // CDL=40 + format=0x0A
+    tmc4361A_writeRegister(icID, TMC4361A_SPI_OUT_CONF, spiOutConf_detect);
+    delayMicroseconds(500);
+
+    // 通过 40-bit Cover 读取 TMC2240 IOIN (地址 0x04)
+    // TMC2240 VERSION 字段在 IOIN[31:24] = 0x40
+    // TMC2660 收到 40-bit 会返回 20-bit 响应 + 填充，VERSION ≠ 0x40
+    int32_t ioin = tmc2240_readRegister(icID, TMC2240_IOIN);
+    uint8_t version = (ioin >> 24) & 0xFF;
+
+    DEBUG_PRINT("IC");
+    DEBUG_PRINT(icID);
+    DEBUG_PRINT(":detect IOIN=0x");
+    DEBUG_PRINTF(ioin, HEX);
+    DEBUG_PRINT(" ver=0x");
+    DEBUG_PRINTF(version, HEX);
+
+    if (version == 0x40) {
+        DEBUG_PRINTLN(" -> TMC2240");
+        return DRIVER_TMC2240;
+    } else {
+        DEBUG_PRINTLN(" -> TMC2660");
+        return DRIVER_TMC2660;
+    }
+}
+
 bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
 {
     if (icID >= MOTOR_IC_COUNT || config == NULL)
@@ -248,6 +284,14 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     int32_t version = tmc4361A_readRegister(icID, TMC4361A_VERSION_NO);
     if (version == 0 || version == -1) {
         return false;  // Communication failed
+    }
+
+    // 先设置 CLK_FREQ，Cover SPI 时钟依赖此配置
+    tmc4361A_writeRegister(icID, TMC4361A_CLK_FREQ, config->clockFrequency);
+
+    // 自动检测驱动芯片类型
+    if (motorParams[icID].driverType == DRIVER_AUTO) {
+        motorParams[icID].driverType = motor_detectDriverType(icID);
     }
 
     // Configure GENERAL_CONF
@@ -272,8 +316,7 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     }
     tmc4361A_writeRegister(icID, TMC4361A_SPI_OUT_CONF, spiOutConf);
 
-    // Set clock frequency
-    tmc4361A_writeRegister(icID, TMC4361A_CLK_FREQ, config->clockFrequency);
+    // CLK_FREQ 已在检测前设置
 
     // Configure ramp mode
     // RAMPMODE: 0=hold, 1=trapezoid, 2=S-shaped, 4=position mode

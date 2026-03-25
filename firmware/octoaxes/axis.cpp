@@ -54,7 +54,7 @@ bool Axis::begin(const AxisConfig &config) {
   digitalWrite(_csPin, HIGH);
 
   // ========== 新架构初始化 ==========
-  // 提前设置驱动类型，motor_initMotionController 需要用来选择 SPI_OUT_CONF
+  // 设置驱动类型（DRIVER_AUTO 时由 motor_initMotionController 自动检测）
   motorParams[_icID].driverType = _config.driverType;
 
   // 初始化运动参数缓存 (用于新 API 的单位转换)
@@ -74,6 +74,11 @@ bool Axis::begin(const AxisConfig &config) {
       .bow3 = 0,
       .bow4 = 0};
   motor_initMotionController(_icID, &motionConfig);
+
+  // 自动检测完成后，回写实际驱动类型
+  if (_config.driverType == DRIVER_AUTO) {
+    _config.driverType = motorParams[_icID].driverType;
+  }
 
   // 初始化驱动器配置
   MotorConfig motorConfig = {
