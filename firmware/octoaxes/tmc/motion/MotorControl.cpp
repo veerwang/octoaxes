@@ -953,8 +953,14 @@ void motor_setMicrosteps(uint8_t icID, uint16_t microsteps)
     tmc4361A_writeRegister(icID, TMC4361A_STEP_CONF, stepConf);
 
     // TMC2240: 同步更新 CHOPCONF.MRES（TMC2240 的 MRES 必须与 TMC4361A 的 STEP_CONF 一致）
+    // 注意: 不能用 tmc2240_fieldWrite (read-modify-write)，因为 SPI_OUTPUT_FORMAT=0x0D
+    // 自动 SPI 输出干扰 Cover 读取，读回值不可靠会损坏 CHOPCONF（TOFF=0→驱动关闭）。
+    // 改用 shadow register 获取上次写入的 CHOPCONF 值。
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
-        tmc2240_fieldWrite(icID, TMC2240_MRES_FIELD, mstepVal);
+        uint32_t chopconf = (uint32_t)tmc2240_shadowRegister[icID][TMC2240_CHOPCONF];
+        chopconf = (chopconf & ~((uint32_t)0x0F << TMC2240_MRES_SHIFT)) |
+                   ((uint32_t)(mstepVal & 0x0F) << TMC2240_MRES_SHIFT);
+        tmc2240_writeRegister(icID, TMC2240_CHOPCONF, chopconf);
     }
 }
 
