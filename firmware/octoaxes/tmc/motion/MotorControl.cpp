@@ -299,6 +299,12 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     if (config->astartMM > 0) {
         generalConf |= TMC4361A_USE_ASTART_AND_VSTART_MASK;  // 使能 ASTART/DFINAL
     }
+    // TMC2240 direct_mode 下方向由 TMC4361A 微步表相位序列决定，
+    // TMC2240 SHAFT 位无效（仅影响 STEP/DIR 模式）。
+    // 反转 TMC4361A 内部微步表方向，补偿 format 0x0D 与 0x0A 的相位映射差异
+    if (motorParams[icID].driverType == DRIVER_TMC2240) {
+        generalConf |= TMC4361A_REVERSE_MOTOR_DIR_MASK;  // bit 28
+    }
     tmc4361A_writeRegister(icID, TMC4361A_GENERAL_CONF, generalConf);
 
     // Configure SPI_OUT_CONF - 根据驱动芯片类型选择 SPI 输出格式
@@ -532,6 +538,7 @@ static bool motor_initDriver_TMC2240(uint8_t icID, const MotorConfig *config)
     // direct_mode (bit 16): TMC4361A 通过 SPI 直接控制线圈电流 (DIRECT_MODE 寄存器)
     // 必须启用，否则 TMC2240 等待 Step/Dir 信号而不响应 SPI 电流指令
     gconf |= TMC2240_DIRECT_MODE_MASK;  // bit 16: direct coil current control via SPI
+    // 注意: SHAFT (bit 4) 在 direct_mode 下无效，方向由 TMC4361A REVERSE_MOTOR_DIR 控制
     if (config->enableStealthChop) {
         gconf |= TMC2240_EN_PWM_MODE_MASK;  // bit 2: StealthChop 使能
     }
