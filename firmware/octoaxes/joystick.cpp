@@ -46,6 +46,7 @@ static int32_t focusPosition = 0;
 static volatile int32_t focusWheelDelta = 0;  // 回调中累计的增量
 static int32_t focusWheelPos = 0;             // 上一次绝对编码器位置
 static bool firstJoystickPacket = true;       // 首包标志（仅记录基准）
+static bool focusPositionSynced = false;      // focusPosition 是否已与实际位置同步
 
 // 周期计时器
 static elapsedMicros joystickTimer;
@@ -148,15 +149,23 @@ static void do_focus_control() {
   if (delta == 0)
     return;
 
+  // 首次使用时从实际位置同步，避免 init 时位置过期（homing 前后不一致）
+  if (!focusPositionSynced) {
+    focusPosition = motor_getPositionMicrosteps(icID_Z);
+    focusPositionSynced = true;
+  }
+
   focusPosition += delta;
 
-  // 软限位钳位：读取 TMC4361A 虚拟限位寄存器
-  int32_t lowerLimit = (int32_t)tmc4361A_readRegister(icID_Z, TMC4361A_VIRT_STOP_LEFT);
-  int32_t upperLimit = (int32_t)tmc4361A_readRegister(icID_Z, TMC4361A_VIRT_STOP_RIGHT);
-  if (focusPosition < lowerLimit)
-    focusPosition = lowerLimit;
-  if (focusPosition > upperLimit)
-    focusPosition = upperLimit;
+  // 软限位钳位：仅在软限位已启用时生效（上位机 SET_LIMITS 后才有有效值）
+  if (axisZ->isSoftLimitsEnabled()) {
+    int32_t lowerLimit = (int32_t)tmc4361A_readRegister(icID_Z, TMC4361A_VIRT_STOP_LEFT);
+    int32_t upperLimit = (int32_t)tmc4361A_readRegister(icID_Z, TMC4361A_VIRT_STOP_RIGHT);
+    if (focusPosition < lowerLimit)
+      focusPosition = lowerLimit;
+    if (focusPosition > upperLimit)
+      focusPosition = upperLimit;
+  }
 
   motor_moveToMicrosteps(icID_Z, focusPosition);
 }

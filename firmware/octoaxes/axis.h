@@ -180,6 +180,9 @@ public:
   // 新增：使能状态查询
   virtual bool isEnabled() const { return _isEnabled; }
 
+  // 软限位状态查询
+  bool isSoftLimitsEnabled() const { return _softLimitsEnabled; }
+
   // 限位设置
   virtual void setSoftLimits(float lowerLimitMM, float upperLimitMM);
   virtual void enableSoftLimits(bool enable);
