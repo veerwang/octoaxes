@@ -113,12 +113,10 @@ void setup() {
   // 初始化串口
   serialProtocol.begin(115200, 300);
 
-  serialProtocol.waitEngineStartCommand();
-
   // 初始化状态指示灯
   initializeStartupLED();
 
-  DEBUG_PRINTLN("Engine Start received. Initializing system...");
+  DEBUG_PRINTLN("Initializing system...");
 
   // 初始化系统
   if (!initializeSystem()) {

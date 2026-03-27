@@ -61,8 +61,8 @@ class TeensyControlGUI(QMainWindow):
         }
 
         self.init_ui()
-        self.find_and_connect_teensy()
         self.setup_timers()
+        self.find_and_connect_teensy()
 
     def init_ui(self):
         self.setWindowTitle("Teensy Motor Control")
@@ -74,9 +74,6 @@ class TeensyControlGUI(QMainWindow):
 
         # 顶部状态栏（常驻）
         main_layout.addLayout(self.create_top_bar())
-
-        # Engine Start 按钮（常驻）
-        main_layout.addLayout(self.create_engine_start_bar())
 
         # 标签页
         self.tab_widget = QTabWidget()
@@ -132,19 +129,6 @@ class TeensyControlGUI(QMainWindow):
         self.version_label.setStyleSheet("color: darkorange; font-weight: bold;")
         layout.addWidget(self.version_label)
 
-        return layout
-
-    def create_engine_start_bar(self):
-        layout = QHBoxLayout()
-        self.engine_start_btn = QPushButton("Engine Start")
-        self.engine_start_btn.clicked.connect(self.send_engine_start)
-        self.engine_start_btn.setStyleSheet(
-            "background-color: green; color: white; font-weight: bold; font-size: 16px;"
-        )
-        self.engine_start_btn.setMinimumHeight(40)
-        self.engine_start_btn.setEnabled(False)
-        layout.addWidget(self.engine_start_btn)
-        layout.addStretch()
         return layout
 
     def create_left_panel(self):
@@ -595,10 +579,9 @@ class TeensyControlGUI(QMainWindow):
         self.status_label.setText(message)
         if connected:
             self.status_label.setStyleSheet("color: green; font-weight: bold;")
-            self.engine_start_btn.setEnabled(True)
+            self.startup_timer.start()
         else:
             self.status_label.setStyleSheet("color: red; font-weight: bold;")
-            self.engine_start_btn.setEnabled(False)
             self.version_label.setText("Firmware Version: Unknown")
 
     def handle_debug_info(self, debug_message):
@@ -638,16 +621,6 @@ class TeensyControlGUI(QMainWindow):
                 return False
         finally:
             self._query_mutex.unlock()
-
-    def send_engine_start(self):
-        command = "S:Engine Start"
-        if self.send_command(command):
-            self.engine_start_btn.setEnabled(False)
-            self.engine_start_btn.setText("Engine Started")
-            self.engine_start_btn.setStyleSheet(
-                "background-color: gray; color: white; font-weight: bold; font-size: 16px;"
-            )
-            self.startup_timer.start()
 
     def wait_until_idle(self, timeout: float = 10) -> bool:
         """等待轴回到 IDLE 状态（线程安全）"""

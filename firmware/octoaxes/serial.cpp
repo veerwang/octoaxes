@@ -45,11 +45,10 @@ static const uint8_t CRC_TABLE[256] = {
 SerialProtocolHandler serialProtocol;
 
 static const uint32_t VERSION = 106;
-bool engineStarted = false;
 
 SerialProtocolHandler::SerialProtocolHandler()
     : buffer_rx_ptr(0), cmd_id(0), mcu_cmd_execution_in_progress(false),
-      checksum_error(false), engineStarted(false) {
+      checksum_error(false) {
   memset(buffer_rx, 0, sizeof(buffer_rx));
 }
 
@@ -63,14 +62,6 @@ void SerialProtocolHandler::begin(long baudRate, uint32_t timeout) {
   }
 }
 
-void SerialProtocolHandler::waitEngineStartCommand() {
-  DEBUG_PRINTLN("System ready. Waiting for 'Engine Start' command...");
-
-  while (!engineStarted) {
-    processSerialCommands(); // 使用新的统一处理函数
-    delay(10);               // 减少延迟以提高响应速度
-  }
-}
 
 void SerialProtocolHandler::sendDebugInfo(const char *format, ...) {
   char buffer[256];
@@ -278,8 +269,8 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     if (command == "S:Engine Start") {
-      engineStarted = true;
-      sendDebugInfo("Engine Start command received. Starting system...");
+      // 保留命令兼容性，不再需要启动流程
+      sendDebugInfo("System already running (Engine Start is no longer required)");
       return;
     }
 

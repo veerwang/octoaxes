@@ -52,13 +52,8 @@ public:
     void processSerialCommands();
     void processSerialDebugCommands();
     void processSerialStandardCommands();
-    void waitEngineStartCommand();
-    
     // CRC校验函数
     uint8_t crc8ccitt(byte *data, uint8_t len);
-    
-    // 检查是否已启动
-    bool isEngineStarted() const { return engineStarted; }
 
 private:
     static const int CMD_LENGTH = 8;
@@ -73,7 +68,6 @@ private:
     byte cmd_id;
     bool mcu_cmd_execution_in_progress;
     bool checksum_error;
-    bool engineStarted;
     elapsedMicros _us_since_last_pos_update;
     
     // 调试命令缓冲区
