@@ -775,9 +775,10 @@ class TeensyControlGUI(QMainWindow):
                     self.axis_enabled_states[axis] = enabled
                     self.control_panel.set_enable_state(enabled)
 
-        # 只把未识别的 ASCII 调试行记录到日志
+        # 只把未识别的 ASCII 调试行记录到日志（过滤含不可打印字符的乱码）
         if data and not parsed:
-            self.log(f"[DBG] {data}")
+            if all(c == '\t' or c == '\n' or (c >= ' ' and c <= '~') for c in data):
+                self.log(f"[DBG] {data}")
 
     def handle_binary_response(self, data: bytes):
         """处理固件 24 字节二进制位置上报包（不写入日志，10ms 周期调用）。
@@ -846,9 +847,6 @@ class TeensyControlGUI(QMainWindow):
                 self.log_text_edit.append(
                     f"[ERROR] Failed to write to log file: {str(e)}"
                 )
-                # 尝试重新打开文件
-                self.close_log_file()
-                self.open_log_file()
 
     # ====== 查询相关 ======
     def query_firmware_version(self):
