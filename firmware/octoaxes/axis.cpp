@@ -683,6 +683,10 @@ void Axis::enableSoftLimits(bool enable) {
 
 // 设置单侧软限位 (direction: +1=上限/右, -1=下限/左)
 void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
+  // 先将 XTARGET 设为当前位置，防止放宽限位后电机自动恢复运动
+  int32_t xactual = tmc4361A_readRegister(_icID, TMC4361A_XACTUAL);
+  tmc4361A_writeRegister(_icID, TMC4361A_XTARGET, xactual);
+
   uint32_t refConf = tmc4361A_readRegister(_icID, TMC4361A_REFERENCE_CONF);
   if (direction > 0) {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_RIGHT, valueMicrosteps);
