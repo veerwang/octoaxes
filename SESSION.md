@@ -76,6 +76,18 @@ ENC_IN_CONF=0x00000400 STEP_CONF=0x00000C85 ENC_IN_RES(readback=ENC_CONST)=1000
 - `MotorControl.cpp:976` — `motor_setPosition()` 中新增 `ENC_POS = position`，与 XACTUAL 同步
 - 对未启用编码器的轴写 ENC_POS 无影响
 
+#### 5. 编码器轴位置上报改用 ENC_POS (2026-03-31)
+
+**需求**: 启用编码器的轴，上报位置应来自编码器而非开环 XACTUAL，GUI 需提示数据来源。
+
+**固件变更**:
+- `axis.cpp` — `getCurrentPositionMicrosteps()` 根据 `enableEncoder` 返回 ENC_POS 或 XACTUAL
+- ENC_POS 经 ENC_CONST 换算后单位与微步一致，上位机无需额外转换
+
+**上位机变更**:
+- `constants.py` — W 轴添加 `"has_encoder": True`
+- `main_window.py` — 位置显示标签：有编码器显示 `(encoder)`，否则显示 `(steps)`
+
 ### 下次继续
 
 1. **验证编码器修复** — 烧写后走 1 圈，ENC_POS 应 ≈1600 匹配 XACTUAL

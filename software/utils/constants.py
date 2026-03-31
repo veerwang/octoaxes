@@ -42,6 +42,7 @@ AXIS_CONFIG = {
         "limits": (0, 7),
         "movement_sign": 1,
         "index": 3,
+        "has_encoder": True,
     },
     "E1": {
         "display_name": "Objectives - expand1_axis",

@@ -846,7 +846,8 @@ class TeensyControlGUI(QMainWindow):
             s    = steps[current_axis]
             sign = AXIS_CONFIG[current_axis]["movement_sign"]
             mm   = s * AXIS_MM_PER_STEP.get(current_axis, 0.0) * sign
-            self.steps_label.setText(f"Current Position: {int(s * sign)} steps")
+            source = "encoder" if AXIS_CONFIG[current_axis].get("has_encoder") else "steps"
+            self.steps_label.setText(f"Current Position: {int(s * sign)} ({source})")
             self.pos_label.setText(f"Current Position: {mm:.4f} mm")
             self.update_current_axis_display(current_axis)
 
@@ -881,8 +882,9 @@ class TeensyControlGUI(QMainWindow):
             sign = AXIS_CONFIG[current_axis]["movement_sign"]
             mm   = float(status.get("position_mm", 0.0)) * sign
             s    = int(status.get("position_steps", 0)) * sign
+            source = "encoder" if AXIS_CONFIG[current_axis].get("has_encoder") else "steps"
             self.pos_label.setText(f"Current Position: {mm:.4f} mm")
-            self.steps_label.setText(f"Current Position: {s} steps")
+            self.steps_label.setText(f"Current Position: {s} ({source})")
         # 调试构建时额外发 ASCII 命令（生产构建该命令无响应，但不影响功能）
         if self.is_connected():
             command = format_command(current_axis, "GET_DATA")
