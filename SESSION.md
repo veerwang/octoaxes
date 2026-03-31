@@ -8,7 +8,7 @@
 
 **日期**: 2026-03-27
 **分支**: maxpro
-**位置**: Engine Start 机制删除
+**位置**: Engine Start 删除 + W 轴编码器调试
 
 ### 本次完成
 
@@ -24,15 +24,58 @@
 **GUI 变更**:
 - `main_window.py` — 删除 Engine Start 按钮及 `send_engine_start()` 方法；连接成功后自动触发 `startup_launch`（设限位）；`setup_timers()` 移到 `find_and_connect_teensy()` 之前避免属性未创建错误
 
-**测试脚本**: 未修改，发送 "S:Engine Start" 会被固件忽略（返回提示信息）
+#### 2. W 轴 ABN 编码器支持（调试中）
+
+**硬件**: 4000 线 ABN 编码器，接在 W 轴 (TMC4361A icID=3)
+
+**新增配置**:
+- `axis.h` — AxisConfig 新增 `enableEncoder`、`encoderLinesPerRev` 字段
+- `config.h` — 7 个轴全部添加编码器配置，W 轴 `enableEncoder=true, encoderLinesPerRev=4000`
+- `axis.cpp` — `begin()` 中如果 `enableEncoder=true`，调用 `motor_initABNEncoder()` 初始化
+
+**调试功能**:
+- `serial.cpp` — 新增 `S:ENCPOS` 命令，打印各轴编码器位置 + W 轴寄存器诊断（GENERAL_CONF、ENC_IN_CONF、STEP_CONF、ENC_CONST）
+- `octoaxes.ino` — loop() 中每 2 秒打印 W 轴 `enc`/`xactual`/`dev`
+- `main_window.py` — Log 页面新增 Debug Command 输入框，可手动发送 `S:ENCPOS` 等命令
+
+**诊断结果** (S:ENCPOS 输出):
+```
+GENERAL_CONF=0x10000001 diff_dis=0 ser_mode=0
+ENC_IN_CONF=0x00000400 STEP_CONF=0x00000C85 ENC_IN_RES(readback=ENC_CONST)=1000
+```
+
+**发现的问题**:
+1. `diff_dis=0` — 差分编码器模式未禁用，单端编码器需要禁用 → **已修复**（`motor_initABNEncoder` 中设 GENERAL_CONF bit12）
+2. `ENC_IN_RES` 地址 0x54 写入/读回不同：写入设置 ENC_IN_RES，读回得到 ENC_CONST（TMC4361A 特性）
+3. W 轴走 1 圈：`xactual` 变化 1600（正确），`enc` 变化 400 → 原始编码器计数 4000/rev（应为 16000 即 4x 正交），怀疑差分模式导致只有 1x 计数 → **待验证**
+
+**W 轴电机参数（TMC4361A 视角）**:
+- STEP_CONF: MSTEP_PER_FS=8, FS_PER_REV=200 → 1600 微步/转
+- TMC2240 硬件: MRES=256 + interpolation（对 TMC4361A 透明）
+- ENC_IN_RES=16000 (4000线 × 4 正交)
+- 理论 ENC_CONST = 1600/16000 = 0.1
+
+#### 3. 修正编码器 transitions 计算 (2026-03-31)
+
+**问题**: `axis.cpp` 中 `transitions = encoderLinesPerRev * 4`（假设需要 4x 正交倍频），实际编码器线数就是 transitions，不需要乘 4。
+
+**修复**:
+- `axis.cpp:128` — 去掉 `* 4`，`transitions` 直接等于 `encoderLinesPerRev`
+- `axis.h:64` — 更新注释
+
+**修正后 W 轴编码器参数**:
+- ENC_IN_RES = 4000（之前错误写入 16000）
+- ENC_CONST = 1600/4000 = 0.4（TMC4361A 自动计算）
+- 走 1 圈 ENC_POS 应 = XACTUAL = 1600
 
 ### 下次继续
 
-1. TMC2240 StealthChop 参数调优
-2. 清理 TMC2240 调试代码（Cover40 debug 打印等）
-3. 修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW + 极性修正）
-4. 去掉 StepAxis/FilterWheel homing debug 打印（确认稳定后）
-5. 硬件验证 VSTOP 恢复（反复测试到达限位→反向→再到达）
+1. **验证编码器修复** — 烧写后走 1 圈，ENC_POS 应 ≈1600 匹配 XACTUAL
+2. 如果方向反，设 `invert_dir=true`
+3. 验证正确后考虑开启 PID 闭环
+4. TMC2240 StealthChop 参数调优
+5. 清理 TMC2240 调试代码
+6. 修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW + 极性修正）
 
 ---
 

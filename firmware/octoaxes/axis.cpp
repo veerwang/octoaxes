@@ -123,6 +123,21 @@ bool Axis::begin(const AxisConfig &config) {
   // 禁用虚拟限位开关（初始状态）
   enableSoftLimits(false);
 
+  // 编码器初始化
+  if (_config.enableEncoder && _config.encoderLinesPerRev > 0) {
+    uint32_t transitions = (uint32_t)_config.encoderLinesPerRev;
+    motor_initABNEncoder(_icID, transitions,
+                          32,    // filter_wait_time
+                          4,     // filter_exponent
+                          512,   // filter_vmean
+                          false);  // invert_dir
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":ENCODER_INIT lines=");
+    DEBUG_PRINT(_config.encoderLinesPerRev);
+    DEBUG_PRINT(" transitions=");
+    DEBUG_PRINTLN(transitions);
+  }
+
   // 禁用 PID (使用新 API)
   motor_disablePID(_icID);
 

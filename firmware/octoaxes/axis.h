@@ -60,6 +60,8 @@ public:
     int8_t homing_direct;
     uint8_t driverType;          // 驱动芯片型号，默认 DRIVER_TMC2660
     uint8_t currentRange;        // TMC2240 CURRENT_RANGE: 0=1A, 1=2A, 2=3A (TMC2660 时忽略)
+    bool enableEncoder;          // 是否启用 ABN 编码器，默认 false
+    uint16_t encoderLinesPerRev; // 编码器线数 (每转), 如 4000。直接作为 transitions 使用
   };
 
 protected:
