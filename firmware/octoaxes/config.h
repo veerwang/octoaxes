@@ -266,7 +266,9 @@ namespace AxisConfigs {
         .homing_timeout_ms = 30000,
 				.homing_direct = -1,
 				.driverType = DRIVER_AUTO,
-				.currentRange = 0
+				.currentRange = 0,
+				.enableEncoder = false,
+				.encoderLinesPerRev = 0
     };
 
     // Y轴配置
@@ -301,7 +303,9 @@ namespace AxisConfigs {
         .homing_timeout_ms = 40000,
 				.homing_direct = -1,
 				.driverType = DRIVER_AUTO,
-				.currentRange = 0
+				.currentRange = 0,
+				.enableEncoder = false,
+				.encoderLinesPerRev = 0
     };
 
     // Z轴配置
@@ -336,7 +340,9 @@ namespace AxisConfigs {
         .homing_timeout_ms = 20000,
 				.homing_direct = 1,
 				.driverType = DRIVER_AUTO,
-				.currentRange = 0
+				.currentRange = 0,
+				.enableEncoder = false,
+				.encoderLinesPerRev = 0
     };
 
     // W轴4配置 (filter wheel)
@@ -371,7 +377,9 @@ namespace AxisConfigs {
         .homing_timeout_ms = 80000,
 				.homing_direct = 1,
 				.driverType = DRIVER_AUTO,
-				.currentRange = 2
+				.currentRange = 2,
+				.enableEncoder = true,
+				.encoderLinesPerRev = 4000
     };
 
     // 扩展轴1配置 (objectives)
@@ -406,7 +414,9 @@ namespace AxisConfigs {
         .homing_timeout_ms = 80000,
 				.homing_direct = 1,
 				.driverType = DRIVER_AUTO,
-				.currentRange = 0
+				.currentRange = 0,
+				.enableEncoder = false,
+				.encoderLinesPerRev = 0
     };
 
     // 扩展轴3配置 (Z轴配置)
@@ -441,7 +451,9 @@ namespace AxisConfigs {
         .homing_timeout_ms = 20000,
 				.homing_direct = 1,
 				.driverType = DRIVER_AUTO,
-				.currentRange = 0
+				.currentRange = 0,
+				.enableEncoder = false,
+				.encoderLinesPerRev = 0
     };
 
     // 扩展轴4配置 (filter wheel)
@@ -476,7 +488,9 @@ namespace AxisConfigs {
         .homing_timeout_ms = 80000,
 				.homing_direct = 1,
 				.driverType = DRIVER_AUTO,
-				.currentRange = 0
+				.currentRange = 0,
+				.enableEncoder = false,
+				.encoderLinesPerRev = 0
     };
 }
 

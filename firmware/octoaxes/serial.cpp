@@ -4,6 +4,7 @@
 #include "commandprocessor.h"
 #include "trigger.h"
 #include "tmc/motion/MotorControl.h"
+#include "tmc/ic/TMC4361A/TMC4361A.h"
 #include <stdarg.h>
 
 // 协议状态字节
@@ -271,6 +272,36 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     if (command == "S:Engine Start") {
       // 保留命令兼容性，不再需要启动流程
       sendDebugInfo("System already running (Engine Start is no longer required)");
+      return;
+    }
+
+    if (command == "S:ENCPOS") {
+      char buf[120];
+      // 先打印 W 轴编码器寄存器诊断
+      uint8_t wID = 3;
+      uint32_t genConf = tmc4361A_readRegister(wID, TMC4361A_GENERAL_CONF);
+      uint32_t encInConf = tmc4361A_readRegister(wID, TMC4361A_ENC_IN_CONF);
+      uint32_t stepConf = tmc4361A_readRegister(wID, TMC4361A_STEP_CONF);
+      uint32_t encInRes = tmc4361A_readRegister(wID, TMC4361A_ENC_IN_RES);
+      snprintf(buf, sizeof(buf), "S:ENCDIAG:W GENERAL_CONF=0x%08lX diff_dis=%d ser_mode=%d",
+               (unsigned long)genConf, (int)((genConf >> 12) & 1), (int)((genConf >> 10) & 3));
+      SerialUSB.println(buf);
+      snprintf(buf, sizeof(buf), "S:ENCDIAG:W ENC_IN_CONF=0x%08lX STEP_CONF=0x%08lX ENC_IN_RES=%lu",
+               (unsigned long)encInConf, (unsigned long)stepConf, (unsigned long)encInRes);
+      SerialUSB.println(buf);
+
+      // 打印各轴编码器位置
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (axis) {
+          int32_t encPos = (int32_t)tmc4361A_readRegister(i, TMC4361A_ENC_POS);
+          int32_t xActual = (int32_t)tmc4361A_readRegister(i, TMC4361A_XACTUAL);
+          snprintf(buf, sizeof(buf), "S:ENCPOS:%s:enc=%ld xactual=%ld dev=%ld",
+                   axis->getAxisName(), (long)encPos, (long)xActual, (long)(encPos - xActual));
+          SerialUSB.println(buf);
+        }
+      }
+      SerialUSB.println("S:ENCPOS:END");
       return;
     }
 

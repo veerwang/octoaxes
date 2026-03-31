@@ -9,6 +9,7 @@
 #include "stepaxis.h"
 #include "tmc/hal/TMC_SPI.h"
 #include "tmc/motion/MotorControl.h"
+#include "tmc/ic/TMC4361A/TMC4361A.h"
 #include "utils.h"
 
 void initializeClock(uint8_t clk_pin, uint32_t frequence) {
@@ -156,4 +157,20 @@ void loop() {
 
   // 更新所有轴状态机
   axisManager.updateAll();
+
+  // W 轴编码器调试打印（2秒周期）
+  {
+    static uint32_t lastEncPrint = 0;
+    uint8_t wID = 3;  // W 轴 icID
+
+    if (millis() - lastEncPrint >= 2000) {
+      lastEncPrint = millis();
+      int32_t encPos = (int32_t)tmc4361A_readRegister(wID, TMC4361A_ENC_POS);
+      int32_t xActual = (int32_t)tmc4361A_readRegister(wID, TMC4361A_XACTUAL);
+      char encBuf[80];
+      snprintf(encBuf, sizeof(encBuf), "W:ENC enc=%ld xactual=%ld dev=%ld",
+               (long)encPos, (long)xActual, (long)(encPos - xActual));
+      SerialUSB.println(encBuf);
+    }
+  }
 }

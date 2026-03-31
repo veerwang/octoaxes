@@ -269,6 +269,18 @@ class TeensyControlGUI(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
+        # 调试命令输入
+        cmd_layout = QHBoxLayout()
+        cmd_layout.addWidget(QLabel("Debug Command:"))
+        self.debug_cmd_edit = QLineEdit()
+        self.debug_cmd_edit.setPlaceholderText("e.g. S:ENCPOS, S:HWINFO, S:VERSION")
+        self.debug_cmd_edit.returnPressed.connect(self.send_debug_command)
+        cmd_layout.addWidget(self.debug_cmd_edit)
+        send_btn = QPushButton("Send")
+        send_btn.clicked.connect(self.send_debug_command)
+        cmd_layout.addWidget(send_btn)
+        layout.addLayout(cmd_layout)
+
         # 发送命令显示
         layout.addWidget(self.create_sent_commands_group())
 
@@ -599,6 +611,13 @@ class TeensyControlGUI(QMainWindow):
             self.update_connection_status(False, "Connection Error")
 
     # ====== 命令发送相关 ======
+    def send_debug_command(self):
+        """发送调试命令"""
+        cmd = self.debug_cmd_edit.text().strip()
+        if cmd:
+            self.send_command(cmd, "Debug")
+            self.debug_cmd_edit.clear()
+
     def send_command(self, command, log_prefix="Sent"):
         """发送命令的通用方法"""
         if not self.is_connected():
