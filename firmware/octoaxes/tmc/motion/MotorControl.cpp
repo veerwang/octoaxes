@@ -973,6 +973,7 @@ void motor_setCurrentPositionMicrosteps(uint8_t icID, int32_t position)
     tmc4361A_writeRegister(icID, TMC4361A_VMAX, 0);
     tmc4361A_writeRegister(icID, TMC4361A_XACTUAL, position);
     tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
+    tmc4361A_writeRegister(icID, TMC4361A_ENC_POS, position);  // 同步编码器位置
     motorParams[icID].velocity_mode = true;
 }
 
@@ -1218,12 +1219,26 @@ void motor_initABNEncoder(uint8_t icID, uint32_t transitions_per_rev,
     // Set encoder resolution
     tmc4361A_writeRegister(icID, TMC4361A_ENC_IN_RES, transitions_per_rev);
 
+    // 验证写入（注意: 0x54 读回的是 ENC_CONST 而非 ENC_IN_RES）
+    uint32_t encConst = tmc4361A_readRegister(icID, TMC4361A_ENC_IN_RES);
+    SerialUSB.print("ENC_INIT icID=");
+    SerialUSB.print(icID);
+    SerialUSB.print(" wrote_ENC_IN_RES=");
+    SerialUSB.print(transitions_per_rev);
+    SerialUSB.print(" readback_ENC_CONST=");
+    SerialUSB.println(encConst);
+
     // Set encoder velocity mean filter:
     // ENC_VMEAN_FILTER = wait_time | (filter_exp << 8) | (vmean_int << 16)
     uint32_t filterVal = (uint32_t)filter_wait_time
                        | ((uint32_t)filter_exponent << 8)
                        | ((uint32_t)filter_vmean << 16);
     tmc4361A_writeRegister(icID, TMC4361A_ENC_VMEAN_FILTER, filterVal);
+
+    // 禁用差分编码器输入（单端 ABN 编码器）
+    uint32_t gen_conf = tmc4361A_readRegister(icID, TMC4361A_GENERAL_CONF);
+    gen_conf |= TMC4361A_DIFF_ENC_IN_DISABLE_MASK;  // bit 12 = 1
+    tmc4361A_writeRegister(icID, TMC4361A_GENERAL_CONF, gen_conf);
 
     // Set or clear INVERT_ENC_DIR bit (bit 29 of ENC_IN_CONF)
     uint32_t enc_conf = tmc4361A_readRegister(icID, TMC4361A_ENC_IN_CONF);

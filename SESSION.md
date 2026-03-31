@@ -68,6 +68,14 @@ ENC_IN_CONF=0x00000400 STEP_CONF=0x00000C85 ENC_IN_RES(readback=ENC_CONST)=1000
 - ENC_CONST = 1600/4000 = 0.4（TMC4361A 自动计算）
 - 走 1 圈 ENC_POS 应 = XACTUAL = 1600
 
+#### 4. Homing 后同步 ENC_POS (2026-03-31)
+
+**问题**: `motor_setPosition()` 清零 XACTUAL/XTARGET 但未同步 ENC_POS，导致 homing 完成后编码器读数与微步位置不一致。
+
+**修复**:
+- `MotorControl.cpp:976` — `motor_setPosition()` 中新增 `ENC_POS = position`，与 XACTUAL 同步
+- 对未启用编码器的轴写 ENC_POS 无影响
+
 ### 下次继续
 
 1. **验证编码器修复** — 烧写后走 1 圈，ENC_POS 应 ≈1600 匹配 XACTUAL
