@@ -30,7 +30,7 @@ class SerialThread(QThread):
     start_timer_signal = pyqtSignal()
 
     # 固件响应包长度（与固件 MSG_LENGTH 一致）
-    RESPONSE_LENGTH = 24
+    RESPONSE_LENGTH = 28
 
     def __init__(self, port, baudrate=115200):
         super().__init__()
@@ -218,7 +218,7 @@ class SerialThread(QThread):
         return buf
 
     def _validate_response_crc(self, data: bytes) -> bool:
-        """验证 24 字节响应包的 CRC-8-CCITT（对 byte[0..22] 计算，byte[23] 是校验）"""
+        """验证 28 字节响应包的 CRC-8-CCITT（对 byte[0..26] 计算，byte[27] 是校验）"""
         if len(data) != self.RESPONSE_LENGTH:
             return False
         expected = self.crc_calculator.calculate_checksum(data[:-1])

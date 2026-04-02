@@ -786,21 +786,22 @@ class TeensyControlGUI(QMainWindow):
                     self.pos_label.setText(f"Current Position: {mm:.4f} mm")
                 if "position_steps" in status:
                     sign = AXIS_CONFIG[axis]["movement_sign"]
-                    self.steps_label.setText(
-                        f"Current Position: {int(status['position_steps']) * sign} steps"
-                    )
+                    s = int(status['position_steps']) * sign
+                    if AXIS_CONFIG[axis].get("has_encoder"):
+                        enc = int(status.get("encoder_steps", 0)) * sign
+                        self.steps_label.setText(f"Encoder: {enc} | Microsteps: {s}")
+                    else:
+                        self.steps_label.setText(f"Microsteps: {s}")
                 if "enabled" in status:
                     enabled = status["enabled"] == "YES"
                     self.axis_enabled_states[axis] = enabled
                     self.control_panel.set_enable_state(enabled)
 
-        # 只把未识别的 ASCII 调试行记录到日志（过滤含不可打印字符的乱码）
-        if data and not parsed:
-            if all(c == '\t' or c == '\n' or (c >= ' ' and c <= '~') for c in data):
-                self.log(f"[DBG] {data}")
+        # 未识别的 ASCII 调试行不再显示到日志
+        pass
 
     def handle_binary_response(self, data: bytes):
-        """处理固件 24 字节二进制位置上报包（不写入日志，10ms 周期调用）。
+        """处理固件 28 字节二进制位置上报包（不写入日志，10ms 周期调用）。
 
         响应包格式：
           byte[0]     : cmd_id
@@ -808,11 +809,12 @@ class TeensyControlGUI(QMainWindow):
           byte[2-5]   : X 轴位置（int32 大端序，微步）
           byte[6-9]   : Y 轴位置
           byte[10-13] : Z 轴位置
-          byte[14-17] : W 轴位置
-          byte[22]    : 固件版本（高半字节=主版本，低半字节=次版本）
-          byte[23]    : CRC-8-CCITT
+          byte[14-17] : W 轴位置（XACTUAL 微步）
+          byte[19-22] : W 轴编码器位置（ENC_POS 微步单位）
+          byte[26]    : 固件版本（高半字节=主版本，低半字节=次版本）
+          byte[27]    : CRC-8-CCITT
         """
-        if len(data) < 24:
+        if len(data) < 28:
             return
 
         import struct
@@ -822,6 +824,7 @@ class TeensyControlGUI(QMainWindow):
             "Z": struct.unpack('>i', data[10:14])[0],
             "W": struct.unpack('>i', data[14:18])[0],
         }
+        w_enc_pos = struct.unpack('>i', data[19:23])[0]
         fw_status = data[1]   # 0=COMPLETED, 1=IN_PROGRESS, 2=CRC_ERROR
         moving_str = "YES" if fw_status == 1 else "NO"
         state_str  = "MOVING" if fw_status == 1 else "IDLE"
@@ -830,12 +833,15 @@ class TeensyControlGUI(QMainWindow):
         for axis, s in steps.items():
             mm_per_step = AXIS_MM_PER_STEP.get(axis, 0.0)
             position_mm = s * mm_per_step
-            self.axis_manager.update_axis_status(axis, {
+            status_data = {
                 "position_steps": s,
                 "position_mm":    round(position_mm, 4),
                 "moving":  moving_str,
                 "state":   state_str,
-            })
+            }
+            if axis == "W":
+                status_data["encoder_steps"] = w_enc_pos
+            self.axis_manager.update_axis_status(axis, status_data)
             self.axis_status_display.update_axis_status(
                 axis, self.axis_manager.get_axis_status(axis)
             )
@@ -846,9 +852,13 @@ class TeensyControlGUI(QMainWindow):
             s    = steps[current_axis]
             sign = AXIS_CONFIG[current_axis]["movement_sign"]
             mm   = s * AXIS_MM_PER_STEP.get(current_axis, 0.0) * sign
-            source = "encoder" if AXIS_CONFIG[current_axis].get("has_encoder") else "steps"
-            self.steps_label.setText(f"Current Position: {int(s * sign)} ({source})")
             self.pos_label.setText(f"Current Position: {mm:.4f} mm")
+            if AXIS_CONFIG[current_axis].get("has_encoder"):
+                enc = w_enc_pos if current_axis == "W" else s
+                self.steps_label.setText(
+                    f"Encoder: {int(enc * sign)} | Microsteps: {int(s * sign)}")
+            else:
+                self.steps_label.setText(f"Microsteps: {int(s * sign)}")
             self.update_current_axis_display(current_axis)
 
     def log(self, message):
@@ -882,9 +892,12 @@ class TeensyControlGUI(QMainWindow):
             sign = AXIS_CONFIG[current_axis]["movement_sign"]
             mm   = float(status.get("position_mm", 0.0)) * sign
             s    = int(status.get("position_steps", 0)) * sign
-            source = "encoder" if AXIS_CONFIG[current_axis].get("has_encoder") else "steps"
             self.pos_label.setText(f"Current Position: {mm:.4f} mm")
-            self.steps_label.setText(f"Current Position: {s} ({source})")
+            if AXIS_CONFIG[current_axis].get("has_encoder"):
+                enc = int(status.get("encoder_steps", 0)) * sign
+                self.steps_label.setText(f"Encoder: {enc} | Microsteps: {s}")
+            else:
+                self.steps_label.setText(f"Microsteps: {s}")
         # 调试构建时额外发 ASCII 命令（生产构建该命令无响应，但不影响功能）
         if self.is_connected():
             command = format_command(current_axis, "GET_DATA")

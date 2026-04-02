@@ -621,9 +621,14 @@ float Axis::getCurrentPositionMM() const {
   return motor_getPositionMM(_icID);
 }
 
-// 获取当前位置（微步）
-// 启用编码器时返回 ENC_POS（经 ENC_CONST 换算后与微步单位一致），否则返回 XACTUAL
+// 获取当前位置（微步），始终返回 XACTUAL
 int32_t Axis::getCurrentPositionMicrosteps() const {
+  return motor_getPositionMicrosteps(_icID);
+}
+
+// 获取编码器位置（微步单位，经 ENC_CONST 换算）
+// 未启用编码器时返回 XACTUAL
+int32_t Axis::getEncoderPositionMicrosteps() const {
   if (_config.enableEncoder) {
     return (int32_t)tmc4361A_readRegister(_icID, TMC4361A_ENC_POS);
   }

@@ -29,6 +29,7 @@ public:
     void sendResponse(byte cmd_id, byte status,
                       int32_t x_pos, int32_t y_pos, int32_t z_pos,
                       int32_t w_pos = 0,
+                      int32_t w_enc_pos = 0,
                       bool joystick_button_pressed = false);
 
     // 10ms 周期位置上报（在 loop() 中调用）
@@ -57,7 +58,7 @@ public:
 
 private:
     static const int CMD_LENGTH = 8;
-    static const int MSG_LENGTH = 24;
+    static const int MSG_LENGTH = 28;
     
     // 协议标识符
     static const byte DEBUG_PROTOCOL_HEADER_1 = 0x55;

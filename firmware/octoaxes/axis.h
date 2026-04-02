@@ -166,6 +166,7 @@ public:
   virtual float getCurrentPositionMM() const;
   virtual int32_t getCurrentPosition() const;
   virtual int32_t getCurrentPositionMicrosteps() const;
+  virtual int32_t getEncoderPositionMicrosteps() const;
   virtual void setMotionParameters(float maxVelocityMM,
                                    float maxAccelerationMM);
 

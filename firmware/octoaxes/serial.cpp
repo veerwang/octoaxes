@@ -123,6 +123,7 @@ bool SerialProtocolHandler::checkForCommand() {
 void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
                                          int32_t x_pos, int32_t y_pos,
                                          int32_t z_pos, int32_t w_pos,
+                                         int32_t w_enc_pos,
                                          bool joystick_button_pressed) {
   byte buffer_tx[MSG_LENGTH];
   memset(buffer_tx, 0, MSG_LENGTH);
@@ -158,10 +159,16 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
   static const int BIT_POS_JOYSTICK_BUTTON = 0;
   buffer_tx[18] = (joystick_button_pressed ? (1 << BIT_POS_JOYSTICK_BUTTON) : 0);
 
-  // 固件版本 byte[22]：高半字节=主版本，低半字节=次版本
-  buffer_tx[22] = (FIRMWARE_VERSION_MAJOR << 4) | (FIRMWARE_VERSION_MINOR & 0x0F);
+  // W 轴编码器位置 (bytes 19-22)
+  buffer_tx[19] = byte(w_enc_pos >> 24);
+  buffer_tx[20] = byte((w_enc_pos >> 16) & 0xFF);
+  buffer_tx[21] = byte((w_enc_pos >> 8) & 0xFF);
+  buffer_tx[22] = byte(w_enc_pos & 0xFF);
 
-  // CRC-8-CCITT 校验（对 byte[0..22] 计算）
+  // 固件版本 byte[26]：高半字节=主版本，低半字节=次版本
+  buffer_tx[26] = (FIRMWARE_VERSION_MAJOR << 4) | (FIRMWARE_VERSION_MINOR & 0x0F);
+
+  // CRC-8-CCITT 校验（对 byte[0..26] 计算）
   uint8_t checksum = crc8ccitt(buffer_tx, MSG_LENGTH - 1);
   buffer_tx[MSG_LENGTH - 1] = checksum;
 
@@ -183,6 +190,7 @@ void SerialProtocolHandler::send_position_update() {
   int32_t y_pos = yAxis ? yAxis->getCurrentPositionMicrosteps() : 0;
   int32_t z_pos = zAxis ? zAxis->getCurrentPositionMicrosteps() : 0;
   int32_t w_pos = wAxis ? wAxis->getCurrentPositionMicrosteps() : 0;
+  int32_t w_enc = wAxis ? wAxis->getEncoderPositionMicrosteps() : 0;
 
   // 判断是否有轴在运动中
   bool any_moving = false;
@@ -207,7 +215,7 @@ void SerialProtocolHandler::send_position_update() {
   else
     status = any_moving ? STATUS_IN_PROGRESS : STATUS_COMPLETED;
 
-  sendResponse(cmd_id, status, x_pos, y_pos, z_pos, w_pos,
+  sendResponse(cmd_id, status, x_pos, y_pos, z_pos, w_pos, w_enc,
                joystick_button_pressed);
 }
 
