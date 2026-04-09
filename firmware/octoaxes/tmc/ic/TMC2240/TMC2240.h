@@ -165,7 +165,7 @@ typedef struct {
 #define R2240_10 0x00070A03  // IHOLD_IRUN
 #define R2240_11 0x0000000A  // TPOWERDOWN
 #define R2240_6C 0x14410153  // CHOPCONF
-#define R2240_70 0xC44C001E  // PWMCONF
+#define R2240_70 ((int32_t)0xC44C001E)  // PWMCONF
 
 // Register access permissions
 static const uint8_t tmc2240_registerAccess[TMC2240_REGISTER_COUNT] =

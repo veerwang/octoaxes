@@ -154,8 +154,8 @@ void StepAxis::performHomingSequence() {
         static unsigned long lastDbgTime = 0;
         if (millis() - lastDbgTime > 200) {
           uint32_t rawStatus = motor_readStatus(_icID);
-          int32_t xactual = motor_getPositionMicrosteps(_icID);
-          int32_t vactual = motor_getVelocityInternal(_icID);
+          [[maybe_unused]] int32_t xactual = motor_getPositionMicrosteps(_icID);
+          [[maybe_unused]] int32_t vactual = motor_getVelocityInternal(_icID);
           DEBUG_PRINT(_axisName);
           DEBUG_PRINT(":SEARCH limit_state=0x");
           Serial.print(limit_state, HEX);
@@ -176,7 +176,7 @@ void StepAxis::performHomingSequence() {
 
         // 读取触发前状态
         uint32_t statusBefore = motor_readStatus(_icID);
-        int32_t xactualBefore = motor_getPositionMicrosteps(_icID);
+        [[maybe_unused]] int32_t xactualBefore = motor_getPositionMicrosteps(_icID);
         DEBUG_PRINT(_axisName);
         DEBUG_PRINT(":Before stop - XACTUAL=");
         DEBUG_PRINT(xactualBefore);
@@ -189,8 +189,8 @@ void StepAxis::performHomingSequence() {
         delay(100);
 
         // 确认停车结果
-        int32_t xactualAfterStop = motor_getPositionMicrosteps(_icID);
-        int32_t vactual = motor_getVelocityInternal(_icID);
+        [[maybe_unused]] int32_t xactualAfterStop = motor_getPositionMicrosteps(_icID);
+        [[maybe_unused]] int32_t vactual = motor_getVelocityInternal(_icID);
         DEBUG_PRINT(_axisName);
         DEBUG_PRINT(":After stop - XACTUAL=");
         DEBUG_PRINT(xactualAfterStop);

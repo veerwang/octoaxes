@@ -324,7 +324,7 @@ bool Axis::processCommand(const String &command) {
 // 命令处理辅助方法
 bool Axis::handleGetPosition() {
   int32_t microsteps = getCurrentPosition();
-  float positionMM = microstepsToMM(microsteps);
+  [[maybe_unused]] float positionMM = microstepsToMM(microsteps);
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Current Position (mm):");
   DEBUG_PRINTLNF(positionMM, 3); // 增加精度显示
@@ -428,11 +428,11 @@ void Axis::startMovement() {
 // 新增：完成移动
 void Axis::completeMovement() {
   unsigned long now = micros();
-  unsigned long motorTime = now - _moveStartMicros;
-  unsigned long totalTime = now - _cmdRecvMicros;
-  unsigned long prepTime = _moveStartMicros - _cmdRecvMicros;
-  int32_t endPos = motor_getPositionMicrosteps(_icID);
-  int32_t targetPos = motor_getTargetMicrosteps(_icID);
+  [[maybe_unused]] unsigned long motorTime = now - _moveStartMicros;
+  [[maybe_unused]] unsigned long totalTime = now - _cmdRecvMicros;
+  [[maybe_unused]] unsigned long prepTime = _moveStartMicros - _cmdRecvMicros;
+  [[maybe_unused]] int32_t endPos = motor_getPositionMicrosteps(_icID);
+  [[maybe_unused]] int32_t targetPos = motor_getTargetMicrosteps(_icID);
   _isMoving = false;
   setState(STATE_IDLE);
 
@@ -927,7 +927,7 @@ bool Axis::isWithinSoftLimits(int32_t microsteps) const {
 
 bool Axis::handleEmergency() {
   // 发送轴状态
-  const char *stateStr = "UNKNOWN";
+  [[maybe_unused]] const char *stateStr = "UNKNOWN";
   switch (_currentState) {
   case STATE_IDLE:
     stateStr = "IDLE";
@@ -964,7 +964,7 @@ bool Axis::handleGetData() {
   DEBUG_PRINTLN(":GET_DATA:START");  // 调试点1
 
   // 发送轴状态
-  const char *stateStr = "UNKNOWN";
+  [[maybe_unused]] const char *stateStr = "UNKNOWN";
   switch (_currentState) {
   case STATE_IDLE:
     stateStr = "IDLE";
@@ -1001,7 +1001,7 @@ bool Axis::handleGetData() {
 
   DEBUG_PRINT(_axisName);
   DEBUG_PRINTLN(":GET_DATA:AFTER_GET_POS");  // 调试点3
-  float positionMM = microstepsToMM(microsteps);
+  [[maybe_unused]] float positionMM = microstepsToMM(microsteps);
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Current Position (mm):");
   DEBUG_PRINTLNF(positionMM, 3);
@@ -1014,7 +1014,7 @@ bool Axis::handleGetData() {
   DEBUG_PRINTLN(":GET_DATA:BEFORE_READ_LIMIT");  // 调试点4
 
   // 发送限位开关状态
-  uint8_t limitState = readLimitSwitches();
+  [[maybe_unused]] uint8_t limitState = readLimitSwitches();
 
   DEBUG_PRINT(_axisName);
   DEBUG_PRINTLN(":GET_DATA:AFTER_READ_LIMIT");  // 调试点5

@@ -905,7 +905,7 @@ void motor_resetRampMode(uint8_t icID)
         return;
 
     // 读取当前 RAMPMODE
-    uint32_t rampModeBefore = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
+    [[maybe_unused]] uint32_t rampModeBefore = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
 
     // 重置 RAMPMODE 为位置模式 + S-shaped 斜坡 (与初始化一致)
     // 这在 RESET 命令或硬件限位触发后需要调用
@@ -913,7 +913,7 @@ void motor_resetRampMode(uint8_t icID)
     tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
 
     // 读取设置后的 RAMPMODE
-    uint32_t rampModeAfter = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
+    [[maybe_unused]] uint32_t rampModeAfter = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
 
     // 调试输出
     DEBUG_PRINT("motor_resetRampMode: icID=");

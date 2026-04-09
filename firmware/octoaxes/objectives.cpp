@@ -102,8 +102,9 @@ void Objectives::performHomingSequence() {
         // 设置当前位置为0
         DEBUG_PRINT(_axisName);
 
-        if (_checkHomeReachTimeout > 500 * 1000)
+        if (_checkHomeReachTimeout > 500 * 1000) {
           DEBUG_PRINTLN(":Homing Set Current Position to 0 position Timeout");
+        }
 
         DEBUG_PRINTLN(":Homing completed! Current position set to 0");
 
@@ -182,7 +183,7 @@ bool Objectives::handleMoveToObjective(const String& command) {
   }
   
   String filterStr = command.substring(space1 + 1);
-  uint8_t ObjectivePosition = (uint8_t)filterStr.toInt();
+  [[maybe_unused]] uint8_t ObjectivePosition = (uint8_t)filterStr.toInt();
   
 	/*
   if (!moveToFilter(ObjectivePosition)) {
