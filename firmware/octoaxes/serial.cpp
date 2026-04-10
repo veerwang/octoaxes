@@ -2,6 +2,7 @@
 #include "axesmrg.h"
 #include "build_opt.h"
 #include "commandprocessor.h"
+#include "illumination.h"
 #include "trigger.h"
 #include "tmc/motion/MotorControl.h"
 #include "tmc/ic/TMC4361A/TMC4361A.h"
@@ -112,6 +113,7 @@ bool SerialProtocolHandler::checkForCommand() {
       } else {
         checksum_error = false;
         commandReceived = true;
+        watchdog_reset_timer();
       }
       break; // 一次只处理一个命令
     }
@@ -454,6 +456,18 @@ void SerialProtocolHandler::processSerialStandardCommands() {
       commandProcessor.handleTurnOffAllPorts(data);
       break;
 
+    case Commands::SET_WATCHDOG_TIMEOUT:
+      commandProcessor.handleSetWatchdogTimeout(data);
+      break;
+
+    case Commands::SET_PIN_LEVEL:
+      commandProcessor.handleSetPinLevel(data);
+      break;
+
+    case Commands::HEARTBEAT:
+      commandProcessor.handleHeartbeat(data);
+      break;
+
     case Commands::MOVETO_W:
       commandProcessor.handleMoveToW(data);
       break;
@@ -508,10 +522,6 @@ void SerialProtocolHandler::processSerialStandardCommands() {
 
     case Commands::SET_AXIS_DISABLE_ENABLE:
       commandProcessor.handleSetAxisDisableEnable(data);
-      break;
-
-    case Commands::SET_PIN_LEVEL:
-      commandProcessor.handleSetPinLevel(data);
       break;
 
     case Commands::INITFILTERWHEEL:

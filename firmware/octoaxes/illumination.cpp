@@ -453,3 +453,36 @@ void turn_off_all_ports()
     clear_matrix();
     illumination_is_on = false;
 }
+
+// =============================================================================
+// 串口看门狗
+// =============================================================================
+
+uint32_t last_serial_message_time = 0;
+uint32_t watchdog_timeout_ms = DEFAULT_WATCHDOG_TIMEOUT_MS;
+bool     watchdog_enabled = false;
+
+void watchdog_reset_timer()
+{
+    last_serial_message_time = millis();
+}
+
+void watchdog_set_timeout(uint32_t timeout_ms)
+{
+    if (timeout_ms == 0)
+        timeout_ms = DEFAULT_WATCHDOG_TIMEOUT_MS;
+    if (timeout_ms > MAX_WATCHDOG_TIMEOUT_MS)
+        timeout_ms = MAX_WATCHDOG_TIMEOUT_MS;
+
+    watchdog_timeout_ms = timeout_ms;
+    watchdog_enabled = true;
+    watchdog_reset_timer();
+}
+
+void watchdog_check()
+{
+    if (watchdog_enabled && (millis() - last_serial_message_time >= watchdog_timeout_ms)) {
+        turn_off_all_ports();
+        watchdog_enabled = false;  // 单次触发，不重复
+    }
+}

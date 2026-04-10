@@ -143,6 +143,9 @@ void loop() {
       turn_off_port(i);
   }
 
+  // 串口看门狗：通信中断超时后自动关闭所有照明
+  watchdog_check();
+
   // 更新触发脉冲恢复
   trigger_update();
 

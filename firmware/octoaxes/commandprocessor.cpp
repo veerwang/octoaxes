@@ -256,6 +256,16 @@ void CommandProcessor::handleTurnOffAllPorts(const byte *data) {
   turn_off_all_ports();
 }
 
+void CommandProcessor::handleSetWatchdogTimeout(const byte *data) {
+  uint32_t timeout = ((uint32_t)data[2] << 24) | ((uint32_t)data[3] << 16)
+                   | ((uint32_t)data[4] << 8)  | (uint32_t)data[5];
+  watchdog_set_timeout(timeout);
+}
+
+void CommandProcessor::handleHeartbeat(const byte *data) {
+  // 空操作：看门狗计时器在收到有效串口消息时已重置
+}
+
 void CommandProcessor::handleMoveW2(const byte *data) {
   DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: MOVE_W2");
 }

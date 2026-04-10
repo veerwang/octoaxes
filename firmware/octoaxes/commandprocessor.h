@@ -49,7 +49,9 @@ public:
     void handleSendHardwareTrigger(const byte* data);
     void handleSetStrobeDelay(const byte* data);
     void handleSetAxisDisableEnable(const byte* data);
+    void handleSetWatchdogTimeout(const byte* data);
     void handleSetPinLevel(const byte* data);
+    void handleHeartbeat(const byte* data);
     void handleInitFilterWheel(const byte* data);
     void handleInitFilterWheelW2(const byte* data);
     void handleInitialize(const byte* data);

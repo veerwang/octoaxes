@@ -89,4 +89,25 @@ int port_index_to_pin(int port_index);
 // 端口索引 → DAC 通道（0-4 直接映射；其他返回 -1）
 int port_index_to_dac_channel(int port_index);
 
+// =============================================================================
+// 串口看门狗（通信中断后自动关闭照明）
+// =============================================================================
+
+// 看门狗默认/最大超时（毫秒）
+static const uint32_t DEFAULT_WATCHDOG_TIMEOUT_MS = 5000;
+static const uint32_t MAX_WATCHDOG_TIMEOUT_MS = 3600000;  // 1 小时
+
+extern uint32_t last_serial_message_time;
+extern uint32_t watchdog_timeout_ms;
+extern bool     watchdog_enabled;
+
+// 重置看门狗计时器（在每次收到有效串口消息时调用）
+void watchdog_reset_timer();
+
+// 设置看门狗超时并使能（timeout_ms=0 使用默认值，超过最大值自动截断）
+void watchdog_set_timeout(uint32_t timeout_ms);
+
+// 主循环中调用：超时后关闭所有照明，单次触发
+void watchdog_check();
+
 #endif // ILLUMINATION_H
