@@ -137,10 +137,13 @@ void loop() {
     firstLoop = false;
   }
 
-  // 安全联锁检查：联锁断开时仅关闭 TTL 激光端口，LED 矩阵不受限
+  // 安全联锁检查：联锁断开时直接拉低 TTL 激光端口（硬编码 GPIO，零开销）
   if (!illumination_interlock_ok()) {
-    for (int i = 0; i < IlluminationConfig::NUM_PORTS; i++)
-      turn_off_port(i);
+    digitalWrite(Pins::ILLUMINATION_D1, LOW);
+    digitalWrite(Pins::ILLUMINATION_D2, LOW);
+    digitalWrite(Pins::ILLUMINATION_D3, LOW);
+    digitalWrite(Pins::ILLUMINATION_D4, LOW);
+    digitalWrite(Pins::ILLUMINATION_D5, LOW);
   }
 
   // 串口看门狗：通信中断超时后自动关闭所有照明
