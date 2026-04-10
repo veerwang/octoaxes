@@ -415,6 +415,13 @@ void CommandProcessor::handleSendHardwareTrigger(const byte *data) {
 
   noInterrupts();
 
+  // Level trigger 模式下，通道已在触发中则丢弃新命令，防止覆盖进行中的时序
+  if (trigger_mode != TRIGGER_MODE_NORMAL &&
+      trigger_output_level[camera_channel] == LOW) {
+    interrupts();
+    return;
+  }
+
   control_strobe[camera_channel] = (data[2] >> 7) & 0x01;
   illumination_on_time_us[camera_channel] =
       (uint32_t(data[3]) << 24) | (uint32_t(data[4]) << 16) |
