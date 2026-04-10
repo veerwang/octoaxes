@@ -43,7 +43,7 @@ int joystick_deadband = 25;
 volatile long encoder_pos = 0; // encoder pos >> 4 is the focus position
 int input_sensitivity_xy = 0;
 int input_sensitivity_z = 0;
-int encoder_step_size = 1;
+volatile int encoder_step_size = 1;
 
 // communication
 static const int JOYSTICK_MSG_LENGTH = 10;// 4 bytes for encoder, 2 bytes for joystick x, 2 bytes for joystick y, 1 byte for buttons, 1 byte CRC
@@ -116,7 +116,9 @@ void loop()
   if(input_sensitivity_z>8)
     input_sensitivity_z = 8;
     
-  encoder_step_size = min(pow(2,input_sensitivity_z),256); // cap the max z_step_size
+  int step = 1 << input_sensitivity_z;  // 2^input_sensitivity_z，整数运算
+  if (step > 256) step = 256;
+  encoder_step_size = step;
 
   // display input sensitivity
   display_str[0] = '0' + input_sensitivity_xy;
@@ -135,9 +137,9 @@ void loop()
   // debouncing to be added
 
   // send to controller
-  encoder_pos = encoder_pos;
-  int32_t encoder_pos_ = encoder_pos/4; // artificially descrease the resolution to make it less sensitive
-  encoder_pos_ = (encoder_pos_/16)*16;  // make the number integer multiple of 16 (16 microstepping)
+  int32_t encoder_pos_ = encoder_pos / 4; // 降低分辨率
+  // 对齐到 16 的整数倍，控制焦点轮最小步进粒度
+  encoder_pos_ = (encoder_pos_ / 16) * 16;
   tmp_uint32 = twos_complement(encoder_pos_,4); 
   packet[0] = byte(tmp_uint32>>24);
   packet[1] = byte((tmp_uint32>>16)%256);
