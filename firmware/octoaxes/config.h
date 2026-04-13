@@ -136,6 +136,11 @@ namespace AxisConstDefinition {
 		const int MICROSTEPPING_FILTERWHEEL = 8;
 		const int MICROSTEPPING_OBJECTIVES = 64;
 
+		// 编码器分辨率 (μm/pulse)
+		const float ENCODER_RESOLUTION_UM_X = 0.05;
+		const float ENCODER_RESOLUTION_UM_Y = 0.05;
+		const float ENCODER_RESOLUTION_UM_Z = 0.1;
+
 		// Homing 细分（默认 256）
 		const int HOMING_MICROSTEPPING_X = 256;
 		const int HOMING_MICROSTEPPING_Y = 256;
@@ -271,7 +276,7 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,
-        .encoderLinesPerRev = 0
+        .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_X_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_X)
     };
 
     // Y轴配置
@@ -308,7 +313,7 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,
-        .encoderLinesPerRev = 0
+        .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Y_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Y)
     };
 
     // Z轴配置
@@ -344,8 +349,8 @@ namespace AxisConfigs {
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
-        .enableEncoder = false,
-        .encoderLinesPerRev = 0
+        .enableEncoder = true,
+        .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Z_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Z)
     };
 
     // W轴4配置 (filter wheel)
