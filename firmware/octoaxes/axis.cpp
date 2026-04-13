@@ -732,6 +732,9 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
 
 // PID 控制
 void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) {
+  // 运行时使能编码器（上位机下发后生效，getCurrentPositionMicrosteps 将读 ENC_POS）
+  _config.enableEncoder = true;
+
   // ABN 编码器初始化（硬编码参数与旧架构一致）
   motor_initABNEncoder(_icID, transitions_per_rev,
                         32,    // filter_wait_time

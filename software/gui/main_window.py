@@ -1234,7 +1234,31 @@ class TeensyControlGUI(QMainWindow):
         axis = self.get_current_axis()
         if axis not in ["E4", "W"]:
             self.set_limits()
+        # 为有编码器的轴下发 CONFIGURE_STAGE_PID，使能编码器
+        self._configure_encoders()
         self.startup_timer.stop()
+
+    def _configure_encoders(self):
+        """启动时为编码器轴下发 CONFIGURE_STAGE_PID"""
+        if self.serial_thread is None:
+            return
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W}
+        for axis_name, config in AXIS_CONFIG.items():
+            if not config.get("has_encoder"):
+                continue
+            tpr = config.get("encoder_transitions_per_rev", 0)
+            flip = config.get("encoder_flip_direction", False)
+            protocol_axis = _AXIS_PROTOCOL.get(axis_name)
+            if protocol_axis is None or tpr == 0:
+                continue
+            cmd = bytearray(8)
+            cmd[1] = CMD_SET.CONFIGURE_STAGE_PID
+            cmd[2] = protocol_axis
+            cmd[3] = 1 if flip else 0
+            cmd[4] = (tpr >> 8) & 0xFF
+            cmd[5] = tpr & 0xFF
+            self.serial_thread.send_binary_command(cmd)
+            self.log(f"Encoder configured: {axis_name} tpr={tpr} flip={flip}")
 
     def closeEvent(self, event):
         # 关闭日志文件

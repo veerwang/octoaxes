@@ -35,6 +35,8 @@ AXIS_CONFIG = {
         "default_velocity": 3.0,
         "default_acceleration": 20.0,
         "has_encoder": True,
+        "encoder_transitions_per_rev": 3000,  # 0.3mm pitch / 0.1μm resolution
+        "encoder_flip_direction": True,
     },
     "W": {
         "display_name": "Filter Wheel 1 - w_axis",
@@ -44,6 +46,8 @@ AXIS_CONFIG = {
         "movement_sign": 1,
         "index": 3,
         "has_encoder": True,
+        "encoder_transitions_per_rev": 4000,
+        "encoder_flip_direction": False,
     },
     "E1": {
         "display_name": "Objectives - expand1_axis",

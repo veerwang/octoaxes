@@ -351,7 +351,7 @@ namespace AxisConfigs {
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
-        .enableEncoder = true,
+        .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Z_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Z),
         .invertEncoderDir = true
     };
@@ -389,7 +389,7 @@ namespace AxisConfigs {
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
         .currentRange = 2,
-        .enableEncoder = true,
+        .enableEncoder = false,
         .encoderLinesPerRev = 4000,
         .invertEncoderDir = false
     };
