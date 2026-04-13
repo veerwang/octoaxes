@@ -276,7 +276,8 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,
-        .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_X_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_X)
+        .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_X_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_X),
+        .invertEncoderDir = false
     };
 
     // Y轴配置
@@ -313,7 +314,8 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,
-        .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Y_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Y)
+        .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Y_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Y),
+        .invertEncoderDir = false
     };
 
     // Z轴配置
@@ -350,7 +352,8 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = true,
-        .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Z_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Z)
+        .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Z_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Z),
+        .invertEncoderDir = true
     };
 
     // W轴4配置 (filter wheel)
@@ -387,7 +390,8 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 2,
         .enableEncoder = true,
-        .encoderLinesPerRev = 4000
+        .encoderLinesPerRev = 4000,
+        .invertEncoderDir = false
     };
 
     // 扩展轴1配置 (objectives)
@@ -424,7 +428,8 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,
-        .encoderLinesPerRev = 0
+        .encoderLinesPerRev = 0,
+        .invertEncoderDir = false
     };
 
     // 扩展轴3配置 (Z轴配置)
@@ -461,7 +466,8 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,
-        .encoderLinesPerRev = 0
+        .encoderLinesPerRev = 0,
+        .invertEncoderDir = false
     };
 
     // 扩展轴4配置 (filter wheel)
@@ -498,7 +504,8 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,
-        .encoderLinesPerRev = 0
+        .encoderLinesPerRev = 0,
+        .invertEncoderDir = false
     };
 }
 

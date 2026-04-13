@@ -130,7 +130,7 @@ bool Axis::begin(const AxisConfig &config) {
                           32,    // filter_wait_time
                           4,     // filter_exponent
                           512,   // filter_vmean
-                          false);  // invert_dir
+                          _config.invertEncoderDir);
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":ENCODER_INIT lines=");
     DEBUG_PRINT(_config.encoderLinesPerRev);
@@ -621,8 +621,13 @@ float Axis::getCurrentPositionMM() const {
   return motor_getPositionMM(_icID);
 }
 
-// 获取当前位置（微步），始终返回 XACTUAL
+// 获取当前位置（微步）
+// 编码器使能时返回 ENC_POS（经 ENC_CONST 换算，单位与微步一致）
+// 未使能时返回 XACTUAL（开环位置）
 int32_t Axis::getCurrentPositionMicrosteps() const {
+  if (_config.enableEncoder) {
+    return (int32_t)tmc4361A_readRegister(_icID, TMC4361A_ENC_POS);
+  }
   return motor_getPositionMicrosteps(_icID);
 }
 

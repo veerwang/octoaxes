@@ -30,7 +30,7 @@ class SerialThread(QThread):
     start_timer_signal = pyqtSignal()
 
     # 固件响应包长度（与固件 MSG_LENGTH 一致）
-    RESPONSE_LENGTH = 28
+    RESPONSE_LENGTH = 24
 
     def __init__(self, port, baudrate=115200):
         super().__init__()

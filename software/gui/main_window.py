@@ -801,20 +801,21 @@ class TeensyControlGUI(QMainWindow):
         pass
 
     def handle_binary_response(self, data: bytes):
-        """处理固件 28 字节二进制位置上报包（不写入日志，10ms 周期调用）。
+        """处理固件 24 字节二进制位置上报包（不写入日志，10ms 周期调用）。
 
         响应包格式：
           byte[0]     : cmd_id
           byte[1]     : 状态 (0=完成, 1=运动中, 2=CRC错误)
-          byte[2-5]   : X 轴位置（int32 大端序，微步）
+          byte[2-5]   : X 轴位置（int32 大端序；编码器使能时为 ENC_POS，否则为 XACTUAL）
           byte[6-9]   : Y 轴位置
           byte[10-13] : Z 轴位置
-          byte[14-17] : W 轴位置（XACTUAL 微步）
-          byte[19-22] : W 轴编码器位置（ENC_POS 微步单位）
-          byte[26]    : 固件版本（高半字节=主版本，低半字节=次版本）
-          byte[27]    : CRC-8-CCITT
+          byte[14-17] : W 轴位置
+          byte[18]    : 状态位（bit0=摇杆按钮）
+          byte[19-21] : 保留
+          byte[22]    : 固件版本（高半字节=主版本，低半字节=次版本）
+          byte[23]    : CRC-8-CCITT
         """
-        if len(data) < 28:
+        if len(data) < 24:
             return
 
         import struct
@@ -824,12 +825,12 @@ class TeensyControlGUI(QMainWindow):
             "Z": struct.unpack('>i', data[10:14])[0],
             "W": struct.unpack('>i', data[14:18])[0],
         }
-        w_enc_pos = struct.unpack('>i', data[19:23])[0]
         fw_status = data[1]   # 0=COMPLETED, 1=IN_PROGRESS, 2=CRC_ERROR
         moving_str = "YES" if fw_status == 1 else "NO"
         state_str  = "MOVING" if fw_status == 1 else "IDLE"
 
         # 更新 axis_manager 中所有轴的位置 + 运动状态
+        # 位置值来源由固件决定：编码器使能返回 ENC_POS，否则返回 XACTUAL
         for axis, s in steps.items():
             mm_per_step = AXIS_MM_PER_STEP.get(axis, 0.0)
             position_mm = s * mm_per_step
@@ -839,8 +840,6 @@ class TeensyControlGUI(QMainWindow):
                 "moving":  moving_str,
                 "state":   state_str,
             }
-            if axis == "W":
-                status_data["encoder_steps"] = w_enc_pos
             self.axis_manager.update_axis_status(axis, status_data)
             self.axis_status_display.update_axis_status(
                 axis, self.axis_manager.get_axis_status(axis)
@@ -851,14 +850,13 @@ class TeensyControlGUI(QMainWindow):
         if current_axis in steps:
             s    = steps[current_axis]
             sign = AXIS_CONFIG[current_axis]["movement_sign"]
-            mm   = s * AXIS_MM_PER_STEP.get(current_axis, 0.0) * sign
-            self.pos_label.setText(f"Current Position: {mm:.4f} mm")
+            mm_per_step = AXIS_MM_PER_STEP.get(current_axis, 0.0)
+            um   = s * mm_per_step * 1000 * sign
+            self.pos_label.setText(f"Current Position: {um:.2f} μm")
             if AXIS_CONFIG[current_axis].get("has_encoder"):
-                enc = w_enc_pos if current_axis == "W" else s
-                self.steps_label.setText(
-                    f"Encoder: {int(enc * sign)} | Microsteps: {int(s * sign)}")
+                self.steps_label.setText(f"Position (encoder): {um:.2f} μm")
             else:
-                self.steps_label.setText(f"Microsteps: {int(s * sign)}")
+                self.steps_label.setText(f"Position (steps): {um:.2f} μm")
             self.update_current_axis_display(current_axis)
 
     def log(self, message):
@@ -890,14 +888,14 @@ class TeensyControlGUI(QMainWindow):
         status = self.axis_manager.get_axis_status(current_axis)
         if status:
             sign = AXIS_CONFIG[current_axis]["movement_sign"]
-            mm   = float(status.get("position_mm", 0.0)) * sign
-            s    = int(status.get("position_steps", 0)) * sign
-            self.pos_label.setText(f"Current Position: {mm:.4f} mm")
+            s    = int(status.get("position_steps", 0))
+            mm_per_step = AXIS_MM_PER_STEP.get(current_axis, 0.0)
+            um   = s * mm_per_step * 1000 * sign
+            self.pos_label.setText(f"Current Position: {um:.2f} μm")
             if AXIS_CONFIG[current_axis].get("has_encoder"):
-                enc = int(status.get("encoder_steps", 0)) * sign
-                self.steps_label.setText(f"Encoder: {enc} | Microsteps: {s}")
+                self.steps_label.setText(f"Position (encoder): {um:.2f} μm")
             else:
-                self.steps_label.setText(f"Microsteps: {s}")
+                self.steps_label.setText(f"Position (steps): {um:.2f} μm")
         # 调试构建时额外发 ASCII 命令（生产构建该命令无响应，但不影响功能）
         if self.is_connected():
             command = format_command(current_axis, "GET_DATA")

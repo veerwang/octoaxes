@@ -25,11 +25,10 @@ public:
     // 获取接收到的命令数据
     const byte* getCommandData() const { return buffer_rx; }
     
-    // 发送响应消息（w_pos 默认 0 以向后兼容）
+    // 发送响应消息
     void sendResponse(byte cmd_id, byte status,
                       int32_t x_pos, int32_t y_pos, int32_t z_pos,
                       int32_t w_pos = 0,
-                      int32_t w_enc_pos = 0,
                       bool joystick_button_pressed = false);
 
     // 10ms 周期位置上报（在 loop() 中调用）
@@ -58,7 +57,7 @@ public:
 
 private:
     static const int CMD_LENGTH = 8;
-    static const int MSG_LENGTH = 28;
+    static const int MSG_LENGTH = 24;
     
     // 协议标识符
     static const byte DEBUG_PROTOCOL_HEADER_1 = 0x55;

@@ -62,6 +62,7 @@ public:
     uint8_t currentRange;        // TMC2240 CURRENT_RANGE: 0=1A, 1=2A, 2=3A (TMC2660 时忽略)
     bool enableEncoder;          // 是否启用 ABN 编码器，默认 false
     uint16_t encoderLinesPerRev; // 编码器线数 (每转), 如 4000。直接作为 transitions 使用
+    bool invertEncoderDir;       // 反转编码器计数方向，默认 false
   };
 
 protected:

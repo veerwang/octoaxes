@@ -6,11 +6,47 @@
 
 ## 最新会话
 
-**日期**: 2026-03-27
-**分支**: maxpro
-**位置**: Engine Start 删除 + W 轴编码器调试
+**日期**: 2026-04-13
+**分支**: develop
+**位置**: Z 轴编码器使能 + 位置上报协议扩展 + 手控盒焦点轮修复
 
 ### 本次完成
+
+#### 1. 手控盒焦点轮修复
+
+- `control_panel_teensyLC.ino` — encoder_step_size 加 volatile 消除 ISR 竞态，pow() 改位移运算
+- 编码器量化对齐值保持 16（f92ef36 误改为 256 导致低档位无反应）
+
+#### 2. Z 轴编码器使能
+
+- `config.h` — 新增 `ENCODER_RESOLUTION_UM_X/Y/Z` 常量（μm/pulse: 0.05/0.05/0.1）
+- X/Y/Z 轴 `encoderLinesPerRev` 改为 `screwPitchMM * 1000 / ENCODER_RESOLUTION_UM` 公式
+- Z 轴 `enableEncoder = true`（3000 lines/rev），X/Y 预填参数未使能
+- 新增 `invertEncoderDir` 配置项，Z 轴设为 `true`（编码器方向与电机相反）
+
+#### 3. 位置上报协议扩展 (28→32 字节)
+
+- `serial.h/cpp` — MSG_LENGTH 28→32，新增 Z 轴编码器位置 bytes[23-26]
+- 固件版本移到 byte[30]，CRC 在 byte[31]
+- `sendResponse` 新增 `z_enc_pos` 参数
+
+#### 4. 上位机编码器显示
+
+- `serial_thread.py` — RESPONSE_LENGTH 28→32
+- `constants.py` — Z 轴添加 `has_encoder: True`
+- `main_window.py` — 有编码器的轴显示 `Encoder: xx.xx μm | Steps: xx.xx μm | Δ: xx.xx μm`
+
+### 下次继续
+
+1. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
+2. **验证 W 轴编码器** — maxpro 分支的编码器修复需合并到 develop
+3. TMC2240 StealthChop 参数调优
+4. 清理 TMC2240 调试代码
+5. 硬件验证照明/触发系统
+
+---
+
+### 2026-03-27 - Engine Start 删除 + W 轴编码器调试 (maxpro)
 
 #### 1. 删除 Engine Start 机制
 

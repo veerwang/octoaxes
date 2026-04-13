@@ -34,6 +34,7 @@ AXIS_CONFIG = {
         "index": 2,
         "default_velocity": 3.0,
         "default_acceleration": 20.0,
+        "has_encoder": True,
     },
     "W": {
         "display_name": "Filter Wheel 1 - w_axis",
