@@ -59,7 +59,7 @@ class AxisStatusDisplay(QGroupBox):
         layout.addLayout(refresh_layout)
 
     def create_header(self):
-        headers = ["Axis", "State", "Position (mm)", "Moving", "Enabled", "Limits"]
+        headers = ["Axis", "Driver", "State", "Position (mm)", "Moving", "Enabled", "Limits"]
         for col, header in enumerate(headers):
             label = QLabel(header)
             label.setStyleSheet(
@@ -77,6 +77,7 @@ class AxisStatusDisplay(QGroupBox):
 
             # 状态标签
             self.axis_labels[axis_id] = {
+                "driver": self.create_status_label("-"),
                 "state": self.create_status_label(),
                 "position": self.create_status_label("0.000"),
                 "moving": self.create_status_label("NO"),
@@ -86,7 +87,7 @@ class AxisStatusDisplay(QGroupBox):
 
             # 添加到网格
             for col, key in enumerate(
-                ["state", "position", "moving", "enabled", "limits"], start=1
+                ["driver", "state", "position", "moving", "enabled", "limits"], start=1
             ):
                 self.grid.addWidget(self.axis_labels[axis_id][key], row, col)
 
@@ -121,6 +122,9 @@ class AxisStatusDisplay(QGroupBox):
 
         if "limits" in status:
             labels["limits"].setText(status["limits"])
+
+        if "driver" in status:
+            labels["driver"].setText(status["driver"])
 
     def set_state_color(self, label, state):
         colors = {"IDLE": "#d4ffd4", "MOVING": "#d4e8ff", "ERROR": "#ffd4d4"}

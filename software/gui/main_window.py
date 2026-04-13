@@ -571,6 +571,7 @@ class TeensyControlGUI(QMainWindow):
 
             # 延迟执行初始化命令
             QTimer.singleShot(500, self.query_firmware_version)
+            QTimer.singleShot(800, self.query_hardware_info)
             QTimer.singleShot(1000, self.refresh_all_axes_status)
         else:
             self.update_connection_status(False, "Connection failed")
@@ -769,6 +770,17 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"Firmware version: {version}")
             return
 
+        # 处理硬件信息响应: S:HWINFO:<axis>:TMC4361A+<driver>
+        if data.startswith("S:HWINFO:") and "END" not in data:
+            parts = data.split(":")
+            if len(parts) >= 4:
+                axis = parts[2]
+                driver = parts[3].replace("TMC4361A+", "")
+                self.axis_manager.update_axis_status(axis, {"driver": driver})
+                self.axis_status_display.update_axis_status(
+                    axis, self.axis_manager.get_axis_status(axis))
+            return
+
         # 处理轴数据（parse_axis_data 只调用一次，用 parsed 缓存结果）
         parsed = self.axis_manager.parse_axis_data(data)
         if parsed:
@@ -879,6 +891,9 @@ class TeensyControlGUI(QMainWindow):
     # ====== 查询相关 ======
     def query_firmware_version(self):
         self.send_command("S:VERSION", "Sent firmware version query")
+
+    def query_hardware_info(self):
+        self.send_command("S:HWINFO", "Sent hardware info query")
 
     def query_axis_status(self):
         # 生产固件（ENABLE_DEBUG 关闭）不发 ASCII 回包，直接用 axis_manager 缓存刷新 UI
