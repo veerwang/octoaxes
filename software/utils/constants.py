@@ -14,6 +14,9 @@ AXIS_CONFIG = {
         "index": 1,  # X 轴 index=1
         "default_velocity": 25.0,      # mm/s
         "default_acceleration": 500.0, # mm/s²
+        "has_encoder": True,
+        "encoder_transitions_per_rev": 50800,  # 2.54mm pitch / 0.05μm resolution
+        "encoder_flip_direction": False,
     },
     "Y": {
         "display_name": "Step Motor - y_axis",
@@ -24,6 +27,9 @@ AXIS_CONFIG = {
         "index": 0,  # Y 轴 index=0
         "default_velocity": 25.0,
         "default_acceleration": 500.0,
+        "has_encoder": True,
+        "encoder_transitions_per_rev": 50800,  # 2.54mm pitch / 0.05μm resolution
+        "encoder_flip_direction": False,
     },
     "Z": {
         "display_name": "Step Motor - z_axis",

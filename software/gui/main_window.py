@@ -809,8 +809,8 @@ class TeensyControlGUI(QMainWindow):
                     self.axis_enabled_states[axis] = enabled
                     self.control_panel.set_enable_state(enabled)
 
-        # 未识别的 ASCII 调试行不再显示到日志
-        pass
+        # 未识别的固件 ASCII 响应显示到日志
+        self.log(data)
 
     def handle_binary_response(self, data: bytes):
         """处理固件 24 字节二进制位置上报包（不写入日志，10ms 周期调用）。
