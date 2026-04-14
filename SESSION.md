@@ -8,36 +8,50 @@
 
 **日期**: 2026-04-14
 **分支**: maxpro
-**位置**: octoaxesplus 74HC154 片选映射
+**位置**: octoaxesplus 74HC154 映射 + CAMERA_TRIGGER 扩展到 8 路 + Pins 冲突落地
 
 ### 本次完成
 
-#### 74HC154 片选映射（squid++ 双相机）
+#### 1. 74HC154 4→16 片选映射（commit e00fb60）
 
-在 `firmware/octoaxesplus/config.h` 的 `Pins` 命名空间末尾新增 74HC154 4→16 译码器支持：
+在 `config.h::Pins` 内新增 squid++ 双相机的 74HC154 译码器支持：
+- A0-A3 地址引脚常量（pin 33/34/35/36）
+- `HC154_Channel` 枚举（16 通道按 squid++ 配置 §2 命名：MCP23S17_1/DAC80508_x/轴 R/T/F2/Z2/F1/Z1/Y/X/EXPAND_NSCS1 等）
+- `hc154_init()` + `hc154_select(channel)` 内联函数
+- 决策：`inline` 函数直接写在 Pins 命名空间内；旧 CS 常量保留；用标准 `digitalWrite`
 
-- **A0-A3 地址引脚常量**：pin 33 / 34 / 35 / 36
-- **`HC154_Channel` 枚举**（来源 `documents/squid++（双相机）配置.md` §2）：
-  - Y0=MCP23S17_1（扩展 IO #1）
-  - Y1=DAC80508_2, Y2=DAC80508_1（8LED 模拟输出）
-  - Y3=R, Y4=T, Y5=F2, Y6=Z2, Y7=F1, Y8=Z1, Y9=Y, Y10=X
-  - Y11=EXPAND_NSCS1
-  - Y12=DAC80508_4, Y13-Y15=MCP23S17_2/3/4
-- **`hc154_init()`**：setup 调用一次，A0-A3 设为 OUTPUT 并清零
-- **`hc154_select(channel)`**：SPI 事务前调用，按通道号写 4 个地址位
+#### 2. CAMERA_TRIGGER 扩展 4→8 路
 
-设计决策：
-- 函数以 `inline` 形式直接写在 `config.h` 的 Pins 命名空间内（符合用户"直接写进 Pins 命名空间"要求）
-- 旧 `X_AXIS_CS=41` 等 GPIO 片选常量本次保留不动，下一步改 config.h 时统一清理
-- 使用 `digitalWrite`（非 `digitalWriteFast`）与项目现有风格一致
+- `config.h` 旧 `CAMERA_TRIGGER_1..4 = 29/30/31/32`（继承自 octoaxes）替换为 squid++ 的 8 路：`1=9, 2=8, 3=23, 4=22, 5=15, 6=41, 7=40, 8=39`
+- `CAMERA_TRIGGER_1/2` 即 squid++ 表中 `CAM_TRI_OUT1/OUT2`（相机 1/2）
+- `trigger.h`: `NUM_TRIGGER_CHANNELS` 4→8，`camera_trigger_pins[]` 扩展到 8 项
+- trigger.cpp / commandprocessor.cpp 全部通过 `NUM_TRIGGER_CHANNELS` 符号访问，零修改自动适配
 
-编译验证：`pio run` 成功（Teensy 4.1，1.98s）。clangd LSP 有告警（SPI.h/size_t/OUTPUT 未找到）属 include 路径配置问题，非代码错误。
+#### 3. Pins 命名空间内 7 处引脚号冲突落地（方案 A1）
+
+扩展后在同一 `Pins::` 命名空间内发现 **7 处旧常量与新常量赋了相同 pin 值**：
+- pin 22：`ILLUMINATION_D3` ↔ `CAMERA_TRIGGER_4`
+- pin 23：`ILLUMINATION_D5` ↔ `CAMERA_TRIGGER_3`
+- pin 33：`DAC8050x_CS` ↔ `HC154_A0`
+- pin 34：`W_AXIS_CS` ↔ `HC154_A1`
+- pin 35：`Z_AXIS_CS` ↔ `HC154_A2`
+- pin 36：`Y_AXIS_CS` ↔ `HC154_A3`
+- pin 41：`X_AXIS_CS` ↔ `CAMERA_TRIGGER_6`
+
+编译层面合法（两个 `const int` 可赋相同值），但运行时任何 `pinMode` 调用都会踩错对象。
+
+**方案 A1 处理**：
+- 在 `Pins` 内新增 `static constexpr int DEPRECATED_PIN = 255;`（无效引脚号，`pinMode/digitalWrite` 在 Teensy 上为 no-op）
+- 7 处旧常量的值全部改为 `DEPRECATED_PIN`，**保留符号名**，加 `// DEPRECATED: 旧=N，squid++ 改走 X` 注释
+- 收益：illumination.cpp / octoaxesplus.ino 共 ~50 处引用零修改，下一步 8 轴重构时再真正删符号
+
+编译验证：`pio run` 成功（Teensy 4.1，1.96s）。
 
 ### 下次继续
 
-1. **核实 squid++ 配置疑点** — 确认 MCP23S17 扩展 IO 的 INTR_T/F2轴、INTR_Z2/F1轴 标签是否为原作者笔误
-2. **MCP23S17 扩展 IO 映射** — 在 config.h 中补充 GPA/GPB 轴 INTR/TARGET 映射
-3. **基于 squid++ 配置完善 octoaxesplus/config.h** — 8 轴引脚映射（X/Y/Z1/Z2/F1/F2/R/T），清理旧 CS 常量
+1. **8 轴 config.h 主体重构** — 真正删除 `DEPRECATED_PIN` 符号；改 octoaxesplus.ino 的 Axis 初始化调用 `hc154_select()`；改 illumination.cpp 的 TTL 端口至 squid++ 分配（pin 32/31/30/29/28 = TTL1-5，pin 25/24/10 = TTL6-8）
+2. **MCP23S17 扩展 IO 映射** — 补充 GPA/GPB 到 8 轴 INTR/TARGET 的映射（依赖疑点 3 核实）
+3. **核实 squid++ 配置疑点** — MCP23S17 扩展 IO 中 INTR_T/F2轴、INTR_Z2/F1轴 标签是否原作者笔误
 4. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
 5. **合并 W 轴编码器修复** — maxpro → develop
 6. TMC2240 StealthChop 参数调优

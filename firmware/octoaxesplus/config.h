@@ -58,15 +58,21 @@ namespace Commands {
 
 // 引脚定义
 namespace Pins {
-    const int DAC8050x_CS = 33;
+    // squid++ 迁移占位：旧 squid 的片选/TTL 引脚在 squid++ 中已改走
+    // 74HC154 或重新分配。为避免与新引脚在 Pins 命名空间内同号冲突，
+    // 把受影响的旧常量临时改为此无效引脚号（pinMode/digitalWrite 空操作）。
+    // 下一步 8 轴改造时会移除这些符号并修改引用代码。
+    static constexpr int DEPRECATED_PIN = 255;
+
+    const int DAC8050x_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=33，squid++ pin 33=74HC154_A0
     const int POWER_GOOD = 0;
     const int TMC4361_STANDARD_CLK = 37;
     const int TMC4361_EXPAND_CLK = 28;
 
-    const int X_AXIS_CS = 41;
-    const int Y_AXIS_CS = 36;
-    const int Z_AXIS_CS = 35;
-    const int W_AXIS_CS = 34;
+    const int X_AXIS_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=41，squid++ 改走 74HC154 Y10；pin 41=CAM_TRIGGER6
+    const int Y_AXIS_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=36，squid++ 改走 74HC154 Y9；pin 36=74HC154_A3
+    const int Z_AXIS_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=35，squid++ 改走 74HC154 Y8（Z1）；pin 35=74HC154_A2
+    const int W_AXIS_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=34，squid++ 无 W 轴；pin 34=74HC154_A1
 
     const int EXPAND1_AXIS_CS = 19;
     const int EXPAND2_AXIS_CS = 18;
@@ -83,9 +89,9 @@ namespace Pins {
     // 注意：D3/D4 引脚非顺序排列，与旧版光源码一致
     const int ILLUMINATION_D1 = 5;
     const int ILLUMINATION_D2 = 4;
-    const int ILLUMINATION_D3 = 22;
+    const int ILLUMINATION_D3 = DEPRECATED_PIN;  // DEPRECATED: 旧=22，squid++ pin 22=CAM_TRIGGER4
     const int ILLUMINATION_D4 = 3;
-    const int ILLUMINATION_D5 = 23;
+    const int ILLUMINATION_D5 = DEPRECATED_PIN;  // DEPRECATED: 旧=23，squid++ pin 23=CAM_TRIGGER3
 
     // 激光安全联锁（LOW = 安全）
     const int ILLUMINATION_INTERLOCK = 2;
@@ -97,11 +103,15 @@ namespace Pins {
     // LED 驱动 LT3932 SYNC（16 MHz PWM）
     const int LED_DRIVER_SYNC = 25;
 
-    // 相机触发
-    const int CAMERA_TRIGGER_1 = 29;
-    const int CAMERA_TRIGGER_2 = 30;
-    const int CAMERA_TRIGGER_3 = 31;
-    const int CAMERA_TRIGGER_4 = 32;
+    // 相机触发（squid++ 双相机：8 路，来源 documents/squid++（双相机）配置.md §1）
+    const int CAMERA_TRIGGER_1 = 9;    // CAM_TRI_OUT1（相机 1）
+    const int CAMERA_TRIGGER_2 = 8;    // CAM_TRI_OUT2（相机 2）
+    const int CAMERA_TRIGGER_3 = 23;
+    const int CAMERA_TRIGGER_4 = 22;
+    const int CAMERA_TRIGGER_5 = 15;
+    const int CAMERA_TRIGGER_6 = 41;
+    const int CAMERA_TRIGGER_7 = 40;
+    const int CAMERA_TRIGGER_8 = 39;
 
     // 74HC154 4→16 译码器片选（squid++ 双相机）
     // A3:A2:A1:A0 二进制值 n → Yn 输出拉低，其余保持高；作为所有 SPI 设备的统一片选

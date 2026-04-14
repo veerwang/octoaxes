@@ -13,17 +13,21 @@ const uint8_t TRIGGER_MODE_LEVEL  = 1;  // 电平触发（strobe_delay + on_time
 
 // 触发脉冲参数
 const int TRIGGER_PULSE_LENGTH_us = 50;
-const int NUM_TRIGGER_CHANNELS = 4;
+const int NUM_TRIGGER_CHANNELS = 8;
 
 // 频闪定时器间隔
 const int STROBE_TIMER_INTERVAL_us = 100;
 
 // 相机触发引脚映射
 const int camera_trigger_pins[NUM_TRIGGER_CHANNELS] = {
-    Pins::CAMERA_TRIGGER_1,  // pin 29
-    Pins::CAMERA_TRIGGER_2,  // pin 30
-    Pins::CAMERA_TRIGGER_3,  // pin 31
-    Pins::CAMERA_TRIGGER_4   // pin 32
+    Pins::CAMERA_TRIGGER_1,  // pin 9  CAM_TRI_OUT1
+    Pins::CAMERA_TRIGGER_2,  // pin 8  CAM_TRI_OUT2
+    Pins::CAMERA_TRIGGER_3,  // pin 23
+    Pins::CAMERA_TRIGGER_4,  // pin 22
+    Pins::CAMERA_TRIGGER_5,  // pin 15
+    Pins::CAMERA_TRIGGER_6,  // pin 41
+    Pins::CAMERA_TRIGGER_7,  // pin 40
+    Pins::CAMERA_TRIGGER_8   // pin 39
 };
 
 // =============================================================================
