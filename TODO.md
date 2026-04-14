@@ -38,6 +38,13 @@
 - [ ] 上位机兼容性测试（Python 发送触发 + 照明命令验证协议）
 - [ ] 测试 GUI 黑黄主题效果
 
+### octoaxesplus (squid++ 双相机)
+- [x] 创建 octoaxesplus 空工程 (2026-04-14) - platformio.ini 复用 octoaxes 配置，tmc 符号链接共享，编译通过
+- [x] squid++（双相机）硬件配置 Markdown (2026-04-14) - 由 xlsx 转换，含引脚定义 / 74HC154 片选 / MCP23S17_1 扩展 IO 三表
+- [ ] 核实 GPB2 INTR_T/F2轴、GPB6 INTR_Z2/F1轴 标签是否原表笔误
+- [ ] 基于 squid++ 配置完善 octoaxesplus/config.h（8 轴：X/Y/Z1/Z2/F1/F2/R/T）
+- [ ] `tags` 文件加入 `.gitignore`
+
 ### 功能验证
 - [x] 编译测试 (2026-01-23)
 - [x] API 参数对比检查 (2026-01-23) - 修复 REFERENCE_CONF 位偏移错误

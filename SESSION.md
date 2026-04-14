@@ -6,43 +6,40 @@
 
 ## 最新会话
 
-**日期**: 2026-04-13
-**分支**: develop
-**位置**: Z 轴编码器使能 + 位置上报协议扩展 + 手控盒焦点轮修复
+**日期**: 2026-04-14
+**分支**: maxpro
+**位置**: octoaxesplus 空工程搭建 + squid++（双相机）硬件配置文档
 
 ### 本次完成
 
-#### 1. 手控盒焦点轮修复
+#### 1. octoaxesplus 空工程创建
 
-- `control_panel_teensyLC.ino` — encoder_step_size 加 volatile 消除 ISR 竞态，pow() 改位移运算
-- 编码器量化对齐值保持 16（f92ef36 误改为 256 导致低档位无反应）
+- `firmware/octoaxesplus/platformio.ini` — 复用 octoaxes 配置（teensy41/debug/dev/fast 四环境、FastLED + PacketSerial 依赖、`-I tmc` include）
+- `firmware/octoaxesplus/octoaxesplus.ino` — 最小 Arduino 骨架（空 setup/loop）
+- `firmware/octoaxesplus/tmc → ../octoaxes/tmc` — 符号链接共享 tmc 驱动代码
+- 编译通过（pio run，Teensy 4.1 目标）
+- 提交：612ae3a 「初步导入octoaxesplus工程」
 
-#### 2. Z 轴编码器使能
+#### 2. squid++（双相机）硬件配置文档
 
-- `config.h` — 新增 `ENCODER_RESOLUTION_UM_X/Y/Z` 常量（μm/pulse: 0.05/0.05/0.1）
-- X/Y/Z 轴 `encoderLinesPerRev` 改为 `screwPitchMM * 1000 / ENCODER_RESOLUTION_UM` 公式
-- Z 轴 `enableEncoder = true`（3000 lines/rev），X/Y 预填参数未使能
-- 新增 `invertEncoderDir` 配置项，Z 轴设为 `true`（编码器方向与电机相反）
-
-#### 3. 位置上报协议扩展 (28→32 字节)
-
-- `serial.h/cpp` — MSG_LENGTH 28→32，新增 Z 轴编码器位置 bytes[23-26]
-- 固件版本移到 byte[30]，CRC 在 byte[31]
-- `sendResponse` 新增 `z_enc_pos` 参数
-
-#### 4. 上位机编码器显示
-
-- `serial_thread.py` — RESPONSE_LENGTH 28→32
-- `constants.py` — Z 轴添加 `has_encoder: True`
-- `main_window.py` — 有编码器的轴显示 `Encoder: xx.xx μm | Steps: xx.xx μm | Δ: xx.xx μm`
+- `documents/squid++（双相机）配置.md` — 由 xlsx 转 Markdown
+- 3 个核心表格：
+  - Teensy 4.1 引脚定义（48 项，Pin 0-47）
+  - IO 控制 / 74HC154 16 路 SPI1 片选映射（Y0-Y15）
+  - 扩展 IO / MCP23S17_1 轴中断与到位信号（GPA0-GPB7）
+- 多轮核对：撤销 4 处原表未写明的「脑补」描述；严格匹配原始格式（空格、标点、轴标签）
+- 关键发现：原表 GPB2 INTR_T 标注为「F2 轴」、GPB6 INTR_Z2 标注为「F1 轴」（非直观对应，保留原样）
+- 提交：e52347b 「docs: 添加 squid++（双相机）硬件配置 Markdown 版本」
 
 ### 下次继续
 
-1. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
-2. **验证 W 轴编码器** — maxpro 分支的编码器修复需合并到 develop
-3. TMC2240 StealthChop 参数调优
-4. 清理 TMC2240 调试代码
-5. 硬件验证照明/触发系统
+1. **核实 squid++ 配置疑点** — 确认 MCP23S17 扩展 IO 的 INTR_T/F2轴、INTR_Z2/F1轴 标签是否为原作者笔误
+2. **基于 squid++ 配置完善 octoaxesplus/config.h** — 8 轴引脚映射（X/Y/Z1/Z2/F1/F2/R/T）
+3. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
+4. **合并 W 轴编码器修复** — maxpro → develop
+5. TMC2240 StealthChop 参数调优
+6. 清理 TMC2240 调试代码
+7. `tags` 文件加入 `.gitignore`
 
 ---
 
@@ -163,6 +160,13 @@ ENC_IN_CONF=0x00000400 STEP_CONF=0x00000C85 ENC_IN_RES(readback=ENC_CONST)=1000
 
 <!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
 
+### 2026-04-13 - Z 轴编码器使能 + 位置上报协议扩展 + 手控盒焦点轮修复 (maxpro)
+- `config.h` 新增 `ENCODER_RESOLUTION_UM_X/Y/Z`，X/Y/Z `encoderLinesPerRev` 改为公式
+- Z 轴 `enableEncoder=true`，`invertEncoderDir=true`
+- 响应包 28→32 字节：新增 Z 编码器 bytes[23-26]，固件版本移 byte[30]，CRC byte[31]
+- 上位机 RESPONSE_LENGTH 28→32；Z 轴 `has_encoder=True`；GUI 显示 Encoder/Steps/Δ
+- `control_panel_teensyLC.ino` — encoder_step_size 加 volatile 消除竞态，对齐值保持 16
+
 ### 2026-02-27（续）- W 轴回归测试 + 上位机 Bug 修复 + 协议对齐 (develop)
 - W 轴换孔时间回归测试：~60ms 平均，与 61.3ms 一致，无性能退化
 - 上位机 axis_manager.py 日志吞掉轴前缀 DEBUG 行 Bug 修复
@@ -183,10 +187,6 @@ ENC_IN_CONF=0x00000400 STEP_CONF=0x00000C85 ENC_IN_RES(readback=ENC_CONST)=1000
 - 新建 illumination.h/cpp：DAC80508 驱动、APA102 LED 矩阵、5 端口控制、新旧双 API
 - 实现 11 个照明 handler（命令 10-17 旧 API + 命令 34-39 新多端口 API）
 - 上位机 IlluminationPanel：5 路 TTL 端口 + LED 矩阵 + 全局因子
-
-### 2026-02-25 - Z 轴 homing SOFT_STOP_EN Bug 修复 (develop)
-- 修复 Z 轴 homing 停车失败：移除 REFERENCE_CONF 中的 SOFT_STOP_EN 位
-- 硬件验证通过，提交 5652bc3
 
 ---
 
