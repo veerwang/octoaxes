@@ -8,38 +8,49 @@
 
 **日期**: 2026-04-14
 **分支**: maxpro
-**位置**: octoaxesplus 空工程搭建 + squid++（双相机）硬件配置文档
+**位置**: octoaxesplus 74HC154 片选映射
 
 ### 本次完成
 
-#### 1. octoaxesplus 空工程创建
+#### 74HC154 片选映射（squid++ 双相机）
 
-- `firmware/octoaxesplus/platformio.ini` — 复用 octoaxes 配置（teensy41/debug/dev/fast 四环境、FastLED + PacketSerial 依赖、`-I tmc` include）
-- `firmware/octoaxesplus/octoaxesplus.ino` — 最小 Arduino 骨架（空 setup/loop）
-- `firmware/octoaxesplus/tmc → ../octoaxes/tmc` — 符号链接共享 tmc 驱动代码
-- 编译通过（pio run，Teensy 4.1 目标）
-- 提交：612ae3a 「初步导入octoaxesplus工程」
+在 `firmware/octoaxesplus/config.h` 的 `Pins` 命名空间末尾新增 74HC154 4→16 译码器支持：
 
-#### 2. squid++（双相机）硬件配置文档
+- **A0-A3 地址引脚常量**：pin 33 / 34 / 35 / 36
+- **`HC154_Channel` 枚举**（来源 `documents/squid++（双相机）配置.md` §2）：
+  - Y0=MCP23S17_1（扩展 IO #1）
+  - Y1=DAC80508_2, Y2=DAC80508_1（8LED 模拟输出）
+  - Y3=R, Y4=T, Y5=F2, Y6=Z2, Y7=F1, Y8=Z1, Y9=Y, Y10=X
+  - Y11=EXPAND_NSCS1
+  - Y12=DAC80508_4, Y13-Y15=MCP23S17_2/3/4
+- **`hc154_init()`**：setup 调用一次，A0-A3 设为 OUTPUT 并清零
+- **`hc154_select(channel)`**：SPI 事务前调用，按通道号写 4 个地址位
 
-- `documents/squid++（双相机）配置.md` — 由 xlsx 转 Markdown
-- 3 个核心表格：
-  - Teensy 4.1 引脚定义（48 项，Pin 0-47）
-  - IO 控制 / 74HC154 16 路 SPI1 片选映射（Y0-Y15）
-  - 扩展 IO / MCP23S17_1 轴中断与到位信号（GPA0-GPB7）
-- 多轮核对：撤销 4 处原表未写明的「脑补」描述；严格匹配原始格式（空格、标点、轴标签）
-- 关键发现：原表 GPB2 INTR_T 标注为「F2 轴」、GPB6 INTR_Z2 标注为「F1 轴」（非直观对应，保留原样）
-- 提交：e52347b 「docs: 添加 squid++（双相机）硬件配置 Markdown 版本」
+设计决策：
+- 函数以 `inline` 形式直接写在 `config.h` 的 Pins 命名空间内（符合用户"直接写进 Pins 命名空间"要求）
+- 旧 `X_AXIS_CS=41` 等 GPIO 片选常量本次保留不动，下一步改 config.h 时统一清理
+- 使用 `digitalWrite`（非 `digitalWriteFast`）与项目现有风格一致
+
+编译验证：`pio run` 成功（Teensy 4.1，1.98s）。clangd LSP 有告警（SPI.h/size_t/OUTPUT 未找到）属 include 路径配置问题，非代码错误。
 
 ### 下次继续
 
 1. **核实 squid++ 配置疑点** — 确认 MCP23S17 扩展 IO 的 INTR_T/F2轴、INTR_Z2/F1轴 标签是否为原作者笔误
-2. **基于 squid++ 配置完善 octoaxesplus/config.h** — 8 轴引脚映射（X/Y/Z1/Z2/F1/F2/R/T）
-3. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
-4. **合并 W 轴编码器修复** — maxpro → develop
-5. TMC2240 StealthChop 参数调优
-6. 清理 TMC2240 调试代码
-7. `tags` 文件加入 `.gitignore`
+2. **MCP23S17 扩展 IO 映射** — 在 config.h 中补充 GPA/GPB 轴 INTR/TARGET 映射
+3. **基于 squid++ 配置完善 octoaxesplus/config.h** — 8 轴引脚映射（X/Y/Z1/Z2/F1/F2/R/T），清理旧 CS 常量
+4. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
+5. **合并 W 轴编码器修复** — maxpro → develop
+6. TMC2240 StealthChop 参数调优
+7. 清理 TMC2240 调试代码
+8. `tags` 文件加入 `.gitignore`
+
+---
+
+### 2026-04-14（前半）- octoaxesplus 空工程 + squid++ 硬件配置文档 (maxpro)
+
+- `firmware/octoaxesplus/` 空工程：platformio.ini 复用 octoaxes 配置，`tmc → ../octoaxes/tmc` 符号链接共享，`octoaxesplus.ino` 空 setup/loop，编译通过（commit 612ae3a）
+- `documents/squid++（双相机）配置.md`：由 xlsx 转 Markdown，3 表（Teensy 48 引脚 / 74HC154 Y0-Y15 / MCP23S17_1 GPA0-GPB7）（commit e52347b）
+- 发现原表 GPB2 INTR_T 标注「F2 轴」、GPB6 INTR_Z2 标注「F1 轴」，疑为笔误待核实
 
 ---
 

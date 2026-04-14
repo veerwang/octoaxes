@@ -102,6 +102,52 @@ namespace Pins {
     const int CAMERA_TRIGGER_2 = 30;
     const int CAMERA_TRIGGER_3 = 31;
     const int CAMERA_TRIGGER_4 = 32;
+
+    // 74HC154 4→16 译码器片选（squid++ 双相机）
+    // A3:A2:A1:A0 二进制值 n → Yn 输出拉低，其余保持高；作为所有 SPI 设备的统一片选
+    // 来源：documents/squid++（双相机）配置.md §2
+    const int HC154_A0 = 33;
+    const int HC154_A1 = 34;
+    const int HC154_A2 = 35;
+    const int HC154_A3 = 36;
+
+    enum HC154_Channel : uint8_t {
+        HC154_MCP23S17_1   = 0,   // 扩展 IO #1（8 轴 INTR/TARGET）
+        HC154_DAC80508_2   = 1,
+        HC154_DAC80508_1   = 2,   // 8LED 模拟信号输出
+        HC154_AXIS_R       = 3,
+        HC154_AXIS_T       = 4,
+        HC154_AXIS_F2      = 5,   // 滤光转盘 F2
+        HC154_AXIS_Z2      = 6,
+        HC154_AXIS_F1      = 7,   // 滤光转盘 F1
+        HC154_AXIS_Z1      = 8,
+        HC154_AXIS_Y       = 9,
+        HC154_AXIS_X       = 10,
+        HC154_EXPAND_NSCS1 = 11,
+        HC154_DAC80508_4   = 12,
+        HC154_MCP23S17_2   = 13,
+        HC154_MCP23S17_3   = 14,
+        HC154_MCP23S17_4   = 15
+    };
+
+    inline void hc154_init() {
+        pinMode(HC154_A0, OUTPUT);
+        pinMode(HC154_A1, OUTPUT);
+        pinMode(HC154_A2, OUTPUT);
+        pinMode(HC154_A3, OUTPUT);
+        digitalWrite(HC154_A0, LOW);
+        digitalWrite(HC154_A1, LOW);
+        digitalWrite(HC154_A2, LOW);
+        digitalWrite(HC154_A3, LOW);
+    }
+
+    // 选通 Yn（n ∈ 0..15），对应输出拉低；SPI 事务前调用
+    inline void hc154_select(uint8_t channel) {
+        digitalWrite(HC154_A0, (channel >> 0) & 0x01);
+        digitalWrite(HC154_A1, (channel >> 1) & 0x01);
+        digitalWrite(HC154_A2, (channel >> 2) & 0x01);
+        digitalWrite(HC154_A3, (channel >> 3) & 0x01);
+    }
 }
 
 // 系统配置

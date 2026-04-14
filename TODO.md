@@ -41,8 +41,10 @@
 ### octoaxesplus (squid++ 双相机)
 - [x] 创建 octoaxesplus 空工程 (2026-04-14) - platformio.ini 复用 octoaxes 配置，tmc 符号链接共享，编译通过
 - [x] squid++（双相机）硬件配置 Markdown (2026-04-14) - 由 xlsx 转换，含引脚定义 / 74HC154 片选 / MCP23S17_1 扩展 IO 三表
+- [x] 74HC154 片选映射 (2026-04-14) - config.h Pins 命名空间新增 A0-A3 引脚、HC154_Channel 枚举（16 通道）、hc154_init()/hc154_select() 选通函数
 - [ ] 核实 GPB2 INTR_T/F2轴、GPB6 INTR_Z2/F1轴 标签是否原表笔误
 - [ ] 基于 squid++ 配置完善 octoaxesplus/config.h（8 轴：X/Y/Z1/Z2/F1/F2/R/T）
+- [ ] MCP23S17 扩展 IO 映射（GPA/GPB 轴 INTR/TARGET）
 - [ ] `tags` 文件加入 `.gitignore`
 
 ### 功能验证
