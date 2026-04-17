@@ -3,6 +3,7 @@
 #include "filterwheel.h"
 #include "illumination.h"
 #include "joystick.h"
+#include "mcp23s17.h"
 #include "trigger.h"
 #include "objectives.h"
 #include "serial.h"
@@ -63,6 +64,9 @@ bool initializeSystem() {
 
   // 初始化SPI和引脚
   initializeSPIAndPins();
+
+  // 初始化扩展 IO（MCP23S17_1，CS 走 HC154 通道 0；8 轴 INTR/TARGET 输入）
+  mcp23s17_init();
 
   // 初始化照明系统（引脚、LED矩阵、DAC、联锁）
   illumination_init();
