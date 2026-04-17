@@ -6,9 +6,70 @@
 
 ## 最新会话
 
-**日期**: 2026-04-16
+**日期**: 2026-04-17
 **分支**: maxpro
-**位置**: octoaxesplus 8 轴 config.h 主体重构 — SPI HAL 走 74HC154 + DEPRECATED_PIN 清零 + TTL 8 端口
+**位置**: octoaxesplus MCP23S17_1 扩展 IO 驱动完成 + pin 28 冲突修复 + IIC/Serial2 占位
+
+### 本次完成
+
+#### 1. MCP23S17_1 扩展 IO 驱动（commit 8be11c7）
+
+基于用户 AskUserQuestion 四问确认后实现：
+
+- **决策**：TARGET_* 全部为输入（TMC4361A 的 TARGET_REACHED_OUT 接入）；基础驱动 + init；轮询模式（INTA/INTB 未接 Teensy）；CS 走 HC154 通道 0
+- **新增文件**：
+  - `firmware/octoaxesplus/mcp23s17.h` — 寄存器地址、opcode、GPA/B INTR/TARGET 位掩码（按 squid++ §3 命名）、公开 API
+  - `firmware/octoaxesplus/mcp23s17.cpp` — SPI1 事务封装（beginTransaction + hc154_select）
+- **init 配置**：
+  - `IOCON=0x00`（BANK=0/HAEN=0/顺序寻址，兼容 A0-A2=GND）
+  - `IODIRA/B=0xFF`（16 路全输入）
+  - `GPPUA/B=0xFF`（100kΩ 上拉，信号悬空时默认高电平容错）
+  - `GPINTENA/B=0x00`（关硬件中断）
+- **API**：`readReg/writeReg` 通用访问，`readPortA/B`，`readGPIO()` 一次事务连读 A+B（利用 SEQOP 地址自增）
+- **片选路径**：事务前 `hc154_select(HC154_MCP23S17_1=0)`，事务后归零到 `HC154_EXPAND_NSCS1`
+- `octoaxesplus.ino` 在 `initializeSPIAndPins()` 之后调 `mcp23s17_init()`
+- 编译：octoaxesplus SUCCESS 9.34s / octoaxes SUCCESS 1.70s
+
+#### 2. Pin 28 冲突修复 + IIC/Serial2 占位（commit 567b599）
+
+核查文档 §1 发现 **14 个引脚未定义** + **pin 28 运行时冲突**：
+
+- `TMC4361_EXPAND_CLK = 28`（初始化时输出 2 MHz PWM）与 `ILLUMINATION_D5 = 28`（TTL5）共用 pin，激光 TTL 被时钟干扰
+- **修复**（仅 octoaxesplus 侧，octoaxes 保留）：
+  - `config.h` 删除 `TMC4361_EXPAND_CLK` 常量（加注释说明取消原因）
+  - `octoaxesplus.ino` 删除第二次 `initializeClock()` 调用
+  - `CLOCK_EXPAND` 在 TMC_SPI.cpp 中仅作运行时 ID（值 0/1），不引用 pin，未动
+- **补充占位**（pin 14/16/17/18/19）：
+  - `IIC_WP=14, IIC_SDA=18, IIC_SCL=19`（Wire1 占位，待外设方案）
+  - `RX2=16, TX2=17`（Serial2 占位）
+- 编译：两工程均 SUCCESS
+
+#### 3. 硬件测试可行性评估
+
+给出分阶段测试建议：
+
+- **可测**：烧写/串口、SPI 设备扫描（4 TMC + DAC + MCP）、TTL 照明、单轴慢速移动
+- **不建议**：8 轴完整运动（还缺 Z2/F2/R/T 实例化）、双相机采集（CAM_TRI_READY 握手未实现）
+- **硬件核对清单**：POWER_GOOD 拉低、pin 37 TEENSY_CLK、HC154 A0-A3 接线、INTERLOCK 拉低、MCP23S17 硬件地址 A0-A2 接 GND、74HC154 /E 使能
+
+### 下次继续
+
+1. **8 轴 AxisConfig 扩展** — config.h 新增 Z2/F1/F2/R/T 定义，`TMC4361A_IC_COUNT` 7→8（ifdef 分支保 octoaxes 兼容），HC154 通道分配到扩展轴
+2. **Axis 实例化扩展** — axisManager 添加 8 个 Axis（X/Y/Z1/Z2=StepAxis, F1/F2=FilterWheel, R/T=Objectives）
+3. **CAM_TRI_READY1/2（pin 7/6）定义** — 双相机握手信号，trigger 模块增加 READY 输入等待逻辑
+4. **TRIGGER_IN/OUT1-2（pin 1-4）定义** — 外部触发联动
+5. **核实 squid++ 原表笔误** — GPB2 INTR_T/F2、GPB6 INTR_Z2/F1 标签是否笔误
+6. **LT3932 SYNC 方案** — squid++ 是否真取消 PWM 还是挪走，影响激光调光
+7. **MCP23S17 接入 Axis 层（可选）** — 把 TARGET_REACHED 用于运动完成判定
+8. **Z 轴编码器 Δ 验证**（maxpro）
+9. **W 轴编码器修复合并 maxpro → develop**
+10. TMC2240 StealthChop 调优
+11. 清理 TMC2240 调试代码
+12. `tags` 加入 `.gitignore`
+
+---
+
+### 2026-04-16 - octoaxesplus 8 轴 config.h 主体重构 (maxpro)
 
 ### 本次完成
 
@@ -52,18 +113,7 @@
 - `firmware/octoaxesplus && pio run`: **SUCCESS** 8.05s（Teensy 4.1）
 - `firmware/octoaxes && pio run`: **SUCCESS** 1.70s（共享 tmc/ 在无 `USE_HC154_CS` 时保持旧行为）
 
-### 下次继续
-
-1. **8 轴 AxisConfig 扩展** — config.h 新增 Z2/F1/F2/R/T AxisConfig 定义，TMC4361A_IC_COUNT 7→8（要与 octoaxes 兼容保留 ifdef 分支），HC154 通道号分配到扩展轴
-2. **Axis 实例化扩展** — octoaxesplus.ino 在 axisManager 添加 8 个 Axis（按用户决策：X/Y/Z1/Z2=StepAxis, F1/F2=FilterWheel, R/T=Objectives）
-3. **MCP23S17 扩展 IO 驱动** — 新增 SPI1 设备类，GPA/GPB 映射到 8 轴 INTR/TARGET
-4. **核实 squid++ 配置疑点** — GPB2 INTR_T/F2 轴、GPB6 INTR_Z2/F1 轴标签是否原表笔误
-5. **LT3932 SYNC 核实** — squid++ 是否取消 LT3932 PWM（LED_DRIVER_SYNC=255 占位），还是用 DAC80508_1 代替
-6. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
-7. **合并 W 轴编码器修复** — maxpro → develop
-8. TMC2240 StealthChop 参数调优
-9. 清理 TMC2240 调试代码
-10. `tags` 文件加入 `.gitignore`
+（此次"下次继续"已在 2026-04-17 会话部分落地 MCP23S17 驱动 + pin 28 修复，见顶部最新会话）
 
 ---
 

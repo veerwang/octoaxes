@@ -45,8 +45,13 @@
 - [x] CAMERA_TRIGGER 1..8 引脚映射 (2026-04-14) - config.h 替换 4→8 路，trigger.h NUM_TRIGGER_CHANNELS=8
 - [x] Pins 命名空间冲突落地 A1 (2026-04-14) - DAC8050x_CS / X/Y/Z/W_AXIS_CS / ILLUMINATION_D3/D5 共 7 处冲突旧值改为 DEPRECATED_PIN=255（符号保留，下游零修改）
 - [x] 8 轴 config.h 主体重构（第一阶段：4 轴 + CS 抽象）(2026-04-16) - 删除 DEPRECATED_PIN + 4 轴 CS 改 HC154 通道号 + TMC_SPI HAL 加 USE_HC154_CS 分支 + illumination TTL 扩 8 端口 + DAC CS 走 HC154；两工程编译均通过
+- [x] MCP23S17_1 扩展 IO 驱动 (2026-04-17) - mcp23s17.h/cpp 新建；CS 走 HC154 通道 0；IOCON=0x00 + IODIR=0xFF 全输入 + GPPU=0xFF 上拉容错 + 关硬件中断（轮询模式）；API：readReg/writeReg/readPortA/B/readGPIO
+- [x] Pin 28 冲突修复 (2026-04-17) - 删除 TMC4361_EXPAND_CLK（与 TTL5 共用 pin 28 导致 2 MHz PWM 干扰 TTL 输出）；squid++ 单套时钟已够
+- [x] 补充 Pins 占位 (2026-04-17) - IIC_WP/SDA/SCL (pin 14/18/19)、RX2/TX2 (pin 16/17)
 - [ ] 8 轴 AxisConfig 扩展（Z2/F1/F2/R/T）- TMC4361A_IC_COUNT 7→8（ifdef 分支），HC154 通道分配；Axis 实例化按 X/Y/Z1/Z2=StepAxis, F1/F2=FilterWheel, R/T=Objectives
-- [ ] MCP23S17 扩展 IO 映射（GPA/GPB 轴 INTR/TARGET）
+- [ ] MCP23S17 接入 Axis 层 - TARGET_REACHED 用于运动完成判定（可选，目前走 XACTUAL 轮询）
+- [ ] CAM_TRI_READY1/2 (pin 7/6) 定义 + 双相机握手 - trigger 模块增加 READY 输入等待
+- [ ] TRIGGER_IN/OUT1-2 (pin 1-4) 定义 - 外部触发联动
 - [ ] LT3932 SYNC 核实 - squid++ 是否取消独立 SYNC 引脚（目前占 pin 255 无效），还是挪走
 - [ ] 核实 GPB2 INTR_T/F2轴、GPB6 INTR_Z2/F1轴 标签是否原表笔误
 - [ ] `tags` 文件加入 `.gitignore`
