@@ -63,7 +63,8 @@ namespace Pins {
     // TMC_SPI HAL 在 USE_HC154_CS 编译分支下按通道号调用 Pins::hc154_select()
     const int POWER_GOOD = 0;
     const int TMC4361_STANDARD_CLK = 37;
-    const int TMC4361_EXPAND_CLK = 28;
+    // squid++ 双相机取消 TMC4361 扩展时钟（原 pin 28 被 TTL5 占用，且 8 轴全挂 SPI1
+    // 单套时钟已够）。CLOCK_EXPAND 仅作为 tmc_ic_configs 的运行时标识保留
 
     // 轴 SPI 片选（HC154 通道号，非 GPIO）
     const int X_AXIS_CS = 10;  // HC154 Y10 = AXIS_X
@@ -101,6 +102,16 @@ namespace Pins {
     // LED 驱动 LT3932 SYNC（squid++ 无独立 SYNC 引脚，保留旧常量占位）
     // 原 octoaxes pin 25 现为 TTL6；如需 LT3932 请硬件重新指派
     const int LED_DRIVER_SYNC = 255;  // 无效引脚；analogWrite/pinMode 空操作
+
+    // I²C 总线（Wire1，squid++ pin 18/19；pin 14 为 EEPROM/器件写保护）
+    // 占位：未挂载具体设备前不初始化，待外设方案确定后使能
+    const int IIC_WP  = 14;
+    const int IIC_SDA = 18;
+    const int IIC_SCL = 19;
+
+    // Serial2 串口（pin 16=RX2, pin 17=TX2）— 占位，用途待定
+    const int RX2 = 16;
+    const int TX2 = 17;
 
     // 相机触发（squid++ 双相机：8 路，来源 documents/squid++（双相机）配置.md §1）
     const int CAMERA_TRIGGER_1 = 9;    // CAM_TRI_OUT1（相机 1）

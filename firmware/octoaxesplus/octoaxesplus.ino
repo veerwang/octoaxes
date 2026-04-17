@@ -56,10 +56,8 @@ bool initializeSystem() {
     return false;
   }
 
-  // 初始化时钟
+  // 初始化时钟（squid++ 单套时钟，取消 EXPAND_CLK 以避免与 TTL5 共用 pin 28）
   initializeClock(Pins::TMC4361_STANDARD_CLK,
-                  SystemConfig::TMC4361_CLOCK_FREQUENCY);
-  initializeClock(Pins::TMC4361_EXPAND_CLK,
                   SystemConfig::TMC4361_CLOCK_FREQUENCY);
 
   // 初始化SPI和引脚
