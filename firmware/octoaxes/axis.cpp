@@ -691,8 +691,11 @@ bool Axis::isHomingInProgress() const {
 }
 
 // 检查运动是否完成 (使用新 API)
+// 双重条件：位置到达目标 + VACTUAL 为零（电机已实际停止）
+// 防止 S-ramp 减速阶段 XACTUAL 短暂等于 XTARGET 但速度未归零时过早报完成
 bool Axis::isMovementComplete() const {
-  return motor_getPositionMicrosteps(_icID) == motor_getTargetMicrosteps(_icID);
+  return motor_getPositionMicrosteps(_icID) == motor_getTargetMicrosteps(_icID)
+         && !motor_isRunning(_icID);
 }
 
 // 设置软限位 (使用新 API)
