@@ -9,8 +9,18 @@
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
+- [x] **XYZW 全部回退为微步模式** (2026-04-17) - `constants.py` has_encoder = False，响应包保持 24 字节与旧 Squid 兼容
 
 ## 待办
+
+### 编码器（暂缓，已全部关闭）
+- [x] Z 轴编码器基础设施 (2026-04-13) - config.h 常量 + invertEncoderDir + motor_initABNEncoder
+- [x] 编码器透明上报方案 (2026-04-13) - getCurrentPositionMicrosteps 按 enableEncoder 切 XACTUAL/ENC_POS，MSG_LENGTH 保持 24
+- [ ] （暂缓）Z 轴编码器硬件验证 - Encoder 与 Steps μm 值对比 Δ≈0
+- [ ] （暂缓）合并 W 轴编码器修复（maxpro → develop）
+- [ ] （暂缓）重新启用编码器并开启 PID 闭环
+
+
 
 <!-- 计划要做但尚未开始的任务 -->
 

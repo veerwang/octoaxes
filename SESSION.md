@@ -6,11 +6,41 @@
 
 ## 最新会话
 
-**日期**: 2026-04-13
+**日期**: 2026-04-17
 **分支**: develop
-**位置**: Z 轴编码器使能 + 位置上报协议扩展 + 手控盒焦点轮修复
+**位置**: 全部轴回退为微步模式 + 协议格式与旧 Squid 固件对齐确认
 
 ### 本次完成
+
+#### 1. XYZW 全部回退为微步模式
+
+- `software/utils/constants.py` — XYZW 四轴 `has_encoder` 全部改为 `False`
+- GUI 连接后不再下发 `CONFIGURE_STAGE_PID`，固件 `_config.enableEncoder` 保持 `false`
+- 位置来源回到 XACTUAL（微步），GUI 显示从 `Encoder | Steps | Δ` 回到 `Position (steps)`
+- 编码器基础设施（`encoder_transitions_per_rev`、`encoder_flip_direction`、固件 `motor_initABNEncoder`）保留，日后恢复只需切回 `has_encoder: True`
+
+#### 2. 协议兼容性分析（与旧 Squid 对比）
+
+- **MOVE_X/Y/Z 相对移动命令完全兼容** — 两端均为 `cmd[2..5] = int32 BE 微步`（两位补码处理负数），CRC-8-CCITT on `cmd[0..6]`
+- **响应包实际为 24 字节**（早先 SESSION/CLAUDE 里"32 字节"描述是临时扩展方案，实际未落地）
+- 唯一差异：bytes[14-17] — 旧 Squid 不写 W 位置（残留数据），Octoaxes 填 W 滤光轮位置；对纯 XYZ 上位机兼容
+
+#### 3. 文档修正
+
+- `CLAUDE.md` — 修正"32 字节协议"误述，同步当前 24 字节格式与编码器关闭状态
+- `SESSION.md` — 重写最新会话记录本次变更
+
+### 下次继续
+
+1. **硬件验证** — XY/Z 微步模式下 MOVE/MOVETO 行为确认
+2. 合并 W 轴编码器修复（maxpro → develop）后再决定是否重新启用编码器
+3. TMC2240 StealthChop 参数调优
+4. 清理 TMC2240 调试代码
+5. 硬件验证照明/触发系统
+
+---
+
+### 2026-04-13 - Z 轴编码器使能 + 协议扩展尝试（已回退）
 
 #### 1. 手控盒焦点轮修复
 
@@ -24,25 +54,11 @@
 - Z 轴 `enableEncoder = true`（3000 lines/rev），X/Y 预填参数未使能
 - 新增 `invertEncoderDir` 配置项，Z 轴设为 `true`（编码器方向与电机相反）
 
-#### 3. 位置上报协议扩展 (28→32 字节)
+#### 3. 位置上报协议扩展方案（提出但未落地）
 
-- `serial.h/cpp` — MSG_LENGTH 28→32，新增 Z 轴编码器位置 bytes[23-26]
-- 固件版本移到 byte[30]，CRC 在 byte[31]
-- `sendResponse` 新增 `z_enc_pos` 参数
-
-#### 4. 上位机编码器显示
-
-- `serial_thread.py` — RESPONSE_LENGTH 28→32
-- `constants.py` — Z 轴添加 `has_encoder: True`
-- `main_window.py` — 有编码器的轴显示 `Encoder: xx.xx μm | Steps: xx.xx μm | Δ: xx.xx μm`
-
-### 下次继续
-
-1. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
-2. **验证 W 轴编码器** — maxpro 分支的编码器修复需合并到 develop
-3. TMC2240 StealthChop 参数调优
-4. 清理 TMC2240 调试代码
-5. 硬件验证照明/触发系统
+- 早期方案：响应包 28→32 字节，bytes[23-26] 放 Z 编码器位置，byte[30] 固件版本，byte[31] CRC
+- 实际实现采用透明方案：`MSG_LENGTH` 保持 24，`getCurrentPositionMicrosteps()` 按 `enableEncoder` 返回 XACTUAL 或 ENC_POS，bytes[10-13] 复用
+- GUI 曾实现 `Encoder | Steps | Δ` 三值显示（main_window.py 有编码器分支）
 
 ---
 
