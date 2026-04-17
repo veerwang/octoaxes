@@ -14,7 +14,7 @@ AXIS_CONFIG = {
         "index": 1,  # X 轴 index=1
         "default_velocity": 25.0,      # mm/s
         "default_acceleration": 500.0, # mm/s²
-        "has_encoder": True,
+        "has_encoder": False,
         "encoder_transitions_per_rev": 50800,  # 2.54mm pitch / 0.05μm resolution
         "encoder_flip_direction": False,
     },
@@ -27,7 +27,7 @@ AXIS_CONFIG = {
         "index": 0,  # Y 轴 index=0
         "default_velocity": 25.0,
         "default_acceleration": 500.0,
-        "has_encoder": True,
+        "has_encoder": False,
         "encoder_transitions_per_rev": 50800,  # 2.54mm pitch / 0.05μm resolution
         "encoder_flip_direction": False,
     },
@@ -40,7 +40,7 @@ AXIS_CONFIG = {
         "index": 2,
         "default_velocity": 3.0,
         "default_acceleration": 20.0,
-        "has_encoder": True,
+        "has_encoder": False,
         "encoder_transitions_per_rev": 3000,  # 0.3mm pitch / 0.1μm resolution
         "encoder_flip_direction": True,
     },
@@ -51,7 +51,7 @@ AXIS_CONFIG = {
         "limits": (0, 7),
         "movement_sign": 1,
         "index": 3,
-        "has_encoder": True,
+        "has_encoder": False,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
     },
