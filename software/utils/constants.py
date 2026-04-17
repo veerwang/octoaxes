@@ -4,6 +4,9 @@
 
 # 轴配置
 # 轴索引与固件对应: Y(0), X(1), Z(2), W(3)
+# actuator_* 字段对应 firmware/config.h AxisConstDefinition 默认值，
+# 上位机启动时通过 SET_LEAD_SCREW_PITCH / CONFIGURE_STEPPER_DRIVER 下发覆盖
+# （避免固件被旧 Squid 上位机配成 32 细分后 Octoaxes GUI 显示错位）
 AXIS_CONFIG = {
     "X": {
         "display_name": "Step Motor - x_axis",
@@ -17,6 +20,10 @@ AXIS_CONFIG = {
         "has_encoder": False,
         "encoder_transitions_per_rev": 50800,  # 2.54mm pitch / 0.05μm resolution
         "encoder_flip_direction": False,
+        "actuator_screw_pitch_mm": 2.54,
+        "actuator_microstepping": 256,
+        "actuator_motor_current_ma": 1000,   # 峰值电流
+        "actuator_motor_hold_ratio": 0.25,
     },
     "Y": {
         "display_name": "Step Motor - y_axis",
@@ -30,6 +37,10 @@ AXIS_CONFIG = {
         "has_encoder": False,
         "encoder_transitions_per_rev": 50800,  # 2.54mm pitch / 0.05μm resolution
         "encoder_flip_direction": False,
+        "actuator_screw_pitch_mm": 2.54,
+        "actuator_microstepping": 256,
+        "actuator_motor_current_ma": 1000,
+        "actuator_motor_hold_ratio": 0.25,
     },
     "Z": {
         "display_name": "Step Motor - z_axis",
@@ -43,6 +54,10 @@ AXIS_CONFIG = {
         "has_encoder": False,
         "encoder_transitions_per_rev": 3000,  # 0.3mm pitch / 0.1μm resolution
         "encoder_flip_direction": True,
+        "actuator_screw_pitch_mm": 0.3,
+        "actuator_microstepping": 256,
+        "actuator_motor_current_ma": 500,
+        "actuator_motor_hold_ratio": 0.5,
     },
     "W": {
         "display_name": "Filter Wheel 1 - w_axis",

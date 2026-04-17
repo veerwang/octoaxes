@@ -1234,9 +1234,66 @@ class TeensyControlGUI(QMainWindow):
         axis = self.get_current_axis()
         if axis not in ["E4", "W"]:
             self.set_limits()
-        # 为有编码器的轴下发 CONFIGURE_STAGE_PID，使能编码器
+        # 先下发 SET_LEAD_SCREW_PITCH + CONFIGURE_STEPPER_DRIVER，
+        # 把固件 screwPitch/microstepping 拉回 Octoaxes 默认值
+        # （防止此前旧 Squid 上位机把固件切到 32 细分残留）
+        self._configure_actuators()
+        # 再为有编码器的轴下发 CONFIGURE_STAGE_PID，使能编码器
         self._configure_encoders()
         self.startup_timer.stop()
+
+    def _configure_actuators(self):
+        """启动时下发 SET_LEAD_SCREW_PITCH + CONFIGURE_STEPPER_DRIVER
+        使固件 screwPitch 与 microstepping 与 constants.py 的 actuator_* 字段一致。
+        """
+        if self.serial_thread is None:
+            return
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z}
+        for axis_name, config in AXIS_CONFIG.items():
+            protocol_axis = _AXIS_PROTOCOL.get(axis_name)
+            if protocol_axis is None:
+                continue
+            pitch_mm = config.get("actuator_screw_pitch_mm")
+            microstepping = config.get("actuator_microstepping")
+            current_ma = config.get("actuator_motor_current_ma")
+            hold_ratio = config.get("actuator_motor_hold_ratio")
+            if None in (pitch_mm, microstepping, current_ma, hold_ratio):
+                continue
+
+            # SET_LEAD_SCREW_PITCH (cmd 23): data[2]=axis, data[3..4]=pitch*1000 (uint16 大端)
+            pitch_x1000 = int(round(pitch_mm * 1000))
+            cmd = bytearray(8)
+            cmd[1] = CMD_SET.SET_LEAD_SCREW_PITCH
+            cmd[2] = protocol_axis
+            cmd[3] = (pitch_x1000 >> 8) & 0xFF
+            cmd[4] = pitch_x1000 & 0xFF
+            self.serial_thread.send_binary_command(cmd)
+
+            # CONFIGURE_STEPPER_DRIVER (cmd 21):
+            #   data[2]=axis, data[3]=microstepping 编码,
+            #   data[4..5]=current_mA (uint16 大端), data[6]=hold*255
+            # 微步编码（与旧 Squid 一致）: 1→0, 256→255, 其他→原值
+            if microstepping == 1:
+                ms_byte = 0
+            elif microstepping >= 256:
+                ms_byte = 255
+            else:
+                ms_byte = int(microstepping) & 0xFF
+            current_int = int(round(current_ma)) & 0xFFFF
+            hold_byte = max(0, min(255, int(round(hold_ratio * 255))))
+            cmd = bytearray(8)
+            cmd[1] = CMD_SET.CONFIGURE_STEPPER_DRIVER
+            cmd[2] = protocol_axis
+            cmd[3] = ms_byte
+            cmd[4] = (current_int >> 8) & 0xFF
+            cmd[5] = current_int & 0xFF
+            cmd[6] = hold_byte
+            self.serial_thread.send_binary_command(cmd)
+
+            self.log(
+                f"Actuator configured: {axis_name} pitch={pitch_mm}mm "
+                f"microsteps={microstepping} current={current_ma}mA hold={hold_ratio}"
+            )
 
     def _configure_encoders(self):
         """启动时为编码器轴下发 CONFIGURE_STAGE_PID"""
