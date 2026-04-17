@@ -6,11 +6,68 @@
 
 ## 最新会话
 
-**日期**: 2026-04-14
+**日期**: 2026-04-16
 **分支**: maxpro
-**位置**: octoaxesplus 74HC154 映射 + CAMERA_TRIGGER 扩展到 8 路 + Pins 冲突落地
+**位置**: octoaxesplus 8 轴 config.h 主体重构 — SPI HAL 走 74HC154 + DEPRECATED_PIN 清零 + TTL 8 端口
 
 ### 本次完成
+
+#### 1. SPI HAL 加 HC154 分支（TMC_SPI.cpp/h）
+
+`tmc/` 是 octoaxesplus→octoaxes 的符号链接，为避免破坏 octoaxes，采用编译时 ifdef 分支：
+
+- `octoaxesplus/platformio.ini` common `build_flags` 增加 `-D USE_HC154_CS`
+- `TMC_SPI.cpp` 用 `#ifdef USE_HC154_CS` 切换两套实现：
+  - `tmc_ic_configs[]` 初始化列表：HC154 分支下 csPin 语义为通道号（Y=9/X=10/Z1=8/F1=7；E1-E3-E4 占 Y11 EXPAND_NSCS1 占位）
+  - `tmc_spi_init()` HC154 分支只调 `Pins::hc154_init()`，不 pinMode
+  - `tmc4361A_readWriteSPI()` 事务前调 `Pins::hc154_select(csPin)`，事务后归零到 `HC154_EXPAND_NSCS1`
+- `#include "config.h"` 裸路径（symlink 解析后相对路径会指向 octoaxes，必须用 src_dir 搜索路径）
+
+#### 2. config.h 删除 DEPRECATED_PIN + CS 转 HC154 通道号
+
+- 删除 `DEPRECATED_PIN = 255` 常量和所有 7 处使用
+- 轴 CS 改为 HC154 通道号：`X_AXIS_CS=10, Y_AXIS_CS=9, Z_AXIS_CS=8(Z1), W_AXIS_CS=7(F1)`
+- `DAC8050x_CS=2`（DAC80508_1）
+- `EXPAND1-4_AXIS_CS=11`（EXPAND_NSCS1 占位）
+- TTL 引脚重映射至 squid++ 分配：`D1..D5 = 32/31/30/29/28`，新增 `D6/D7/D8 = 25/24/10`
+- `ILLUMINATION_INTERLOCK` 从 pin 2 改为 pin 38
+- `LED_DRIVER_SYNC=255`（无效；squid++ 无该引脚，analogWrite 空操作）
+- `IlluminationConfig` 光源码新增 `D6=16, D7=17, D8=18`
+
+#### 3. octoaxesplus.ino 去掉直接 pinMode CS
+
+- `initializeSPIAndPins()` 删除 `STANDARD_CONTROL_PINS/CONTROL_PINS` 的 pinMode/digitalWrite 循环，改为 `Pins::hc154_init()` + `SPI.begin()`（提前于 illumination_init 的 DAC 通信）
+- `initializePowerManagement()` 删除 `pinMode(Pins::DAC8050x_CS, OUTPUT)`（CS 走 HC154）
+- loop interlock 关灯扩展到 D1-D8
+
+#### 4. illumination.cpp TTL 8 端口 + DAC CS 走 HC154
+
+- `illumination_init()` 新增 D6/D7/D8 pinMode
+- `set_DAC8050x_*()` 3 处 SPI 事务：`digitalWrite(DAC8050x_CS, LOW/HIGH)` → `Pins::hc154_select(Pins::DAC8050x_CS)` / `hc154_select(HC154_EXPAND_NSCS1)`
+- `port_index_to_pin` / `illumination_source_to_port_index` / `port_index_to_dac_channel` 支持 0-7
+- `turn_on/off_illumination` / `set_illumination` switch 增加 D6/D7/D8 case（DAC 通道 5/6/7）
+
+#### 5. 编译验证
+
+- `firmware/octoaxesplus && pio run`: **SUCCESS** 8.05s（Teensy 4.1）
+- `firmware/octoaxes && pio run`: **SUCCESS** 1.70s（共享 tmc/ 在无 `USE_HC154_CS` 时保持旧行为）
+
+### 下次继续
+
+1. **8 轴 AxisConfig 扩展** — config.h 新增 Z2/F1/F2/R/T AxisConfig 定义，TMC4361A_IC_COUNT 7→8（要与 octoaxes 兼容保留 ifdef 分支），HC154 通道号分配到扩展轴
+2. **Axis 实例化扩展** — octoaxesplus.ino 在 axisManager 添加 8 个 Axis（按用户决策：X/Y/Z1/Z2=StepAxis, F1/F2=FilterWheel, R/T=Objectives）
+3. **MCP23S17 扩展 IO 驱动** — 新增 SPI1 设备类，GPA/GPB 映射到 8 轴 INTR/TARGET
+4. **核实 squid++ 配置疑点** — GPB2 INTR_T/F2 轴、GPB6 INTR_Z2/F1 轴标签是否原表笔误
+5. **LT3932 SYNC 核实** — squid++ 是否取消 LT3932 PWM（LED_DRIVER_SYNC=255 占位），还是用 DAC80508_1 代替
+6. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
+7. **合并 W 轴编码器修复** — maxpro → develop
+8. TMC2240 StealthChop 参数调优
+9. 清理 TMC2240 调试代码
+10. `tags` 文件加入 `.gitignore`
+
+---
+
+### 2026-04-14 - octoaxesplus 74HC154 映射 + CAMERA_TRIGGER 扩展到 8 路 + Pins 冲突落地
 
 #### 1. 74HC154 4→16 片选映射（commit e00fb60）
 
@@ -47,16 +104,7 @@
 
 编译验证：`pio run` 成功（Teensy 4.1，1.96s）。
 
-### 下次继续
-
-1. **8 轴 config.h 主体重构** — 真正删除 `DEPRECATED_PIN` 符号；改 octoaxesplus.ino 的 Axis 初始化调用 `hc154_select()`；改 illumination.cpp 的 TTL 端口至 squid++ 分配（pin 32/31/30/29/28 = TTL1-5，pin 25/24/10 = TTL6-8）
-2. **MCP23S17 扩展 IO 映射** — 补充 GPA/GPB 到 8 轴 INTR/TARGET 的映射（依赖疑点 3 核实）
-3. **核实 squid++ 配置疑点** — MCP23S17 扩展 IO 中 INTR_T/F2轴、INTR_Z2/F1轴 标签是否原作者笔误
-4. **验证 Z 轴编码器** — 确认 Encoder 和 Steps 的 μm 值一致（Δ ≈ 0）
-5. **合并 W 轴编码器修复** — maxpro → develop
-6. TMC2240 StealthChop 参数调优
-7. 清理 TMC2240 调试代码
-8. `tags` 文件加入 `.gitignore`
+（此次"下次继续"已在 2026-04-16 会话落地，见顶部最新会话）
 
 ---
 

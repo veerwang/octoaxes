@@ -19,16 +19,10 @@ void initializeClock(uint8_t clk_pin, uint32_t frequence) {
 }
 
 void initializeSPIAndPins() {
-  // 全部轴去使能
-  for (uint8_t i = 0; i < sizeof(Pins::CONTROL_PINS); i++) {
-    pinMode(Pins::CONTROL_PINS[i], OUTPUT);
-    digitalWrite(Pins::CONTROL_PINS[i], HIGH);
-  }
-
-  for (uint8_t i = 0; i < sizeof(Pins::STANDARD_CONTROL_PINS); i++) {
-    pinMode(Pins::STANDARD_CONTROL_PINS[i], OUTPUT);
-    digitalWrite(Pins::STANDARD_CONTROL_PINS[i], HIGH);
-  }
+  // squid++ 双相机：所有 SPI 设备片选走 74HC154，无需单独 pinMode
+  // 提前 hc154_init() 以便 illumination_init 的 DAC 通信可用
+  // （tmc_spi_init 内部会再调一次，幂等）
+  Pins::hc154_init();
 
   // 初始化SPI
   SPI.begin();
@@ -38,9 +32,7 @@ void initializeSPIAndPins() {
 bool initializePowerManagement() {
   pinMode(Pins::POWER_GOOD, INPUT_PULLUP);
 
-  // 禁用DAC引脚
-  pinMode(Pins::DAC8050x_CS, OUTPUT);
-  digitalWrite(Pins::DAC8050x_CS, HIGH);
+  // DAC80508_1 片选走 74HC154（Pins::DAC8050x_CS = 通道 2），不再直接操控 GPIO
 
   delay(100);
 
@@ -137,13 +129,16 @@ void loop() {
     firstLoop = false;
   }
 
-  // 安全联锁检查：联锁断开时直接拉低 TTL 激光端口（硬编码 GPIO，零开销）
+  // 安全联锁检查：联锁断开时直接拉低所有 TTL 激光端口（硬编码 GPIO，零开销）
   if (!illumination_interlock_ok()) {
     digitalWrite(Pins::ILLUMINATION_D1, LOW);
     digitalWrite(Pins::ILLUMINATION_D2, LOW);
     digitalWrite(Pins::ILLUMINATION_D3, LOW);
     digitalWrite(Pins::ILLUMINATION_D4, LOW);
     digitalWrite(Pins::ILLUMINATION_D5, LOW);
+    digitalWrite(Pins::ILLUMINATION_D6, LOW);
+    digitalWrite(Pins::ILLUMINATION_D7, LOW);
+    digitalWrite(Pins::ILLUMINATION_D8, LOW);
   }
 
   // 串口看门狗：通信中断超时后自动关闭所有照明

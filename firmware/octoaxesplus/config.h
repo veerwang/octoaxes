@@ -58,50 +58,49 @@ namespace Commands {
 
 // 引脚定义
 namespace Pins {
-    // squid++ 迁移占位：旧 squid 的片选/TTL 引脚在 squid++ 中已改走
-    // 74HC154 或重新分配。为避免与新引脚在 Pins 命名空间内同号冲突，
-    // 把受影响的旧常量临时改为此无效引脚号（pinMode/digitalWrite 空操作）。
-    // 下一步 8 轴改造时会移除这些符号并修改引用代码。
-    static constexpr int DEPRECATED_PIN = 255;
-
-    const int DAC8050x_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=33，squid++ pin 33=74HC154_A0
+    // squid++ 双相机：所有 SPI 片选走 74HC154（见本文件 HC154_Channel 枚举）
+    // 下述 X/Y/Z/W_AXIS_CS、DAC8050x_CS 语义不再是 GPIO 引脚号，而是 HC154 通道号(0-15)
+    // TMC_SPI HAL 在 USE_HC154_CS 编译分支下按通道号调用 Pins::hc154_select()
     const int POWER_GOOD = 0;
     const int TMC4361_STANDARD_CLK = 37;
     const int TMC4361_EXPAND_CLK = 28;
 
-    const int X_AXIS_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=41，squid++ 改走 74HC154 Y10；pin 41=CAM_TRIGGER6
-    const int Y_AXIS_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=36，squid++ 改走 74HC154 Y9；pin 36=74HC154_A3
-    const int Z_AXIS_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=35，squid++ 改走 74HC154 Y8（Z1）；pin 35=74HC154_A2
-    const int W_AXIS_CS = DEPRECATED_PIN;  // DEPRECATED: 旧=34，squid++ 无 W 轴；pin 34=74HC154_A1
+    // 轴 SPI 片选（HC154 通道号，非 GPIO）
+    const int X_AXIS_CS = 10;  // HC154 Y10 = AXIS_X
+    const int Y_AXIS_CS = 9;   // HC154 Y9  = AXIS_Y
+    const int Z_AXIS_CS = 8;   // HC154 Y8  = AXIS_Z1（Z 主轴）
+    const int W_AXIS_CS = 7;   // HC154 Y7  = AXIS_F1（占位：squid++ 原 W=滤光转盘 1）
 
-    const int EXPAND1_AXIS_CS = 19;
-    const int EXPAND2_AXIS_CS = 18;
-    const int EXPAND3_AXIS_CS = 17;
-    const int EXPAND4_AXIS_CS = 16;
+    // 扩展轴（HC154 通道号，暂未启用）
+    const int EXPAND1_AXIS_CS = 11;  // HC154 Y11 EXPAND_NSCS1 占位
+    const int EXPAND2_AXIS_CS = 11;
+    const int EXPAND3_AXIS_CS = 11;
+    const int EXPAND4_AXIS_CS = 11;
 
-    // 控制引脚数组
-    const uint8_t CONTROL_PINS[] = {EXPAND1_AXIS_CS, EXPAND2_AXIS_CS, EXPAND3_AXIS_CS, EXPAND4_AXIS_CS};
-    const uint8_t STANDARD_CONTROL_PINS[] = {W_AXIS_CS, Z_AXIS_CS, Y_AXIS_CS, X_AXIS_CS};
-    const size_t NUM_CONTROL_PINS = 4;
-    const size_t NUM_STANDARD_CONTROL_PINS = 4;
+    // DAC80508_1 SPI 片选（HC154 通道号）
+    const int DAC8050x_CS = 2;   // HC154 Y2 = DAC80508_1（8LED 模拟输出）
 
-    // 照明 TTL 端口（D1-D5）
-    // 注意：D3/D4 引脚非顺序排列，与旧版光源码一致
-    const int ILLUMINATION_D1 = 5;
-    const int ILLUMINATION_D2 = 4;
-    const int ILLUMINATION_D3 = DEPRECATED_PIN;  // DEPRECATED: 旧=22，squid++ pin 22=CAM_TRIGGER4
-    const int ILLUMINATION_D4 = 3;
-    const int ILLUMINATION_D5 = DEPRECATED_PIN;  // DEPRECATED: 旧=23，squid++ pin 23=CAM_TRIGGER3
+    // 照明 TTL 端口（D1-D8，squid++ 双相机）
+    // squid++ 表：pin 32/31/30/29/28 = TTL1-5，pin 25/24/10 = TTL6-8
+    const int ILLUMINATION_D1 = 32;
+    const int ILLUMINATION_D2 = 31;
+    const int ILLUMINATION_D3 = 30;
+    const int ILLUMINATION_D4 = 29;
+    const int ILLUMINATION_D5 = 28;
+    const int ILLUMINATION_D6 = 25;
+    const int ILLUMINATION_D7 = 24;
+    const int ILLUMINATION_D8 = 10;
 
-    // 激光安全联锁（LOW = 安全）
-    const int ILLUMINATION_INTERLOCK = 2;
+    // 激光安全联锁（squid++ pin 38，LOW = 安全）
+    const int ILLUMINATION_INTERLOCK = 38;
 
-    // LED 矩阵（APA102，128 像素）
+    // LED 矩阵（APA102，128 像素；SPI2 MOSI/SCK）
     const int LED_MATRIX_DATA  = 26;
     const int LED_MATRIX_CLOCK = 27;
 
-    // LED 驱动 LT3932 SYNC（16 MHz PWM）
-    const int LED_DRIVER_SYNC = 25;
+    // LED 驱动 LT3932 SYNC（squid++ 无独立 SYNC 引脚，保留旧常量占位）
+    // 原 octoaxes pin 25 现为 TTL6；如需 LT3932 请硬件重新指派
+    const int LED_DRIVER_SYNC = 255;  // 无效引脚；analogWrite/pinMode 空操作
 
     // 相机触发（squid++ 双相机：8 路，来源 documents/squid++（双相机）配置.md §1）
     const int CAMERA_TRIGGER_1 = 9;    // CAM_TRI_OUT1（相机 1）
@@ -287,12 +286,16 @@ namespace IlluminationConfig {
     const int LED_ARRAY_TOP_HALF   = 7;
     const int LED_ARRAY_BOTTOM_HALF = 8;
     const int LED_EXTERNAL_FET     = 20;
-    // TTL 端口光源码（注意 D3/D4 非顺序！）
+    // TTL 端口光源码（注意 D3/D4 非顺序 — 与旧版 squid 协议兼容）
     const int D1 = 11;
     const int D2 = 12;
     const int D3 = 14;  // 非顺序！
     const int D4 = 13;  // 非顺序！
     const int D5 = 15;
+    // squid++ 双相机新增 D6-D8 光源码
+    const int D6 = 16;
+    const int D7 = 17;
+    const int D8 = 18;
 }
 
 // 轴配置

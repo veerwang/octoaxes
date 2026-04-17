@@ -44,9 +44,11 @@
 - [x] 74HC154 片选映射 (2026-04-14) - config.h Pins 命名空间新增 A0-A3 引脚、HC154_Channel 枚举（16 通道）、hc154_init()/hc154_select() 选通函数
 - [x] CAMERA_TRIGGER 1..8 引脚映射 (2026-04-14) - config.h 替换 4→8 路，trigger.h NUM_TRIGGER_CHANNELS=8
 - [x] Pins 命名空间冲突落地 A1 (2026-04-14) - DAC8050x_CS / X/Y/Z/W_AXIS_CS / ILLUMINATION_D3/D5 共 7 处冲突旧值改为 DEPRECATED_PIN=255（符号保留，下游零修改）
-- [ ] 核实 GPB2 INTR_T/F2轴、GPB6 INTR_Z2/F1轴 标签是否原表笔误
-- [ ] 基于 squid++ 配置完善 octoaxesplus/config.h（8 轴：X/Y/Z1/Z2/F1/F2/R/T）— 真正删除 DEPRECATED_PIN 符号 + 改造 Axis 初始化走 hc154_select() + illumination.cpp TTL 重映射
+- [x] 8 轴 config.h 主体重构（第一阶段：4 轴 + CS 抽象）(2026-04-16) - 删除 DEPRECATED_PIN + 4 轴 CS 改 HC154 通道号 + TMC_SPI HAL 加 USE_HC154_CS 分支 + illumination TTL 扩 8 端口 + DAC CS 走 HC154；两工程编译均通过
+- [ ] 8 轴 AxisConfig 扩展（Z2/F1/F2/R/T）- TMC4361A_IC_COUNT 7→8（ifdef 分支），HC154 通道分配；Axis 实例化按 X/Y/Z1/Z2=StepAxis, F1/F2=FilterWheel, R/T=Objectives
 - [ ] MCP23S17 扩展 IO 映射（GPA/GPB 轴 INTR/TARGET）
+- [ ] LT3932 SYNC 核实 - squid++ 是否取消独立 SYNC 引脚（目前占 pin 255 无效），还是挪走
+- [ ] 核实 GPB2 INTR_T/F2轴、GPB6 INTR_Z2/F1轴 标签是否原表笔误
 - [ ] `tags` 文件加入 `.gitignore`
 
 ### 功能验证

@@ -29,12 +29,15 @@ void illumination_init()
     // 安全联锁引脚
     pinMode(Pins::ILLUMINATION_INTERLOCK, INPUT_PULLUP);
 
-    // TTL 端口引脚：初始 LOW（关闭）
+    // TTL 端口引脚：初始 LOW（关闭），squid++ 双相机扩展到 8 路
     pinMode(Pins::ILLUMINATION_D1, OUTPUT); digitalWrite(Pins::ILLUMINATION_D1, LOW);
     pinMode(Pins::ILLUMINATION_D2, OUTPUT); digitalWrite(Pins::ILLUMINATION_D2, LOW);
     pinMode(Pins::ILLUMINATION_D3, OUTPUT); digitalWrite(Pins::ILLUMINATION_D3, LOW);
     pinMode(Pins::ILLUMINATION_D4, OUTPUT); digitalWrite(Pins::ILLUMINATION_D4, LOW);
     pinMode(Pins::ILLUMINATION_D5, OUTPUT); digitalWrite(Pins::ILLUMINATION_D5, LOW);
+    pinMode(Pins::ILLUMINATION_D6, OUTPUT); digitalWrite(Pins::ILLUMINATION_D6, LOW);
+    pinMode(Pins::ILLUMINATION_D7, OUTPUT); digitalWrite(Pins::ILLUMINATION_D7, LOW);
+    pinMode(Pins::ILLUMINATION_D8, OUTPUT); digitalWrite(Pins::ILLUMINATION_D8, LOW);
 
     // LED 驱动 SYNC：2 MHz PWM，50% 占空比
     pinMode(Pins::LED_DRIVER_SYNC, OUTPUT);
@@ -82,10 +85,12 @@ void set_DAC8050x_gain(uint8_t div, uint8_t gains)
 {
     uint16_t value = (uint16_t(div) << 8) | gains;
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
-    digitalWrite(Pins::DAC8050x_CS, LOW);
+    // DAC80508_1 片选走 74HC154 通道 2（Pins::DAC8050x_CS）
+    Pins::hc154_select(Pins::DAC8050x_CS);
     SPI.transfer(IlluminationConfig::DAC_GAIN_ADDR);
     SPI.transfer16(value);
-    digitalWrite(Pins::DAC8050x_CS, HIGH);
+    // 归零到空闲通道（EXPAND_NSCS1）释放 DAC 片选
+    Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
     SPI.endTransaction();
 }
 
@@ -99,20 +104,24 @@ void set_DAC8050x_config()
 {
     uint16_t value = 0;
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
-    digitalWrite(Pins::DAC8050x_CS, LOW);
+    // DAC80508_1 片选走 74HC154 通道 2（Pins::DAC8050x_CS）
+    Pins::hc154_select(Pins::DAC8050x_CS);
     SPI.transfer(IlluminationConfig::DAC_CONFIG_ADDR);
     SPI.transfer16(value);
-    digitalWrite(Pins::DAC8050x_CS, HIGH);
+    // 归零到空闲通道（EXPAND_NSCS1）释放 DAC 片选
+    Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
     SPI.endTransaction();
 }
 
 void set_DAC8050x_output(int channel, uint16_t value)
 {
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
-    digitalWrite(Pins::DAC8050x_CS, LOW);
+    // DAC80508_1 片选走 74HC154 通道 2（Pins::DAC8050x_CS）
+    Pins::hc154_select(Pins::DAC8050x_CS);
     SPI.transfer(IlluminationConfig::DAC_DAC_ADDR + channel);
     SPI.transfer16(value);
-    digitalWrite(Pins::DAC8050x_CS, HIGH);
+    // 归零到空闲通道（EXPAND_NSCS1）释放 DAC 片选
+    Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
     SPI.endTransaction();
 }
 
@@ -258,6 +267,9 @@ int illumination_source_to_port_index(int source)
         case IlluminationConfig::D3: return 2;  // 14 → 2（非顺序！）
         case IlluminationConfig::D4: return 3;  // 13 → 3（非顺序！）
         case IlluminationConfig::D5: return 4;  // 15 → 4
+        case IlluminationConfig::D6: return 5;  // 16 → 5
+        case IlluminationConfig::D7: return 6;  // 17 → 6
+        case IlluminationConfig::D8: return 7;  // 18 → 7
         default: return -1;
     }
 }
@@ -271,13 +283,17 @@ int port_index_to_pin(int port_index)
         case 2: return Pins::ILLUMINATION_D3;
         case 3: return Pins::ILLUMINATION_D4;
         case 4: return Pins::ILLUMINATION_D5;
+        case 5: return Pins::ILLUMINATION_D6;
+        case 6: return Pins::ILLUMINATION_D7;
+        case 7: return Pins::ILLUMINATION_D8;
         default: return -1;
     }
 }
 
 int port_index_to_dac_channel(int port_index)
 {
-    if (port_index >= 0 && port_index < 5)
+    // DAC80508_1 有 8 通道 (0-7)，对应 D1-D8
+    if (port_index >= 0 && port_index < 8)
         return port_index;
     return -1;
 }
@@ -331,6 +347,18 @@ void turn_on_illumination()
             if (illumination_interlock_ok())
                 digitalWrite(Pins::ILLUMINATION_D5, HIGH);
             break;
+        case IlluminationConfig::D6:
+            if (illumination_interlock_ok())
+                digitalWrite(Pins::ILLUMINATION_D6, HIGH);
+            break;
+        case IlluminationConfig::D7:
+            if (illumination_interlock_ok())
+                digitalWrite(Pins::ILLUMINATION_D7, HIGH);
+            break;
+        case IlluminationConfig::D8:
+            if (illumination_interlock_ok())
+                digitalWrite(Pins::ILLUMINATION_D8, HIGH);
+            break;
         default: break;
     }
 }
@@ -362,6 +390,9 @@ void turn_off_illumination()
         case IlluminationConfig::D3: digitalWrite(Pins::ILLUMINATION_D3, LOW); break;
         case IlluminationConfig::D4: digitalWrite(Pins::ILLUMINATION_D4, LOW); break;
         case IlluminationConfig::D5: digitalWrite(Pins::ILLUMINATION_D5, LOW); break;
+        case IlluminationConfig::D6: digitalWrite(Pins::ILLUMINATION_D6, LOW); break;
+        case IlluminationConfig::D7: digitalWrite(Pins::ILLUMINATION_D7, LOW); break;
+        case IlluminationConfig::D8: digitalWrite(Pins::ILLUMINATION_D8, LOW); break;
         default: break;
     }
     illumination_is_on = false;
@@ -377,7 +408,7 @@ void set_illumination(int source, uint16_t intensity)
     if (port_index >= 0)
         illumination_port_intensity[port_index] = intensity;
 
-    // 写 DAC
+    // 写 DAC（DAC80508_1 有 8 通道 0-7，对应 D1-D8）
     switch (source)
     {
         case IlluminationConfig::D1: set_DAC8050x_output(0, illumination_intensity); break;
@@ -385,6 +416,9 @@ void set_illumination(int source, uint16_t intensity)
         case IlluminationConfig::D3: set_DAC8050x_output(2, illumination_intensity); break;
         case IlluminationConfig::D4: set_DAC8050x_output(3, illumination_intensity); break;
         case IlluminationConfig::D5: set_DAC8050x_output(4, illumination_intensity); break;
+        case IlluminationConfig::D6: set_DAC8050x_output(5, illumination_intensity); break;
+        case IlluminationConfig::D7: set_DAC8050x_output(6, illumination_intensity); break;
+        case IlluminationConfig::D8: set_DAC8050x_output(7, illumination_intensity); break;
         default: break;
     }
 
