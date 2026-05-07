@@ -9,6 +9,7 @@
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
+- [x] **修复 AXIS_MM_PER_STEP 双源不同步** (2026-05-07, commit 7be758d) - 改 actuator_microstepping 后命令距离与实际位移按比例失配（ms=16 时 5mm→80mm），改为从 AXIS_CONFIG 派生
 - [x] **XYZW 全部回退为微步模式** (2026-04-17) - `constants.py` has_encoder = False，响应包保持 24 字节与旧 Squid 兼容
 
 ## 待办
@@ -94,6 +95,14 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### AXIS_MM_PER_STEP 双源不同步修复 (2026-05-07, develop, commit 7be758d)
+- [x] 定位根因：`AXIS_MM_PER_STEP` 硬编码 `*256`，与 `_configure_actuators()` 下发的 `actuator_microstepping` 解耦
+- [x] 现象：X 轴 ms=16 时 5mm 命令实际走 80mm（系数 ×16）；推断旧 Squid 0.2mm 现象同源（系数 8/256）
+- [x] 修复：`AXIS_MM_PER_STEP` 改为字典推导式从 `AXIS_CONFIG` 派生，单一数据源
+- [x] 为 W/E1/E3/E4 补齐 `actuator_screw_pitch_mm` 与 `actuator_microstepping` 字段（与 firmware/config.h 默认一致）
+- [x] 移除 `main_window.py` 调试 print
+- [x] 验证：ms=16 / ms=256 两种配置下 5mm 物理位移均正确
 
 ### 上位机 UI 标签化重构 (2026-02-26, develop)
 - [x] main_window.py 改为 QTabWidget 三标签页（Motion / Illumination / Log）

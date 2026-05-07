@@ -6,11 +6,57 @@
 
 ## 最新会话
 
-**日期**: 2026-04-17
+**日期**: 2026-05-07
 **分支**: develop
-**位置**: 全部轴回退为微步模式 + 协议格式与旧 Squid 固件对齐确认
+**位置**: 修复 AXIS_MM_PER_STEP 双源不同步 bug（commit 7be758d）
 
 ### 本次完成
+
+#### 1. 定位 bug：mm/microsteps 换算双源不同步
+
+**现象**：用户把 `constants.py` 中 X 轴 `actuator_microstepping` 从 256 改为 16 后，下发 5mm 实际位移变 80mm（系数 ×16）。
+
+**根因**：
+- `_configure_actuators()` 启动时读 `actuator_microstepping=16` 下发 `CONFIGURE_STEPPER_DRIVER`，固件 TMC4361A 切到 `MSTEP_PER_FS=4`（16 細分）
+- `_move_step_axis_relative_position()` 走的 `AXIS_MM_PER_STEP` 是**硬编码** `2.54/(200*256)`，仍按 256 細分算
+- 结果：5mm → 100787 microsteps 下发，固件 16 細分模式下走 100787/3200×2.54 = 80mm
+
+**对应推断旧 Squid 0.2mm 现象**：旧 Squid 同样存在"配置下发的微步值与 mm_per_ustep_x 用的 MICROSTEPPING_DEFAULT_X 不一致"问题，但方向相反（5mm 命令走 0.156mm ≈ "0.2mm 多一点"），系数 8/256。
+
+#### 2. 修复方案：AXIS_MM_PER_STEP 从 AXIS_CONFIG 派生
+
+`software/utils/constants.py`（commit 7be758d）：
+
+- 为 W/E1/E3/E4 补齐 `actuator_screw_pitch_mm` 和 `actuator_microstepping` 字段（值与 `firmware/config.h AxisConstDefinition` 默认一致）
+- `AXIS_MM_PER_STEP` 改为字典推导式从 `AXIS_CONFIG` 派生，单一数据源
+- 验证：ms=16 与 ms=256 两种配置下 5mm 物理位移都正确
+
+```python
+FULLSTEPS_PER_REV = 200
+AXIS_MM_PER_STEP = {
+    name: cfg["actuator_screw_pitch_mm"] / (FULLSTEPS_PER_REV * cfg["actuator_microstepping"])
+    for name, cfg in AXIS_CONFIG.items()
+}
+```
+
+#### 3. 固件已确认正确（无需改动）
+
+- `handleConfigureStepperDriver` (cmd 21) 立即生效，不是上电仅一次
+- `Axis::configureDriver()` → `motor_setMicrosteps()` 同步刷新 `STEP_CONF`、`stepsPerMM`、TMC2240 `CHOPCONF.MRES`
+- `motor_initDriver()` 中 `microstepRes=0` 硬编码会立即被后续 `motor_setMicrosteps` 覆盖正确值（仅 TMC2240 路径有此覆盖）
+
+### 下次继续
+
+1. **硬件验证** — XY/Z 微步模式下 MOVE/MOVETO 行为确认
+2. 合并 W 轴编码器修复（maxpro → develop）后再决定是否重新启用编码器
+3. TMC2240 StealthChop 参数调优
+4. 清理 TMC2240 调试代码
+5. 硬件验证照明/触发系统
+6. （可选）evaluate `motor_initDriver` 的 `microstepRes=0` 硬编码：是否应该从 `_config.microstepping` 读取，避免依赖后续 `motor_setMicrosteps` 修正
+
+---
+
+### 2026-04-17 - XYZW 全部回退为微步模式 + 协议对齐
 
 #### 1. XYZW 全部回退为微步模式
 
@@ -29,14 +75,6 @@
 
 - `CLAUDE.md` — 修正"32 字节协议"误述，同步当前 24 字节格式与编码器关闭状态
 - `SESSION.md` — 重写最新会话记录本次变更
-
-### 下次继续
-
-1. **硬件验证** — XY/Z 微步模式下 MOVE/MOVETO 行为确认
-2. 合并 W 轴编码器修复（maxpro → develop）后再决定是否重新启用编码器
-3. TMC2240 StealthChop 参数调优
-4. 清理 TMC2240 调试代码
-5. 硬件验证照明/触发系统
 
 ---
 
