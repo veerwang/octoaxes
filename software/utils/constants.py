@@ -54,6 +54,8 @@ AXIS_CONFIG = {
         "has_encoder": True,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
+        "actuator_screw_pitch_mm": 100.0,
+        "actuator_microstepping": 8,
     },
     "E1": {
         "display_name": "Objectives - expand1_axis",
@@ -62,6 +64,8 @@ AXIS_CONFIG = {
         "limits": (0, 4),
         "movement_sign": 1,
         "index": 4,
+        "actuator_screw_pitch_mm": 1.0,
+        "actuator_microstepping": 64,
     },
     "E3": {
         "display_name": "Step Motor - expand3_axis",
@@ -70,6 +74,8 @@ AXIS_CONFIG = {
         "limits": (-6000, 6000),
         "movement_sign": -1,
         "index": 5,
+        "actuator_screw_pitch_mm": 0.3,
+        "actuator_microstepping": 256,
     },
     "E4": {
         "display_name": "Filter Wheel 2 - expand4_axis",
@@ -78,19 +84,20 @@ AXIS_CONFIG = {
         "limits": (0, 7),
         "movement_sign": 1,
         "index": 6,
+        "actuator_screw_pitch_mm": 100.0,
+        "actuator_microstepping": 8,
     },
 }
 
-# 微步 → mm 换算系数（与 firmware/config.h AxisConstDefinition 保持一致）
+# 微步 → mm 换算系数（从 AXIS_CONFIG 派生，单一数据源）
 # 公式：mm_per_step = screwPitchMM / (fullStepsPerRev * microstepping)
+# 修改 actuator_microstepping / actuator_screw_pitch_mm 时此表自动跟随，
+# 避免与 _configure_actuators() 下发的微步值不一致
+FULLSTEPS_PER_REV = 200
 AXIS_MM_PER_STEP = {
-    "X":  2.54  / (200 * 256),   # ≈ 4.96e-5 mm/step
-    "Y":  2.54  / (200 * 256),
-    "Z":  0.3   / (200 * 256),   # ≈ 5.86e-6 mm/step
-    "W":  100.0 / (200 * 8),     # 0.0625 mm/step（滤光轮，mm 无实际意义）
-    "E1": 1.0   / (200 * 64),
-    "E3": 0.3   / (200 * 256),
-    "E4": 100.0 / (200 * 8),
+    name: cfg["actuator_screw_pitch_mm"]
+        / (FULLSTEPS_PER_REV * cfg["actuator_microstepping"])
+    for name, cfg in AXIS_CONFIG.items()
 }
 
 # 移动距离
