@@ -153,16 +153,16 @@ void StepAxis::performHomingSequence() {
         // 周期性打印 debug：每 200ms 打印一次限位状态
         static unsigned long lastDbgTime = 0;
         if (millis() - lastDbgTime > 200) {
-          uint32_t rawStatus = motor_readStatus(_icID);
+          [[maybe_unused]] uint32_t rawStatus = motor_readStatus(_icID);
           [[maybe_unused]] int32_t xactual = motor_getPositionMicrosteps(_icID);
           [[maybe_unused]] int32_t vactual = motor_getVelocityInternal(_icID);
           DEBUG_PRINT(_axisName);
           DEBUG_PRINT(":SEARCH limit_state=0x");
-          Serial.print(limit_state, HEX);
+          DEBUG_PRINTF(limit_state, HEX);
           DEBUG_PRINT(" homingSwitch=0x");
-          Serial.print(_config.homingSwitch, HEX);
+          DEBUG_PRINTF(_config.homingSwitch, HEX);
           DEBUG_PRINT(" STATUS=0x");
-          Serial.print(rawStatus, HEX);
+          DEBUG_PRINTF(rawStatus, HEX);
           DEBUG_PRINT(" XACTUAL=");
           DEBUG_PRINT(xactual);
           DEBUG_PRINT(" VACTUAL=");
@@ -175,13 +175,13 @@ void StepAxis::performHomingSequence() {
         DEBUG_PRINTLN(":Home limit switch triggered!");
 
         // 读取触发前状态
-        uint32_t statusBefore = motor_readStatus(_icID);
+        [[maybe_unused]] uint32_t statusBefore = motor_readStatus(_icID);
         [[maybe_unused]] int32_t xactualBefore = motor_getPositionMicrosteps(_icID);
         DEBUG_PRINT(_axisName);
         DEBUG_PRINT(":Before stop - XACTUAL=");
         DEBUG_PRINT(xactualBefore);
         DEBUG_PRINT(" STATUS=0x");
-        Serial.println(statusBefore, HEX);
+        DEBUG_PRINTLNF(statusBefore, HEX);
 
         motor_setVelocityInternal(_icID, 0); // 停止
 
