@@ -63,6 +63,9 @@ namespace Pins {
     const int TMC4361_STANDARD_CLK = 37;
     const int TMC4361_EXPAND_CLK = 28;
 
+    // 注意：X_AXIS_CS / Y_AXIS_CS 常量名是按 PCB 引脚标号的历史遗留命名，
+    // 与物理 X/Y 电机的 chip 不直接对应（硬件接线由 octoaxes.ino 中
+    // axisName ↔ CS 引脚的映射决定，详见 octoaxes.ino:86-90 注释）。
     const int X_AXIS_CS = 41;
     const int Y_AXIS_CS = 36;
     const int Z_AXIS_CS = 35;

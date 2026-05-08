@@ -329,6 +329,56 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
+    // S:DUMPREGS [axisName]
+    // 不带参数 → dump 所有轴；带参数（X/Y/Z/W）→ 只 dump 指定轴
+    // 用于卡死现场取证：打印 TMC4361A 关键寄存器，定位 ramp generator 异常根因
+    if (command.startsWith("S:DUMPREGS")) {
+      String filter = command.length() > 11 ? command.substring(11) : String("");
+      filter.trim();
+      char buf[160];
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (!axis) continue;
+        const char *name = axis->getAxisName();
+        if (filter.length() > 0 && filter != String(name)) continue;
+
+        uint8_t icID = axis->getIcID();
+        uint32_t status   = tmc4361A_readRegister(icID, TMC4361A_STATUS);
+        uint32_t events   = tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+        uint32_t rampMode = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
+        uint32_t refConf  = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
+        int32_t  xactual  = (int32_t)tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
+        int32_t  xtarget  = (int32_t)tmc4361A_readRegister(icID, TMC4361A_XTARGET);
+        int32_t  vactual  = (int32_t)tmc4361A_readRegister(icID, TMC4361A_VACTUAL);
+        int32_t  vmax     = (int32_t)tmc4361A_readRegister(icID, TMC4361A_VMAX);
+        int32_t  vstopL   = (int32_t)tmc4361A_readRegister(icID, TMC4361A_VIRT_STOP_LEFT);
+        int32_t  vstopR   = (int32_t)tmc4361A_readRegister(icID, TMC4361A_VIRT_STOP_RIGHT);
+        uint32_t stepConf = tmc4361A_readRegister(icID, TMC4361A_STEP_CONF);
+
+        snprintf(buf, sizeof(buf),
+                 "S:DUMP %s STATUS=0x%08lX EVENTS=0x%08lX RAMPMODE=0x%08lX",
+                 name, (unsigned long)status, (unsigned long)events,
+                 (unsigned long)rampMode);
+        SerialUSB.println(buf);
+        snprintf(buf, sizeof(buf),
+                 "S:DUMP %s XACTUAL=%ld XTARGET=%ld VACTUAL=%ld VMAX=%ld",
+                 name, (long)xactual, (long)xtarget, (long)vactual, (long)vmax);
+        SerialUSB.println(buf);
+        snprintf(buf, sizeof(buf),
+                 "S:DUMP %s VSTOP_L=%ld VSTOP_R=%ld REFCONF=0x%08lX STEP_CONF=0x%08lX",
+                 name, (long)vstopL, (long)vstopR,
+                 (unsigned long)refConf, (unsigned long)stepConf);
+        SerialUSB.println(buf);
+        snprintf(buf, sizeof(buf),
+                 "S:DUMP %s isMoving=%d state=%d softLimEn=%d needReenable=%d",
+                 name, (int)axis->isMoving(), (int)axis->getCurrentState(),
+                 (int)axis->isSoftLimitsEnabled(), 0);
+        SerialUSB.println(buf);
+      }
+      SerialUSB.println("S:DUMPREGS:END");
+      return;
+    }
+
     // 处理其他调试命令
     DEBUG_PRINT("Serial:TO_AXISMGR:");
     DEBUG_PRINTLN(command);  // 调试点 - 发往AxisManager

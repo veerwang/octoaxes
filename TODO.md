@@ -9,6 +9,7 @@
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
+- [x] **修复旧 Squid 随机点动 X/Y 卡死** (2026-05-08) - axisName ↔ CS 引脚映射与硬件接线反，X 命令实际驱动物理 Y 电机，导致走到 Y 上限时 fw 把 STOPR_EVENT 归到 X 轴卡死。修复 octoaxes.ino 交换 axisName 字符串
 - [x] **协助旧 Squid 定位 5mm 短少 bug** (2026-05-08) - VSTOP 早完成根因，`y_negative=-0.01` 修复（旧 Squid 配置层）
 - [x] **修复 AXIS_MM_PER_STEP 双源不同步** (2026-05-07, commit 7be758d) - 改 actuator_microstepping 后命令距离与实际位移按比例失配（ms=16 时 5mm→80mm），改为从 AXIS_CONFIG 派生
 - [x] **XYZW 全部回退为微步模式** (2026-04-17) - `constants.py` has_encoder = False，响应包保持 24 字节与旧 Squid 兼容
@@ -106,6 +107,17 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### 旧 Squid 随机点动 X/Y 卡死根因定位与修复 (2026-05-08)
+- [x] **症状**：随机点动测试中 X 或 Y 概率性单轴卡死，位置冻结、互不影响、fw 通信正常、必须断电恢复
+- [x] **排查路径**：先怀疑 StallGuard → 关闭 SG 仍卡死，排除；加 `S:DUMPREGS [axisName]` 调试命令（serial.cpp）准备抓现场；用户提示核对 firmware 内部 axis 索引差异
+- [x] **决定性证据**：旧 Squid `firmware/controller/src/def/def_v1.h:11-21` 注释明确 `Internal: x=1, y=0`，`pin_TMC4361_CS[]={41, 36, ...}` 实际是 `[0]=Y(CS=41), [1]=X(CS=36)`。Octoaxes firmware 把 `Pins::X_AXIS_CS=41/Y_AXIS_CS=36` 与硬件接线**完全反置**
+- [x] **bug 链**：用户硬件按旧 Squid 接线（X 接 CS=36），octoaxes fw 把 CS=41 当作 X axis → 旧 Squid 发 MOVE_X 实际驱动物理 Y 电机 → 走到 Y 物理上限 76mm 时 CS=41 chip 收 STOPR_EVENT → fw 归到「X axis」卡死。卡死位置 79.9mm ≈ Y 上限 76mm（数值耦合证实）
+- [x] **修复**：`firmware/octoaxes/octoaxes.ino:86-87` 交换 axisName 字符串与 CS 引脚的对应：`xAxis = StepAxis(Pins::Y_AXIS_CS=36, 0, "X")`、`yAxis = StepAxis(Pins::X_AXIS_CS=41, 1, "Y")`。**协议字节零变化**，AxisConfigs::X_AXIS/Y_AXIS 物理参数通过 axisName 匹配自动映射到正确 chip
+- [x] 恢复 X/Y `enableStallSensitivity = true`（SG 临时关闭撤销）
+- [x] 保留 `serial.cpp` 的 `S:DUMPREGS [axisName]` 调试命令，未来卡死现场取证用
+- [x] `config.h` PIN_CS_X/Y 常量加注释说明命名为 PCB 引脚号历史遗留
+- [x] 编译通过 (teensy41 / teensy41_debug)
 
 ### 旧 Squid 5mm 短少 bug 定位 (2026-05-08, 配置在旧 Squid 仓库)
 - [x] 通过 `~/.local/state/squid/log/main_hcs.log` 时序定位：MOVE 命令在 ~18-20ms 内被报告 COMPLETED（远早于真实运动时间 ~300ms）

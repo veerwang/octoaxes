@@ -80,17 +80,76 @@ y_negative = -0.01   ; 原 4，必须严格小于 home 后位置 0
 - v2 的「pending 期持安全值」方向**思路正确**，失败原因可能在「使能时序」或「与 stepaxis homing 路径的交互」上的细节，目前推测无法落实。
 - 决定：**搁置固件方案 A**，**保留 Plan B 配置 workaround 作为生产可行方案**。
 
+#### 6. 旧 Squid 随机点动 X 卡死根因定位 — axisName ↔ CS 引脚映射反置 (2026-05-08 后期)
+
+**现象**：旧 Squid 跑随机点动测试，X 或 Y 概率性单轴卡死（位置冻结、互不影响、fw 通信正常、必须断电恢复）。点动 cmd 95 MOVETO_X=104957 X 走到 100665 ≈ **79.9mm** 就停（接近 Y 物理上限 76mm 这个数值耦合是关键线索）。
+
+**排查路径**：
+1. 先怀疑 StallGuard 误触发 → 临时关闭 X/Y `enableStallSensitivity` 重测 → 仍卡死，**排除 SG**
+2. 加 `S:DUMPREGS X` 调试命令准备抓现场（`serial.cpp` 实现）
+3. 用户提示核对**新旧 Squid firmware 的 X/Y CS 引脚定义**——找到决定性证据
+
+**决定性证据**（旧 Squid `firmware/controller/src/def/def_v1.h:11-21`）：
+```cpp
+// IMPORTANT: These are INTERNAL indices, NOT protocol constants!
+// Protocol: AXIS_X=0, AXIS_Y=1, AXIS_Z=2, ...
+// Internal: x=1, y=0, z=2, w=3, w2=4
+// Internal indices match hardware wiring (x/y swapped, ...)
+static const uint8_t x = 1;
+static const uint8_t y = 0;
+```
+对应 `constants.h:80` `pin_TMC4361_CS[5] = {41, 36, 35, 34, 16}`：
+- `pin_TMC4361_CS[0] = 41` → 内部索引 y=0 → **物理 Y 电机**
+- `pin_TMC4361_CS[1] = 36` → 内部索引 x=1 → **物理 X 电机**
+
+而 Octoaxes firmware 之前假设：
+- `Pins::X_AXIS_CS = 41` → "X axis" → 操作 CS=41 chip
+- `Pins::Y_AXIS_CS = 36` → "Y axis" → 操作 CS=36 chip
+
+**与硬件接线完全相反**！
+
+**bug 链**（用户硬件按旧 Squid 接线 + Octoaxes firmware）：
+- 旧 Squid 上位机发 `MOVE_X` (cmd[1]=0) → fw findAxisByName("X") → 操作 CS=41 chip → **实际驱动物理 Y 电机**
+- 用户看到 GUI 「X」数字增长 + 物理 X stage 移动 = 同方向，没察觉反置
+- 但 Y 物理电机走到 76mm（Y 物理上限）触发 Y 硬件 RIGHT 限位开关 → CS=41 chip 收到 STOPR_EVENT → fw 把这个事件归到「X axis」（因为 CS=41 在 fw 内部叫 X）→ X._isMoving 永远卡 true
+- 后续所有 MOVETO_X 被 `_currentState != STATE_IDLE` 拒绝（reject 但 cmd_id 仍更新）
+- 必须断电硬复位 TMC4361A 才能清 EVENTS
+
+**解释了所有症状**：
+- 单轴卡死、互不影响（限位 latch 在单个 chip）
+- fw 通信正常（主循环正常）
+- 必须断电（TMC4361A 内部 EVENTS sticky 状态需硬复位）
+- 卡死位置 79.9mm ≈ Y 上限 76mm（数值耦合）
+
+**修复方案**：交换 axisName 字符串与 CS 引脚的对应关系，**不改 PIN_CS_X/Y 常量名（保持 PCB 引脚号历史命名）**：
+
+`firmware/octoaxes/octoaxes.ino:86-87`:
+```cpp
+// 旧 (与硬件接线反)
+Axis *yAxis = new StepAxis(Pins::Y_AXIS_CS=36, 0, "Y");
+Axis *xAxis = new StepAxis(Pins::X_AXIS_CS=41, 1, "X");
+
+// 新 (axisName 与硬件接线对齐)
+Axis *xAxis = new StepAxis(Pins::Y_AXIS_CS=36, 0, "X");  // CS=36 = 物理 X 电机
+Axis *yAxis = new StepAxis(Pins::X_AXIS_CS=41, 1, "Y");  // CS=41 = 物理 Y 电机
+```
+
+**协议字节零变化**——上位机完全不需要改。`AxisConfigs::X_AXIS / Y_AXIS` 物理参数通过 `beginAll()` 按 axisName 匹配，正确映射到对应物理 chip。
+
+**附加改动**：
+- 恢复 X/Y `enableStallSensitivity = true`（SG 不是元凶，临时关闭撤销）
+- 保留 `serial.cpp` 中的 `S:DUMPREGS [axisName]` 调试命令（dump TMC4361A 关键寄存器，未来卡死现场取证用）
+- `config.h` PIN_CS_X/Y 常量加注释说明命名是 PCB 引脚号历史，不代表物理轴对应
+
 ### 下次继续
 
-1. **保留 Plan B 配置 workaround** — 旧 Squid `configuration_Squid+.ini` 维持 `x_negative=0, y_negative=-0.01`（值需严格 < home 后位置）。这是当前唯一硬件验证通过的方案。
-2. （搁置）方案 A 重做的前置条件：
-   - 烧 debug 固件 + 串口监视器（脱离 Squid 跑），跑 octoaxes 测试脚本逐步触发 SET_LIM/MOVE 流程
-   - 写一个「dump TMC4361A REFCONF + STATUS + EVENTS + VIRT_STOP_*」的 S:* 调试命令，验证每步的寄存器实际值
-   - 查 TMC4361A 数据手册的「VIRT_STOP_MODE / VSTOP_EVENT / RAMP_STATE 之间的交互」明确每个 corner case 的定义
-3. （遗留）cmd 29 MOVE_X +62992 17.2ms 早完成（`STATE_LEAVING_HOME` 时 `moveRelativeMicrosteps` 静默 false）— 与方案 A 无关的独立 bug，可单独修
-4. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
-5. （续）合并 W 轴编码器修复（maxpro → develop）
-6. （续）硬件验证照明/触发系统
+1. **硬件验证**：烧固件后用 octoaxes 上位机点 X +5mm，确认物理 X 真的移动（之前是物理 Y）；旧 Squid 跑随机点动 stress 测试，X/Y 不应再卡死
+2. （搁置）方案 A 软限位延迟使能：等有更精确诊断手段（debug 固件 + 串口监视器、独立 SPI 寄存器 dump，现在 `S:DUMPREGS` 已经初步可用）后再做
+3. **保留 Plan B 配置 workaround** — 旧 Squid `configuration_Squid+.ini` 维持 `x_negative=0, y_negative=-0.01` 仍是当前已验证方案
+4. （遗留）cmd 29 MOVE_X +62992 17.2ms 早完成（`STATE_LEAVING_HOME` 时 `moveRelativeMicrosteps` 静默 false）— 与方案 A 无关的独立 bug，可单独修
+5. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
+6. （续）合并 W 轴编码器修复（maxpro → develop）
+7. （续）硬件验证照明/触发系统
 
 ---
 
