@@ -12,7 +12,7 @@ AXIS_CONFIG = {
         "display_name": "Step Motor - x_axis",
         "type": "step_motor",
         "has_limits": True,
-        "limits": (-80000, 80000),
+        "limits": (-10, 115000),
         "movement_sign": 1,
         "index": 1,  # X 轴 index=1
         "default_velocity": 25.0,      # mm/s
@@ -29,7 +29,7 @@ AXIS_CONFIG = {
         "display_name": "Step Motor - y_axis",
         "type": "step_motor",
         "has_limits": True,
-        "limits": (-120000, 120000),
+        "limits": (-10, 76000),
         "movement_sign": 1,
         "index": 0,  # Y 轴 index=0
         "default_velocity": 25.0,
