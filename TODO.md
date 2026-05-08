@@ -9,6 +9,7 @@
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
+- [x] **协助旧 Squid 定位 5mm 短少 bug** (2026-05-08) - VSTOP 早完成根因，`y_negative=-0.01` 修复（旧 Squid 配置层）
 - [x] **修复 AXIS_MM_PER_STEP 双源不同步** (2026-05-07, commit 7be758d) - 改 actuator_microstepping 后命令距离与实际位移按比例失配（ms=16 时 5mm→80mm），改为从 AXIS_CONFIG 派生
 - [x] **XYZW 全部回退为微步模式** (2026-04-17) - `constants.py` has_encoder = False，响应包保持 24 字节与旧 Squid 兼容
 
@@ -20,6 +21,11 @@
 - [ ] （暂缓）Z 轴编码器硬件验证 - Encoder 与 Steps μm 值对比 Δ≈0
 - [ ] （暂缓）合并 W 轴编码器修复（maxpro → develop）
 - [ ] （暂缓）重新启用编码器并开启 PID 闭环
+
+### 固件兜底改进（2026-05-08 提出，可选）
+- [ ] `Axis::setOneSoftLimit()` 检测 XACTUAL 已在新限位外时先不使能 VSTOP（避免上位机依赖"home 后位置严格在限位内"）
+- [ ] `Axis::checkLimitPosition()` 区分「移动中跨过限位」vs「初始即在限位外」，后者不应立即 `completeMovement()` 报 COMPLETED
+- [ ] `Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不要静默返回 false — 应排队等待 IDLE 或上报错误（避免假 COMPLETED）
 
 
 
@@ -95,6 +101,13 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### 旧 Squid 5mm 短少 bug 定位 (2026-05-08, 配置在旧 Squid 仓库)
+- [x] 通过 `~/.local/state/squid/log/main_hcs.log` 时序定位：MOVE 命令在 ~18-20ms 内被报告 COMPLETED（远早于真实运动时间 ~300ms）
+- [x] 根因：`configuration_Squid+.ini` `x_negative=5, y_negative=4` mm，Squid 启动 `set_limits` 时 XACTUAL 已在下限以下 → TMC4361A `VSTOPL_ACTIVE` 立即触发
+- [x] 固件路径：`Axis::checkLimitPosition()` 读到 VSTOP 标志 → 直接 `completeMovement()` → `_isMoving=false` → status 报 COMPLETED → Squid `wait_till_operation_is_completed` 提前唤醒
+- [x] 方案 B 修复：`x_negative=0, y_negative=-0.01`（旧 Squid 配置层），y 必须严格 < 0 因 home 后 Y=0 而 X=64（home_safety_margin）
+- [x] 验证：5mm X/Y 来回各多次，每条命令 290-300ms 真实完成时间，累计位移与命令一致
 
 ### AXIS_MM_PER_STEP 双源不同步修复 (2026-05-07, develop, commit 7be758d)
 - [x] 定位根因：`AXIS_MM_PER_STEP` 硬编码 `*256`，与 `_configure_actuators()` 下发的 `actuator_microstepping` 解耦
@@ -207,6 +220,7 @@
 <!-- 遇到的问题或阻塞项，需要解决后才能继续 -->
 
 - W 轴 config.h 中 homingSwitch=LEFT_SW 与实际硬件（RIGHT switch）不匹配，暂不影响功能但 latch 位置不准确
+- **固件 VSTOP 早完成行为隐患** (2026-05-08 发现): `Axis::checkLimitPosition()` 检测到 VSTOPL/VSTOPR 立即调 `completeMovement()` 并清 `_isMoving`，导致上位机收到提前的 COMPLETED 状态。当 XACTUAL 在 SET_LIM 时已在限位外（如旧 Squid 启动顺序），任何 MOVE 命令都会被 ~18ms 早完成。已通过下放下限规避，固件兜底改进见「固件兜底改进」节
 - ~~**⚠ TMC2240 DRV_ENN 硬件问题**~~ (2026-03-25 已解决) — DRV_ENN 已从 NFREEZE 断开并接 GND
 - **TMC2240 Cover READ 不可靠**: `SPI_OUTPUT_FORMAT=0x0D` 40-bit auto SPI 响应覆盖 COVER_DRV 寄存器，导致 `tmc2240_fieldWrite` read-modify-write 损坏寄存器。已通过 shadow register 规避，但运行时 TMC2240 寄存器回读均不可信
 - **待查: TMC4361A format 0x0A vs 0x0D 方向差异根因** — TMC2240 使用 format 0x0D 时电机方向与 TMC2660 (format 0x0A) 相反，已通过 `REVERSE_MOTOR_DIR` 修复。已确认两芯片线圈约定一致(A=sin,B=cos)、PCB 接线一致，根因在 TMC4361A 内部两种格式的 coil A/B 映射差异，需查 TMC4361A 数据手册 SPI Output Stage 章节确认

@@ -6,13 +6,67 @@
 
 ## 最新会话
 
-**日期**: 2026-05-07
-**分支**: develop
-**位置**: 修复 AXIS_MM_PER_STEP 双源不同步 bug（commit 7be758d）
+**日期**: 2026-05-08
+**分支**: develop（旧 Squid 在 `/home/hds/github.com/veerwang/lihongquan/Squid`，配置层修复）
+**位置**: 定位旧 Squid 5mm 移动短少根因 — VSTOP 早完成 bug
 
 ### 本次完成
 
-#### 1. 定位 bug：mm/microsteps 换算双源不同步
+#### 1. 定位旧 Squid 5mm 实际位移短少的根因
+
+**现象**：旧 Squid 上位机点 X/Y 5mm 移动，GUI 数值与物理位移都明显短少；同固件用 octoaxes 上位机正常。
+
+**根因（VSTOP 早完成）**：
+- 旧 Squid 启动调用 `microscope.py:452` **先 `set_limits` 再 `home_xyz`**
+- `configuration_Squid+.ini` 默认 `[SOFTWARE_POS_LIMIT]` 中 `x_negative=5`、`y_negative=4`（mm）
+- 启动时 XACTUAL 处于硬件复位后位置（X=1967 微步 ≈ 1.56mm），**已经在下限以下**
+- 固件 `Axis::setOneSoftLimit()` 立即使能 TMC4361A `VIRT_STOP_LEFT`，TMC4361A 检测 `XACTUAL ≤ VIRT_STOP_LEFT` → 设置 `VSTOPL_ACTIVE` 标志
+- 任何后续 MOVE_X：`moveRelativeMicrosteps` 过 `isWithinSoftLimits(target)` 检查 → `motor_moveToMicrosteps` 写 XTARGET → `startMovement()` 设 `_isMoving=true` → 但电机一启动就触发 VSTOPL → `Axis::update()` 进 `STATE_MOVING` 分支 → `checkLimitPosition()` 读到 `VSTOPL_ACTIVE_MASK` → **直接 `completeMovement()`** (axis.cpp:261) 清 `_isMoving`
+- 下次 `send_position_update` 上报 `status=COMPLETED`
+- Squid 的 `wait_till_operation_is_completed` 在 ~18-20ms 内被唤醒（远早于电机真完成）→ Squid 以为命令完成，每次 5mm 实际只走几百微步
+
+**为什么 octoaxes 没事**：octoaxes `widgets.py` 默认软限位 `[-6000, 6000] μm`，包含原点 0，VSTOP 不会预先触发。
+
+**关键日志证据**（`~/.local/state/squid/log/main_hcs.log`）：
+- bug 现场：cmd 26 MOVE_Y +25197 在 **20.3ms** 报 COMPLETED；cmd 28 MOVE_X +62992 在 **18.2ms** 报 COMPLETED
+- 5mm 重复点击：x 从 6 → 25 → 202 → 1395 → 1758 → 2192 → 2940（每次只走 ~400 微步，因 XACTUAL<6299 一直被 VSTOPL 截停）
+
+#### 2. 修复方案 B：旧 Squid 配置层下放下限
+
+修改 `configuration_Squid+.ini`：
+```ini
+[SOFTWARE_POS_LIMIT]
+x_negative = 0       ; 原 5
+y_negative = -0.01   ; 原 4，必须严格小于 home 后位置 0
+```
+
+**为什么 y_negative 不能是 0**：TMC4361A VSTOPL 触发条件是 `XACTUAL ≤ VIRT_STOP_LEFT`（含等号）。Y home 完成后停在 0，等于下限 0 → 仍触发 VSTOP。X home 完后是 64（home_safety_margin 让 X 离开了原点），所以 X 没问题。改成 `-0.01 mm = -13 微步` 让 0 严格大于下限即可。
+
+#### 3. 验证（commit 待提交，旧 Squid 仓库）
+
+修复后日志（`main_hcs.log` 09:24:54+）：
+- cmd 39-41 MOVE_X ±6299：**295.6ms / 298.2ms / 298.0ms** 真实完成时间（25mm/s × 5mm + S-ramp 合理）
+- cmd 46-55 MOVE_Y ±6299：**290.8–299.9ms** 同理
+- 累计位移精确：x = 25 → 6324 → 12623 → 18922 → 12623 → 6324（每步 ±6299）✓
+- y = 0 → 6299 → 12598 → 6299 → 0 → 6299 → 11241 → 18897（每步 ±6299）✓
+
+#### 4. 遗留：cmd 29 MOVE_X +62992 仍 17.2ms 早完成
+
+启动 homing 序列里 `home_xyz` 第二段 `move_x(50)` 命令实际只走 25 微步（X 不动），但该序列 X 已 home，紧接着 HOME Y，**无副作用**，先不修。
+
+**根因推测**：cmd 28 (HOME X) 完成后 X 短暂处于 `STATE_LEAVING_HOME`；cmd 29 到达时 `Axis::moveRelativeMicrosteps` 看到 `_currentState != STATE_IDLE` 直接返回 false，`startMovement()` 不被调用，`_isMoving` 保持 false → 下一次 `send_position_update` 报 COMPLETED。
+
+### 下次继续
+
+1. （建议）固件兜底改进：`Axis::setOneSoftLimit()` 检测 XACTUAL 已在新限位外时**先不使能 VSTOP**，等电机进入限位范围后再使能（或 `checkLimitPosition` 区分「移动中跨过限位」vs「初始即在限位外」）
+2. （建议）固件 `moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时返回 `false` 但不静默 — 应排队或上报错误，避免 cmd 29 这种"假 COMPLETED"
+3. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
+4. （续）合并 W 轴编码器修复（maxpro → develop）
+5. （续）硬件验证照明/触发系统
+
+---
+
+### 2026-05-07 - 修复 AXIS_MM_PER_STEP 双源不同步 bug（commit 7be758d）
 
 **现象**：用户把 `constants.py` 中 X 轴 `actuator_microstepping` 从 256 改为 16 后，下发 5mm 实际位移变 80mm（系数 ×16）。
 
@@ -21,38 +75,9 @@
 - `_move_step_axis_relative_position()` 走的 `AXIS_MM_PER_STEP` 是**硬编码** `2.54/(200*256)`，仍按 256 細分算
 - 结果：5mm → 100787 microsteps 下发，固件 16 細分模式下走 100787/3200×2.54 = 80mm
 
-**对应推断旧 Squid 0.2mm 现象**：旧 Squid 同样存在"配置下发的微步值与 mm_per_ustep_x 用的 MICROSTEPPING_DEFAULT_X 不一致"问题，但方向相反（5mm 命令走 0.156mm ≈ "0.2mm 多一点"），系数 8/256。
+**修复**：`software/utils/constants.py` 中 `AXIS_MM_PER_STEP` 改为字典推导式从 `AXIS_CONFIG` 派生，单一数据源；为 W/E1/E3/E4 补齐 `actuator_screw_pitch_mm` 和 `actuator_microstepping` 字段。
 
-#### 2. 修复方案：AXIS_MM_PER_STEP 从 AXIS_CONFIG 派生
-
-`software/utils/constants.py`（commit 7be758d）：
-
-- 为 W/E1/E3/E4 补齐 `actuator_screw_pitch_mm` 和 `actuator_microstepping` 字段（值与 `firmware/config.h AxisConstDefinition` 默认一致）
-- `AXIS_MM_PER_STEP` 改为字典推导式从 `AXIS_CONFIG` 派生，单一数据源
-- 验证：ms=16 与 ms=256 两种配置下 5mm 物理位移都正确
-
-```python
-FULLSTEPS_PER_REV = 200
-AXIS_MM_PER_STEP = {
-    name: cfg["actuator_screw_pitch_mm"] / (FULLSTEPS_PER_REV * cfg["actuator_microstepping"])
-    for name, cfg in AXIS_CONFIG.items()
-}
-```
-
-#### 3. 固件已确认正确（无需改动）
-
-- `handleConfigureStepperDriver` (cmd 21) 立即生效，不是上电仅一次
-- `Axis::configureDriver()` → `motor_setMicrosteps()` 同步刷新 `STEP_CONF`、`stepsPerMM`、TMC2240 `CHOPCONF.MRES`
-- `motor_initDriver()` 中 `microstepRes=0` 硬编码会立即被后续 `motor_setMicrosteps` 覆盖正确值（仅 TMC2240 路径有此覆盖）
-
-### 下次继续
-
-1. **硬件验证** — XY/Z 微步模式下 MOVE/MOVETO 行为确认
-2. 合并 W 轴编码器修复（maxpro → develop）后再决定是否重新启用编码器
-3. TMC2240 StealthChop 参数调优
-4. 清理 TMC2240 调试代码
-5. 硬件验证照明/触发系统
-6. （可选）evaluate `motor_initDriver` 的 `microstepRes=0` 硬编码：是否应该从 `_config.microstepping` 读取，避免依赖后续 `motor_setMicrosteps` 修正
+**固件已确认正确（无需改动）**：`handleConfigureStepperDriver` 立即生效；`Axis::configureDriver()` → `motor_setMicrosteps()` 同步刷新 `STEP_CONF`、`stepsPerMM`、TMC2240 `CHOPCONF.MRES`。
 
 ---
 
