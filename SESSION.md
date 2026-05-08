@@ -7,8 +7,8 @@
 ## 最新会话
 
 **日期**: 2026-05-08
-**分支**: develop
-**位置**: 实现固件软限位「延迟使能」兜底（方案 A），消除 VSTOP 早完成隐患
+**分支**: develop（旧 Squid 在 `/home/hds/github.com/veerwang/lihongquan/Squid`，配置层修复）
+**位置**: 定位旧 Squid 5mm 移动短少根因 — VSTOP 早完成 bug
 
 ### 本次完成
 
@@ -56,34 +56,9 @@ y_negative = -0.01   ; 原 4，必须严格小于 home 后位置 0
 
 **根因推测**：cmd 28 (HOME X) 完成后 X 短暂处于 `STATE_LEAVING_HOME`；cmd 29 到达时 `Axis::moveRelativeMicrosteps` 看到 `_currentState != STATE_IDLE` 直接返回 false，`startMovement()` 不被调用，`_isMoving` 保持 false → 下一次 `send_position_update` 报 COMPLETED。
 
-#### 5. 固件兜底改进：软限位「延迟使能」（方案 A，已实施）
-
-**改动**：`firmware/octoaxes/axis.h` + `axis.cpp`
-
-- 新增 4 个成员：`_pendingLeftLimitEnable / _pendingLeftLimitValue / _pendingRightLimitEnable / _pendingRightLimitValue`
-- `Axis::setOneSoftLimit()` 调用时检查当前 XACTUAL：
-  - 若 `xactual > value`（下限）或 `xactual < value`（上限）→ 立即使能 EN（原行为）
-  - 若 XACTUAL 已在限位外 → **只写 VIRT_STOP_*** 寄存器但 EN=0**，标记 pending
-- 新增 `Axis::checkPendingLimits()`，在 `Axis::update()` 顶部每 tick 调用一次：
-  - 轮询 XACTUAL，越过 pending 的限位值进入安全区后置 EN 位
-  - 使能前先读 EVENTS 寄存器清残留（防止陈旧 VSTOP_EVENT 误触 `checkLimitPosition`）
-- 与既有 `_needReenableLimits`（VSTOP recovery）正交：本机制覆盖 SET_LIM 时刻已越界的场景，运行在所有状态（IDLE/MOVING/HOMING）
-
-**效果**：
-- 上位机可以在任意时刻下发 X 下限 5mm，即使 XACTUAL=0；电机不会被立即截停
-- XACTUAL 越过 5mm 后，限位才正式生效
-- 旧 Squid `configuration_Squid+.ini` 可以恢复 `x_negative=5, y_negative=4` 而不出 bug
-- octoaxes 上位机也不需要继续依赖 `[-6mm, 6mm]` 的宽松默认
-
-**编译**：`teensy41` + `teensy41_debug` 两个 env 均编译通过。
-
-**待硬件验证**：
-1. 复位后 X≈1.56mm，下发 SET_LIM(X_neg=5mm)，发 MOVE_X +20mm — 应正常走完，到 ≥5mm 后看到 `:SOFT_LIM_ARMED_L` 调试输出
-2. 之后再发 MOVE_X 越界（如 -10mm 朝下）应被 VSTOP 正常截停
-
 ### 下次继续
 
-1. **硬件验证软限位延迟使能**（见上节 5 的两个测试用例）
+1. （建议）固件兜底改进：`Axis::setOneSoftLimit()` 检测 XACTUAL 已在新限位外时**先不使能 VSTOP**，等电机进入限位范围后再使能（或 `checkLimitPosition` 区分「移动中跨过限位」vs「初始即在限位外」）
 2. （建议）固件 `moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时返回 `false` 但不静默 — 应排队或上报错误，避免 cmd 29 这种"假 COMPLETED"
 3. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
 4. （续）合并 W 轴编码器修复（maxpro → develop）

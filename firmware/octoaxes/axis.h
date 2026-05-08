@@ -107,15 +107,6 @@ protected:
   // 需等电机离开边界后（STATUS 中 VSTOP flags 清除）才能重新使能
   bool _needReenableLimits;
 
-  // 软限位「初始 XACTUAL 已在限位外」延迟使能
-  // setOneSoftLimit() 调用时若 XACTUAL 已违反新限位，则只写 VIRT_STOP_*
-  // 寄存器但不置 EN 位；checkPendingLimits() 轮询，直到 XACTUAL
-  // 越过限位进入安全区后再使能 EN，避免一启动 MOVE 就被 VSTOP 截停。
-  bool _pendingLeftLimitEnable;
-  int32_t _pendingLeftLimitValue;
-  bool _pendingRightLimitEnable;
-  int32_t _pendingRightLimitValue;
-
   // PID 状态（每轴独立）
   struct PIDState {
     bool enabled;         // PID 当前是否活跃
@@ -200,7 +191,6 @@ public:
   virtual void setSoftLimits(float lowerLimitMM, float upperLimitMM);
   virtual void enableSoftLimits(bool enable);
   void setOneSoftLimit(int direction, int32_t valueMicrosteps);
-  void checkPendingLimits();
 
   // PID 控制
   void configureStagePID(bool flip_direction, uint16_t transitions_per_rev);
