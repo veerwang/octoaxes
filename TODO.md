@@ -22,10 +22,15 @@
 - [ ] （暂缓）合并 W 轴编码器修复（maxpro → develop）
 - [ ] （暂缓）重新启用编码器并开启 PID 闭环
 
-### 固件兜底改进（2026-05-08 提出，可选）
-- [ ] `Axis::setOneSoftLimit()` 检测 XACTUAL 已在新限位外时先不使能 VSTOP（避免上位机依赖"home 后位置严格在限位内"）
-- [ ] `Axis::checkLimitPosition()` 区分「移动中跨过限位」vs「初始即在限位外」，后者不应立即 `completeMovement()` 报 COMPLETED
-- [ ] `Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不要静默返回 false — 应排队等待 IDLE 或上报错误（避免假 COMPLETED）
+### 固件软限位「延迟使能」方案 A — 已搁置（2026-05-08）
+- [x] **v1 实施失败并 revert** — `setOneSoftLimit` pending 期间「写真值 + EN=0」组合让 TMC4361A 进入未文档化状态，cmd 集体延迟 5 秒
+- [x] **v2 实施失败并 reset** — 改为「pending 期持安全值 INT32_MIN/MAX」，覆盖了 SET_LIM 时已越界场景，但没覆盖 homing 重置 XACTUAL 后已使能限位变成内侧的场景
+- [x] **v2 续 enableSoftLimits 智能延迟实施失败并 reset** — homing X 完全卡住，原因不明
+- [x] **重置回 commit 8571106**，搁置方案 A — 推测无法继续，需要更精确诊断手段
+- [ ] （前置条件）实现 `S:DUMP_REGS` 调试命令，dump TMC4361A REFCONF/STATUS/EVENTS/VIRT_STOP_*/VACTUAL/XACTUAL，配合 debug 固件 + 串口监视器逐步触发
+- [ ] （前置条件）查 TMC4361A 数据手册「VIRT_STOP_MODE / VSTOP_EVENT / RAMP_STATE 之间的交互」明确每个 corner case
+- [ ] **生产可行方案：保留 Plan B 配置层 workaround**（旧 Squid `configuration_Squid+.ini` 维持 `x_negative=0, y_negative=-0.01`，值需严格 < home 后位置）
+- [ ] （独立 bug，可单独修）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不要静默返回 false — 应排队等待 IDLE 或上报错误（避免假 COMPLETED；cmd 29 现象）
 
 
 
@@ -220,7 +225,7 @@
 <!-- 遇到的问题或阻塞项，需要解决后才能继续 -->
 
 - W 轴 config.h 中 homingSwitch=LEFT_SW 与实际硬件（RIGHT switch）不匹配，暂不影响功能但 latch 位置不准确
-- **固件 VSTOP 早完成行为隐患** (2026-05-08 发现): `Axis::checkLimitPosition()` 检测到 VSTOPL/VSTOPR 立即调 `completeMovement()` 并清 `_isMoving`，导致上位机收到提前的 COMPLETED 状态。当 XACTUAL 在 SET_LIM 时已在限位外（如旧 Squid 启动顺序），任何 MOVE 命令都会被 ~18ms 早完成。已通过下放下限规避，固件兜底改进见「固件兜底改进」节
+- **固件 VSTOP 早完成行为隐患** (2026-05-08 发现): `Axis::checkLimitPosition()` 检测到 VSTOPL/VSTOPR 立即调 `completeMovement()` 并清 `_isMoving`，导致上位机收到提前的 COMPLETED 状态。当 XACTUAL 在 SET_LIM 时已在限位外（如旧 Squid 启动顺序），任何 MOVE 命令都会被 ~18ms 早完成。**当前方案**：通过配置层下放下限规避（Plan B）。固件方案 A 三次实施都失败，已 reset 到 8571106 搁置（详见「固件软限位延迟使能方案 A」节）
 - ~~**⚠ TMC2240 DRV_ENN 硬件问题**~~ (2026-03-25 已解决) — DRV_ENN 已从 NFREEZE 断开并接 GND
 - **TMC2240 Cover READ 不可靠**: `SPI_OUTPUT_FORMAT=0x0D` 40-bit auto SPI 响应覆盖 COVER_DRV 寄存器，导致 `tmc2240_fieldWrite` read-modify-write 损坏寄存器。已通过 shadow register 规避，但运行时 TMC2240 寄存器回读均不可信
 - **待查: TMC4361A format 0x0A vs 0x0D 方向差异根因** — TMC2240 使用 format 0x0D 时电机方向与 TMC2660 (format 0x0A) 相反，已通过 `REVERSE_MOTOR_DIR` 修复。已确认两芯片线圈约定一致(A=sin,B=cos)、PCB 接线一致，根因在 TMC4361A 内部两种格式的 coil A/B 映射差异，需查 TMC4361A 数据手册 SPI Output Stage 章节确认

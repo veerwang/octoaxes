@@ -56,13 +56,41 @@ y_negative = -0.01   ; 原 4，必须严格小于 home 后位置 0
 
 **根因推测**：cmd 28 (HOME X) 完成后 X 短暂处于 `STATE_LEAVING_HOME`；cmd 29 到达时 `Axis::moveRelativeMicrosteps` 看到 `_currentState != STATE_IDLE` 直接返回 false，`startMovement()` 不被调用，`_isMoving` 保持 false → 下一次 `send_position_update` 报 COMPLETED。
 
+#### 5. 固件方案 A「软限位延迟使能」三次尝试均失败，已 `reset --hard 8571106`
+
+**目标**：让上位机可以任意时刻下发 `x_negative=5` 等真实安全限位，不必依赖 Plan B 的配置 workaround。
+
+**v1（commit b177144，已 revert）**：
+- 设计：SET_LIM 时若 XACTUAL 已越界，**写真值到 VIRT_STOP_*** 同时清 EN=0**，标记 pending；XACTUAL 进入安全区后置 EN=1。
+- 现象：cmd 20-26 集体延迟（~5 秒无响应），cmd 28 HEARTBEAT 也 741ms 才 ack。
+- 推测根因：TMC4361A 看到「VIRT_STOP_*=已越过值 + EN=0」组合（数据手册无明确文档），疑似 latch VSTOP_EVENT 或进入异常 ramp 状态。
+- 已 `git revert`（commit 8571106），用户确认回滚后正常。
+
+**v2（commit 33e85fd，已 reset）**：
+- 改进：pending 期间 VIRT_STOP_*** 持有「安全值」**(`INT32_MAX`/`INT32_MIN`)，永不让芯片看到「已被越过」的限位值；原子顺序「写真值→清 EVENTS→置 EN=1」。
+- 现象：覆盖了「SET_LIM 时 XACTUAL 已越界」场景，但**没覆盖「homing 重置 XACTUAL 到已使能限位的内侧」**——10:47 测试 homing 完成、cmd 29 MOVE_X +50mm 仍 18.8ms 早完成（X stuck at 272），导致 GUI 报告 X≈0。
+
+**v2 续（commit 08409f9，已 reset）**：
+- 给 `Axis::enableSoftLimits(true)` 也加智能延迟逻辑：检查当前 xactual 与 VIRT_STOP_*；冲突时把 VIRT_STOP_* 转成安全值并标记 pending。
+- 现象：homing X **完全卡住**（X xactual 维持 0 不动，cmd 27 后所有 cmd 包括 HEARTBEAT 都不 ack），但 fw 主循环还活着（每 10ms 发位置上报）。
+- 用户 revert（commit 33c4064），回到 v2 setOneSoftLimit-only 状态。
+
+**最终回退到 8571106**：
+- v1/v2 都触及 TMC4361A VSTOP/REFCONF/VIRT_STOP_* 寄存器的边界行为，没有更精确的硬件诊断手段（debug 固件 + 串口监视器、独立 SPI 寄存器 dump）很难定位。
+- v2 的「pending 期持安全值」方向**思路正确**，失败原因可能在「使能时序」或「与 stepaxis homing 路径的交互」上的细节，目前推测无法落实。
+- 决定：**搁置固件方案 A**，**保留 Plan B 配置 workaround 作为生产可行方案**。
+
 ### 下次继续
 
-1. （建议）固件兜底改进：`Axis::setOneSoftLimit()` 检测 XACTUAL 已在新限位外时**先不使能 VSTOP**，等电机进入限位范围后再使能（或 `checkLimitPosition` 区分「移动中跨过限位」vs「初始即在限位外」）
-2. （建议）固件 `moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时返回 `false` 但不静默 — 应排队或上报错误，避免 cmd 29 这种"假 COMPLETED"
-3. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
-4. （续）合并 W 轴编码器修复（maxpro → develop）
-5. （续）硬件验证照明/触发系统
+1. **保留 Plan B 配置 workaround** — 旧 Squid `configuration_Squid+.ini` 维持 `x_negative=0, y_negative=-0.01`（值需严格 < home 后位置）。这是当前唯一硬件验证通过的方案。
+2. （搁置）方案 A 重做的前置条件：
+   - 烧 debug 固件 + 串口监视器（脱离 Squid 跑），跑 octoaxes 测试脚本逐步触发 SET_LIM/MOVE 流程
+   - 写一个「dump TMC4361A REFCONF + STATUS + EVENTS + VIRT_STOP_*」的 S:* 调试命令，验证每步的寄存器实际值
+   - 查 TMC4361A 数据手册的「VIRT_STOP_MODE / VSTOP_EVENT / RAMP_STATE 之间的交互」明确每个 corner case 的定义
+3. （遗留）cmd 29 MOVE_X +62992 17.2ms 早完成（`STATE_LEAVING_HOME` 时 `moveRelativeMicrosteps` 静默 false）— 与方案 A 无关的独立 bug，可单独修
+4. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
+5. （续）合并 W 轴编码器修复（maxpro → develop）
+6. （续）硬件验证照明/触发系统
 
 ---
 
