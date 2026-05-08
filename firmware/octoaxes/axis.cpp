@@ -37,6 +37,10 @@ Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char *axisName)
   _moveDirection = 0;
   _softLimitsEnabled = false;
   _needReenableLimits = false;
+  _pendingLeftLimitEnable = false;
+  _pendingLeftLimitValue = 0;
+  _pendingRightLimitEnable = false;
+  _pendingRightLimitValue = 0;
 
   // 初始化配置结构体
   memset(&_config, 0, sizeof(_config));
@@ -164,6 +168,11 @@ void Axis::setMotionParameters(float maxVelocityMM, float maxAccelerationMM) {
 void Axis::update() {
   // 保存旧状态用于比较
   AxisState oldState = _currentState;
+
+  // 软限位「初始 XACTUAL 已在限位外」延迟使能轮询
+  // 与 _needReenableLimits（VSTOP recovery）正交：本检查覆盖 SET_LIM 时刻
+  // XACTUAL 已在限位外的场景，运行在所有状态（IDLE/MOVING/HOMING）
+  checkPendingLimits();
 
   switch (_currentState) {
   case STATE_HOMING_INIT:
@@ -714,23 +723,98 @@ void Axis::enableSoftLimits(bool enable) {
 }
 
 // 设置单侧软限位 (direction: +1=上限/右, -1=下限/左)
+//
+// 「延迟使能」语义（2026-05-08 增加）:
+// 若调用时 XACTUAL 已在新限位外（即一旦使能 VSTOP 就会立即触发），
+// 则只写 VIRT_STOP_* 寄存器但不置 EN 位，标记 pending；
+// checkPendingLimits() 在 update() 中轮询，等 XACTUAL 越过限位进入
+// 安全区后再使能 EN。这样上位机可以在任意时刻下发安全限位（如 X≥5mm），
+// 不需要先把电机推到限位内才能 SET_LIM。
 void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
   // 先将 XTARGET 设为当前位置，防止放宽限位后电机自动恢复运动
   int32_t xactual = tmc4361A_readRegister(_icID, TMC4361A_XACTUAL);
   tmc4361A_writeRegister(_icID, TMC4361A_XTARGET, xactual);
 
   uint32_t refConf = tmc4361A_readRegister(_icID, TMC4361A_REFERENCE_CONF);
+  refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);  // hard stop mode
+
   if (direction > 0) {
+    // 上限（VSTOPR 触发条件: XACTUAL >= VIRT_STOP_RIGHT）
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_RIGHT, valueMicrosteps);
-    refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
-    refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
+    if (xactual < valueMicrosteps) {
+      // 当前在限位内 → 立即使能
+      refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
+      _pendingRightLimitEnable = false;
+    } else {
+      // 当前已 >= 上限 → 延迟使能
+      refConf &= ~TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
+      _pendingRightLimitValue = valueMicrosteps;
+      _pendingRightLimitEnable = true;
+      DEBUG_PRINT(_axisName);
+      DEBUG_PRINT(":SOFT_LIM_DEFER_R xactual=");
+      DEBUG_PRINT(xactual);
+      DEBUG_PRINT(" >= limit=");
+      DEBUG_PRINTLN(valueMicrosteps);
+    }
   } else {
+    // 下限（VSTOPL 触发条件: XACTUAL <= VIRT_STOP_LEFT）
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_LEFT, valueMicrosteps);
-    refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
-    refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
+    if (xactual > valueMicrosteps) {
+      refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
+      _pendingLeftLimitEnable = false;
+    } else {
+      refConf &= ~TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
+      _pendingLeftLimitValue = valueMicrosteps;
+      _pendingLeftLimitEnable = true;
+      DEBUG_PRINT(_axisName);
+      DEBUG_PRINT(":SOFT_LIM_DEFER_L xactual=");
+      DEBUG_PRINT(xactual);
+      DEBUG_PRINT(" <= limit=");
+      DEBUG_PRINTLN(valueMicrosteps);
+    }
   }
   tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
   _softLimitsEnabled = true;
+}
+
+// 轮询挂起的软限位使能（每个 update tick 调用一次）
+// 当 XACTUAL 越过 pending 的限位值进入安全区后，置 EN 位完成使能。
+void Axis::checkPendingLimits() {
+  if (!_pendingLeftLimitEnable && !_pendingRightLimitEnable) return;
+
+  int32_t xactual = tmc4361A_readRegister(_icID, TMC4361A_XACTUAL);
+  bool needWrite = false;
+  uint32_t refConf = 0;
+
+  if (_pendingLeftLimitEnable && xactual > _pendingLeftLimitValue) {
+    if (!needWrite)
+      refConf = tmc4361A_readRegister(_icID, TMC4361A_REFERENCE_CONF);
+    refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
+    refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
+    needWrite = true;
+    _pendingLeftLimitEnable = false;
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":SOFT_LIM_ARMED_L xactual=");
+    DEBUG_PRINTLN(xactual);
+  }
+  if (_pendingRightLimitEnable && xactual < _pendingRightLimitValue) {
+    if (!needWrite)
+      refConf = tmc4361A_readRegister(_icID, TMC4361A_REFERENCE_CONF);
+    refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
+    refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
+    needWrite = true;
+    _pendingRightLimitEnable = false;
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":SOFT_LIM_ARMED_R xactual=");
+    DEBUG_PRINTLN(xactual);
+  }
+
+  if (needWrite) {
+    // 清掉可能的陈旧 events，避免使能瞬间残留 VSTOP_EVENT
+    // 被 checkLimitPosition() 误认为越界
+    tmc4361A_readRegister(_icID, TMC4361A_EVENTS);
+    tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
+  }
 }
 
 // PID 控制

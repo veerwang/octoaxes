@@ -22,10 +22,10 @@
 - [ ] （暂缓）合并 W 轴编码器修复（maxpro → develop）
 - [ ] （暂缓）重新启用编码器并开启 PID 闭环
 
-### 固件兜底改进（2026-05-08 提出，可选）
-- [ ] `Axis::setOneSoftLimit()` 检测 XACTUAL 已在新限位外时先不使能 VSTOP（避免上位机依赖"home 后位置严格在限位内"）
-- [ ] `Axis::checkLimitPosition()` 区分「移动中跨过限位」vs「初始即在限位外」，后者不应立即 `completeMovement()` 报 COMPLETED
-- [ ] `Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不要静默返回 false — 应排队等待 IDLE 或上报错误（避免假 COMPLETED）
+### 固件兜底改进
+- [x] `Axis::setOneSoftLimit()` 检测 XACTUAL 已在新限位外时先不使能 VSTOP（2026-05-08 实施 — 方案 A：4 个 pending 成员 + `checkPendingLimits()` 轮询使能；teensy41 / teensy41_debug 两个 env 均编译通过）
+- [ ] **硬件验证**软限位延迟使能：复位 X≈1.56mm → SET_LIM(x_neg=5mm) → MOVE_X +20mm 应正常走完，越过 5mm 后看到 `SOFT_LIM_ARMED_L` 输出
+- [ ] `Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不要静默返回 false — 应排队等待 IDLE 或上报错误（避免假 COMPLETED；cmd 29 现象）
 
 
 
@@ -220,7 +220,7 @@
 <!-- 遇到的问题或阻塞项，需要解决后才能继续 -->
 
 - W 轴 config.h 中 homingSwitch=LEFT_SW 与实际硬件（RIGHT switch）不匹配，暂不影响功能但 latch 位置不准确
-- **固件 VSTOP 早完成行为隐患** (2026-05-08 发现): `Axis::checkLimitPosition()` 检测到 VSTOPL/VSTOPR 立即调 `completeMovement()` 并清 `_isMoving`，导致上位机收到提前的 COMPLETED 状态。当 XACTUAL 在 SET_LIM 时已在限位外（如旧 Squid 启动顺序），任何 MOVE 命令都会被 ~18ms 早完成。已通过下放下限规避，固件兜底改进见「固件兜底改进」节
+- ~~**固件 VSTOP 早完成行为隐患**~~ (2026-05-08 已通过软限位「延迟使能」方案 A 修复) — `Axis::setOneSoftLimit()` 检测 XACTUAL 已越界时不立即使能 VSTOP，待 `checkPendingLimits()` 轮询到 XACTUAL 进入安全区后再使能。待硬件验证
 - ~~**⚠ TMC2240 DRV_ENN 硬件问题**~~ (2026-03-25 已解决) — DRV_ENN 已从 NFREEZE 断开并接 GND
 - **TMC2240 Cover READ 不可靠**: `SPI_OUTPUT_FORMAT=0x0D` 40-bit auto SPI 响应覆盖 COVER_DRV 寄存器，导致 `tmc2240_fieldWrite` read-modify-write 损坏寄存器。已通过 shadow register 规避，但运行时 TMC2240 寄存器回读均不可信
 - **待查: TMC4361A format 0x0A vs 0x0D 方向差异根因** — TMC2240 使用 format 0x0D 时电机方向与 TMC2660 (format 0x0A) 相反，已通过 `REVERSE_MOTOR_DIR` 修复。已确认两芯片线圈约定一致(A=sin,B=cos)、PCB 接线一致，根因在 TMC4361A 内部两种格式的 coil A/B 映射差异，需查 TMC4361A 数据手册 SPI Output Stage 章节确认
