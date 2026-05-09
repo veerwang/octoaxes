@@ -62,7 +62,7 @@ X_commanded_target_position = (relative_position > 0
 
 我们的方案 A 比旧 Squid 更彻底：MOVE/MOVETO 统一闸门、配合 motor_moveToMicrosteps 的 EN-disable recovery、homing 后 SET_LIM 把 0 置于下限禁区可立即往外爬。
 
-#### 4. 测试用例（硬件验证通过）
+#### 4. 测试用例（reject 版本初次验证）
 
 | # | 准备 | 操作 | 期望 / 实际 |
 |---|---|---|---|
@@ -73,14 +73,62 @@ X_commanded_target_position = (relative_position > 0
 | 5 | X 在安全区 50mm | MOVE_X -100mm（target 越下限）| 拒绝 ✓ |
 | 6 | X 在安全区 | MOVE_X +5mm（内部）| 正常移动 ✓ |
 
+#### 5. reject 改为 clamp 兼容旧 Squid（commit e773f21）
+
+**背景**：旧 Squid 上位机不可改，需要固件兜底处理越界 target。原 reject 语义会让旧 Squid 在「Y=6mm 下限 5mm 发 MOVE_Y -2mm」场景下电机不动。改为 clamp 让电机走到边界停下。
+
+**改动**：
+- `axis.h` `bool isMoveAllowedByDirection(target)` → `int32_t clampTargetByDirection(target)`
+- `axis.cpp` 在 moveToPositionMicrosteps / moveRelativeMicrosteps 用 clamp 后的 target 替换原 target
+- 与旧 Squid `callback_move_x/y/z` 内的 `min/max` clamp 行为一致
+
+**验证**：octoaxes GUI 实测 Y=6mm + 下限 5mm + MOVE_Y -2mm，电机停在 5mm 物理位置，GUI 显示 5mm ✓。
+
+#### 6. clamp 后 target == current 短路（commit d92fa2d）
+
+**问题**（旧 Squid main_hcs.log 10:02 现场）：X 卡在 VIRT_STOP_RIGHT 边界外 1 微步（XACTUAL=6300, R=6299），cmd 191 MOVE_X +3780 朝越界方向 → clamp 截到 6300（=current）→ motor_moveToMicrosteps 写 XTARGET=XACTUAL=6300 但 startMovement() 仍设 _isMoving=true → checkMovementComplete 应当立即看到 XACTUAL==XTARGET 但实际未即时触发（chip transient）→ 5 秒 MOVEMENT_TIMEOUT_MS 触发 handleError → 上位机感受到「卡 5 秒」。
+
+**修复**：clamp 后 target == 当前位置时直接 return true，跳过 motor + startMovement，避免 _isMoving 误设。
+
+#### 7. Homing 路径 VSTOP recovery 修复（commit df4f1f6，撤销中间 commit 2fb5bcc 简化版本）
+
+**现象**（main_hcs.log 10:11 启动卡死）：固件烧写后 chip XACTUAL=0，SET_LIM x_neg=6299 微步立即触发 VSTOPL_ACTIVE_F hard-stop latch，cmd 29 X home 永远不 ack（X 始终为 0）。Y 不卡是因为 cmd 28 MOVE_Y 走的 motor_moveToMicrosteps 完整 VSTOP recovery 解锁了 Y，X home 走的 motor_setVelocityInternal 只清一次 EVENTS 不够。
+
+**先尝试 commit 2fb5bcc**：在 STATE_HOMING_INIT `motor_enableSoftLimits(false, false)` 之后加 `tmc4361A_readRegister(EVENTS)`。**实测仍卡死**。
+
+**最终 commit df4f1f6**：改为调用 `motor_moveToMicrosteps(_icID, motor_getPositionMicrosteps(_icID))`，复用已验证的完整 VSTOP recovery 路径（禁 EN → 清 EVENTS → 写 XTARGET → 再清 EVENTS）。target=XACTUAL 不引起电机移动，仅复位 chip 状态。
+
+**验证**：旧 Squid 启动 cmd 29 X home took 1031ms 正常完成 ✓。
+
+#### 8. 边界缓冲防 chip hard-stop latch（commit 17b8f71）
+
+**现象**（main_hcs.log 10:31:57 后段）：cmd 37 MOVETO_X usteps=6300（target = X_NEG_LIMIT=6299 + 1 微步，紧贴 chip VIRT_STOP_LEFT 边界）→ chip 写 XTARGET=6300 启动 ramp 减速 → ramp generator 减速过程中亚微步精度让 XACTUAL 短暂 ≤ 6299 → 触发 VSTOPL_ACTIVE 进入 hard-stop latch → **此后所有 MOVE_X 朝任何方向都启动不了 ramp**（octoaxes 和旧 Squid 都不能动 X）→ 必须断电复位 chip 才能恢复。
+
+**根因**：firmware 的 motor_moveToMicrosteps VSTOP recovery 仅清 EVENTS sticky bit，**不能解 chip 内部 ramp generator 的 latched 状态**。
+
+**修复**：`clampTargetByDirection` 在安全区时把 target 强制离开 VIRT_STOP 边界至少 100 微步：
+```cpp
+static constexpr int32_t BOUNDARY_MARGIN_MICROSTEPS = 100;
+effective_lower = (C ≤ L) ? C : (L + BOUNDARY_MARGIN_MICROSTEPS);
+effective_upper = (C ≥ R) ? C : (R - BOUNDARY_MARGIN_MICROSTEPS);
+```
+- X/Y 16 microstepping/2.54mm pitch：100 微步 ≈ 79.4μm（远低于显示精度，远高于 chip ramp 精度需求）
+- 越界回归路径不受影响（C ≤ L 时下界=C，让电机能从禁区往安全区爬）
+
+**验证**：断电复位 + 烧 commit 17b8f71 后旧 Squid 启动 + 各种 MOVE/MOVETO 操作均正常 ✓。
+
+#### 9. 测试脚本（software/tests/test_homing_with_vstop_latch.py）
+
+复现「X=0 + SET_LIM x_neg=5mm + HOME_X」启动卡死场景的 Python 测试脚本，可用于回归验证。
+
 ### 下次继续
 
-1. （可选清理）旧 Squid Plan B 配置 workaround 现在不再必需，但保留无副作用——下次有空可同步把旧 Squid `configuration_Squid+.ini` 恢复为原始的 `x_negative=5, y_negative=4` 验证方案 A 上位机兼容性
+1. （可选清理）旧 Squid Plan B 配置 workaround 不再必需，可还原 `configuration_Squid+.ini` 的 `x_negative=5, y_negative=4` 默认值
 2. （遗留独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时静默返回 false → cmd 假 COMPLETED（与方案 A 无关，可单独修）
-3. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
-4. （续）合并 W 轴编码器修复（maxpro → develop）
-5. （续）硬件验证照明/触发系统
-6. （搁置可清理）TODO.md 中「固件软限位延迟使能方案 A — 已搁置」整节可移到「已完成」
+3. （考虑）若发现 100 微步 boundary margin 过大或不够，调整 `BOUNDARY_MARGIN_MICROSTEPS` 常数
+4. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
+5. （续）合并 W 轴编码器修复（maxpro → develop）
+6. （续）硬件验证照明/触发系统
 
 ---
 

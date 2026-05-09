@@ -9,7 +9,7 @@
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
-- [x] **方案 A 软限位方向感知闸门** (2026-05-09, commit 82dfe2d, 硬件验证通过) - 三次失败的方案 A 改用「上层 isMoveAllowedByDirection 闸门 + checkLimitPosition 信任上层」实现，避开 SET_LIM 寄存器时序雷区。homing 后 SET_LIM 把 0 置于禁区可立即往安全区爬
+- [x] **方向感知闸门完整工程化** (2026-05-09, commits 82dfe2d→e773f21→d92fa2d→df4f1f6→17b8f71, 旧 Squid + octoaxes 双端验证通过) - 包括 reject→clamp 兼容旧 Squid、no-op 短路防 5 秒卡顿、homing VSTOP recovery 完整化、边界 margin 防 chip hard-stop latch 四次迭代
 - [x] **上位机限位收紧到物理行程** (2026-05-09, commit febc844) - X (-10, 115000) / Y (-10, 76000) μm，与旧 Squid 配置一致便于复现 VSTOP 场景
 - [x] **修复旧 Squid 随机点动 X/Y 卡死** (2026-05-08) - axisName ↔ CS 引脚映射与硬件接线反，X 命令实际驱动物理 Y 电机，导致走到 Y 上限时 fw 把 STOPR_EVENT 归到 X 轴卡死。修复 octoaxes.ino 交换 axisName 字符串
 - [x] **协助旧 Squid 定位 5mm 短少 bug** (2026-05-08) - VSTOP 早完成根因，`y_negative=-0.01` 修复（旧 Squid 配置层，方案 A 落地后不再必需但保留无副作用）
@@ -28,13 +28,15 @@
 - [ ] （暂缓）合并 W 轴编码器修复（maxpro → develop）
 - [ ] （暂缓）重新启用编码器并开启 PID 闭环
 
-### 固件软限位方向感知闸门方案 A — 已落地（2026-05-09）
+### 固件软限位方向感知闸门方案 A — 已落地（2026-05-09，五次迭代）
 - [x] **v1/v2/v2 续三次失败** (2026-05-08) — 都试图改 SET_LIM 寄存器时序，触及 TMC4361A 未文档化边界行为
-- [x] **方向感知闸门重启并落地** (2026-05-09, commit 82dfe2d) — 完全不动 SET_LIM 寄存器写入，把限位检查从 chip 硬件层上移到 Axis 协议层：
-  - `Axis::SoftLimitShadow` 追踪 SET_LIM 上位机意图，与 chip 寄存器解耦
-  - `isMoveAllowedByDirection(target)` 闸门：`effective_lower = (C ≤ L) ? C : L; effective_upper = (C ≥ R) ? C : R; T ∈ [effective_lower, effective_upper]`
-  - `checkLimitPosition()` 移除 VSTOP_ACTIVE → completeMovement，信任上层闸门，让 checkMovementComplete 收尾
-  - 硬件验证通过：6 个测试用例全部按预期（拒绝/接受、log、跨界等）
+- [x] **方向感知闸门 reject 语义** (2026-05-09 commit 82dfe2d) — `isMoveAllowedByDirection`，越界 target 拒绝命令
+- [x] **改为 clamp 语义兼容旧 Squid** (2026-05-09 commit e773f21) — `clampTargetByDirection`，旧 Squid 上位机不可改，固件兜底把越界 target 截到边界
+- [x] **clamp 后 target == current 短路** (2026-05-09 commit d92fa2d) — 防 _isMoving 误设致上位机卡 5 秒等 timeout
+- [x] **homing VSTOP recovery 完整化** (2026-05-09 commit df4f1f6) — STATE_HOMING_INIT 调 motor_moveToMicrosteps(current) 复用已验证的完整解锁路径，解决固件烧写后 X=0 + SET_LIM 触发 VSTOPL hard-stop 后 X home 卡死
+- [x] **边界 margin 防 chip hard-stop latch** (2026-05-09 commit 17b8f71) — target 紧贴 VIRT_STOP 边界 1 微步会让 chip ramp 减速精度跨界触发 VSTOP_ACTIVE，进入永久 latched 状态（必须断电恢复）；clamp 在安全区时强制 target 离开边界至少 100 微步
+- [x] **测试脚本** (2026-05-09) — `software/tests/test_homing_with_vstop_latch.py` 复现「X=0 + SET_LIM x_neg + HOME_X」启动卡死场景
+- [x] 双端硬件验证通过：octoaxes GUI + 旧 Squid software 启动序列、MOVE/MOVETO 各种越界场景
 - [ ] （独立 bug，可单独修）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不要静默返回 false — 应排队等待 IDLE 或上报错误（避免假 COMPLETED；cmd 29 现象）
 
 
@@ -112,18 +114,18 @@
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
 
-### 软限位方向感知闸门方案 A 落地 (2026-05-09, develop, commit 82dfe2d)
+### 软限位方向感知闸门方案 A 完整落地 (2026-05-09, develop, 五次迭代)
 - [x] **设计原则**：越界后只允许电机朝更安全方向移动，禁止朝更深越界方向移动；把限位检查从 chip 硬件层上移到 Axis 协议层
-- [x] **核心规则**：`effective_lower = (C ≤ L) ? C : L; effective_upper = (C ≥ R) ? C : R; T ∈ [effective_lower, effective_upper]`
-- [x] **实现**：
-  - `Axis::SoftLimitShadow` shadow state 追踪 SET_LIM 上位机意图，与 chip 寄存器解耦
-  - `setOneSoftLimit / setSoftLimits / enableSoftLimits(false)` 同步维护 shadow
-  - `isMoveAllowedByDirection(target)` 闸门函数
-  - `moveToPositionMicrosteps / moveRelativeMicrosteps` 在 motor_moveToMicrosteps 之前调闸门
-  - `checkLimitPosition()` 不再因 VSTOP_ACTIVE 调 completeMovement
+- [x] **核心规则**：`effective_lower = (C ≤ L) ? C : (L+margin); effective_upper = (C ≥ R) ? C : (R-margin); T ∈ [effective_lower, effective_upper]`
+- [x] **commit 82dfe2d 初版（reject 语义）**：`Axis::SoftLimitShadow` + `isMoveAllowedByDirection`，越界 target 拒绝命令
+- [x] **commit e773f21 (clamp 语义)**：`clampTargetByDirection` 替换 reject，兼容旧 Squid 上位机（不可改）；与旧 Squid `callback_move_x/y/z` 内的 min/max clamp 行为对齐
+- [x] **commit d92fa2d (no-op 短路)**：clamp 后 target == current 直接 return true，跳过 motor + startMovement，避免 _isMoving 误设导致上位机硬等 5 秒 timeout
+- [x] **commit df4f1f6 (homing VSTOP 解锁)**：StepAxis::performHomingSequence 在 STATE_HOMING_INIT 调 `motor_moveToMicrosteps(_icID, current_xactual)` 复用已验证的完整 VSTOP recovery 路径解锁 chip hard-stop latch（解决固件烧写后 chip XACTUAL=0 + SET_LIM 把限位设在 0 之外触发 VSTOPL_ACTIVE 后 X home 永远不动）
+- [x] **commit 17b8f71 (边界 margin 防 chip hard-stop latch)**：target 紧贴 VIRT_STOP 边界 1 微步会触发 chip ramp 内部 latch，**所有后续 MOVE 都启动不了 ramp，必须断电复位**；clamp 在安全区时强制 target 离开边界至少 100 微步（≈80μm，远低于显示精度）
 - [x] **避开三次失败的雷区**：完全不动 SET_LIM 寄存器写入策略，也不改 enableSoftLimits 时序
-- [x] **硬件验证**：6 个测试用例全部通过（home 后越界禁区里能爬出来、跨界、拒绝逆向等）
+- [x] **双端验证通过**：octoaxes GUI + 旧 Squid software 启动序列、MOVE/MOVETO 各种越界场景、X home 解锁、target 紧贴边界场景
 - [x] **TODO「固件 VSTOP 早完成行为隐患」阻塞项消除**
+- [x] **测试脚本**：`software/tests/test_homing_with_vstop_latch.py`
 
 ### 上位机限位收紧到物理行程 (2026-05-09, develop, commit febc844)
 - [x] X 限位 `(-80000, 80000)` → `(-10, 115000)` μm；Y `(-120000, 120000)` → `(-10, 76000)` μm
