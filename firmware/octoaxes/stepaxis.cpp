@@ -1,5 +1,6 @@
 #include "stepaxis.h"
 #include "build_opt.h"
+#include "tmc/ic/TMC4361A/TMC4361A.h"
 
 StepAxis::StepAxis(uint8_t csPin, uint8_t axisIndex, const char* axisName) 
   : Axis(csPin, axisIndex, axisName) {
@@ -126,6 +127,12 @@ void StepAxis::performHomingSequence() {
     case STATE_HOMING_INIT:
       // 直接操作硬件禁用虚拟限位，不改变 _softLimitsEnabled 标志
       motor_enableSoftLimits(_icID, false, false);
+      // 清 EVENTS 寄存器中可能存在的 VSTOP sticky bit，
+      // 否则 hard-stop latch 状态会让 ramp generator 拒绝启动
+      // （场景：固件复位后 XACTUAL=0，SET_LIM 把限位设在 0 之外立即触发
+      //  VSTOPL/R_ACTIVE_F，禁用 EN 后还需清 EVENTS 才能解锁 ramp）
+      // 与 motor_moveToMicrosteps 的 VSTOP recovery 顺序对齐
+      tmc4361A_readRegister(_icID, TMC4361A_EVENTS);
       switchToHomingMicrosteps();
 
       if (limit_state & _config.homingSwitch) {
