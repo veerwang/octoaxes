@@ -127,12 +127,19 @@ void StepAxis::performHomingSequence() {
     case STATE_HOMING_INIT:
       // 直接操作硬件禁用虚拟限位，不改变 _softLimitsEnabled 标志
       motor_enableSoftLimits(_icID, false, false);
-      // 清 EVENTS 寄存器中可能存在的 VSTOP sticky bit，
-      // 否则 hard-stop latch 状态会让 ramp generator 拒绝启动
-      // （场景：固件复位后 XACTUAL=0，SET_LIM 把限位设在 0 之外立即触发
-      //  VSTOPL/R_ACTIVE_F，禁用 EN 后还需清 EVENTS 才能解锁 ramp）
-      // 与 motor_moveToMicrosteps 的 VSTOP recovery 顺序对齐
-      tmc4361A_readRegister(_icID, TMC4361A_EVENTS);
+
+      // 解锁 hard-stop latch：复用 motor_moveToMicrosteps 已验证的完整
+      // VSTOP recovery 路径（禁 EN→清 EVENTS→写 XTARGET→再清 EVENTS）。
+      //
+      // 场景：固件复位后 XACTUAL=0，SET_LIM x_neg=5mm 立即触发 VSTOPL_ACTIVE_F
+      // hard-stop，chip ramp generator 被锁住。后续 motor_setVelocityInternal
+      // 仅写 VMAX 不能解除 hard-stop latch，电机不动。
+      //
+      // 写 XTARGET=XACTUAL 不引起电机移动，仅触发 chip 重新评估 ramp 状态，
+      // 让 hard-stop latch 复位。这是 motor_moveToMicrosteps 的 VSTOP recovery
+      // 路径已在 2026-02-27 commit 验证有效。
+      motor_moveToMicrosteps(_icID, motor_getPositionMicrosteps(_icID));
+
       switchToHomingMicrosteps();
 
       if (limit_state & _config.homingSwitch) {
