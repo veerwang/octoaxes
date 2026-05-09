@@ -9,8 +9,10 @@
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
+- [x] **方案 A 软限位方向感知闸门** (2026-05-09, commit 82dfe2d, 硬件验证通过) - 三次失败的方案 A 改用「上层 isMoveAllowedByDirection 闸门 + checkLimitPosition 信任上层」实现，避开 SET_LIM 寄存器时序雷区。homing 后 SET_LIM 把 0 置于禁区可立即往安全区爬
+- [x] **上位机限位收紧到物理行程** (2026-05-09, commit febc844) - X (-10, 115000) / Y (-10, 76000) μm，与旧 Squid 配置一致便于复现 VSTOP 场景
 - [x] **修复旧 Squid 随机点动 X/Y 卡死** (2026-05-08) - axisName ↔ CS 引脚映射与硬件接线反，X 命令实际驱动物理 Y 电机，导致走到 Y 上限时 fw 把 STOPR_EVENT 归到 X 轴卡死。修复 octoaxes.ino 交换 axisName 字符串
-- [x] **协助旧 Squid 定位 5mm 短少 bug** (2026-05-08) - VSTOP 早完成根因，`y_negative=-0.01` 修复（旧 Squid 配置层）
+- [x] **协助旧 Squid 定位 5mm 短少 bug** (2026-05-08) - VSTOP 早完成根因，`y_negative=-0.01` 修复（旧 Squid 配置层，方案 A 落地后不再必需但保留无副作用）
 - [x] **修复 AXIS_MM_PER_STEP 双源不同步** (2026-05-07, commit 7be758d) - 改 actuator_microstepping 后命令距离与实际位移按比例失配（ms=16 时 5mm→80mm），改为从 AXIS_CONFIG 派生
 - [x] **XYZW 全部回退为微步模式** (2026-04-17) - `constants.py` has_encoder = False，响应包保持 24 字节与旧 Squid 兼容
 
@@ -23,14 +25,13 @@
 - [ ] （暂缓）合并 W 轴编码器修复（maxpro → develop）
 - [ ] （暂缓）重新启用编码器并开启 PID 闭环
 
-### 固件软限位「延迟使能」方案 A — 已搁置（2026-05-08）
-- [x] **v1 实施失败并 revert** — `setOneSoftLimit` pending 期间「写真值 + EN=0」组合让 TMC4361A 进入未文档化状态，cmd 集体延迟 5 秒
-- [x] **v2 实施失败并 reset** — 改为「pending 期持安全值 INT32_MIN/MAX」，覆盖了 SET_LIM 时已越界场景，但没覆盖 homing 重置 XACTUAL 后已使能限位变成内侧的场景
-- [x] **v2 续 enableSoftLimits 智能延迟实施失败并 reset** — homing X 完全卡住，原因不明
-- [x] **重置回 commit 8571106**，搁置方案 A — 推测无法继续，需要更精确诊断手段
-- [ ] （前置条件）实现 `S:DUMP_REGS` 调试命令，dump TMC4361A REFCONF/STATUS/EVENTS/VIRT_STOP_*/VACTUAL/XACTUAL，配合 debug 固件 + 串口监视器逐步触发
-- [ ] （前置条件）查 TMC4361A 数据手册「VIRT_STOP_MODE / VSTOP_EVENT / RAMP_STATE 之间的交互」明确每个 corner case
-- [ ] **生产可行方案：保留 Plan B 配置层 workaround**（旧 Squid `configuration_Squid+.ini` 维持 `x_negative=0, y_negative=-0.01`，值需严格 < home 后位置）
+### 固件软限位方向感知闸门方案 A — 已落地（2026-05-09）
+- [x] **v1/v2/v2 续三次失败** (2026-05-08) — 都试图改 SET_LIM 寄存器时序，触及 TMC4361A 未文档化边界行为
+- [x] **方向感知闸门重启并落地** (2026-05-09, commit 82dfe2d) — 完全不动 SET_LIM 寄存器写入，把限位检查从 chip 硬件层上移到 Axis 协议层：
+  - `Axis::SoftLimitShadow` 追踪 SET_LIM 上位机意图，与 chip 寄存器解耦
+  - `isMoveAllowedByDirection(target)` 闸门：`effective_lower = (C ≤ L) ? C : L; effective_upper = (C ≥ R) ? C : R; T ∈ [effective_lower, effective_upper]`
+  - `checkLimitPosition()` 移除 VSTOP_ACTIVE → completeMovement，信任上层闸门，让 checkMovementComplete 收尾
+  - 硬件验证通过：6 个测试用例全部按预期（拒绝/接受、log、跨界等）
 - [ ] （独立 bug，可单独修）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不要静默返回 false — 应排队等待 IDLE 或上报错误（避免假 COMPLETED；cmd 29 现象）
 
 
@@ -107,6 +108,24 @@
 ## 已完成
 
 <!-- 已完成的任务，保留最近的记录作为参考 -->
+
+### 软限位方向感知闸门方案 A 落地 (2026-05-09, develop, commit 82dfe2d)
+- [x] **设计原则**：越界后只允许电机朝更安全方向移动，禁止朝更深越界方向移动；把限位检查从 chip 硬件层上移到 Axis 协议层
+- [x] **核心规则**：`effective_lower = (C ≤ L) ? C : L; effective_upper = (C ≥ R) ? C : R; T ∈ [effective_lower, effective_upper]`
+- [x] **实现**：
+  - `Axis::SoftLimitShadow` shadow state 追踪 SET_LIM 上位机意图，与 chip 寄存器解耦
+  - `setOneSoftLimit / setSoftLimits / enableSoftLimits(false)` 同步维护 shadow
+  - `isMoveAllowedByDirection(target)` 闸门函数
+  - `moveToPositionMicrosteps / moveRelativeMicrosteps` 在 motor_moveToMicrosteps 之前调闸门
+  - `checkLimitPosition()` 不再因 VSTOP_ACTIVE 调 completeMovement
+- [x] **避开三次失败的雷区**：完全不动 SET_LIM 寄存器写入策略，也不改 enableSoftLimits 时序
+- [x] **硬件验证**：6 个测试用例全部通过（home 后越界禁区里能爬出来、跨界、拒绝逆向等）
+- [x] **TODO「固件 VSTOP 早完成行为隐患」阻塞项消除**
+
+### 上位机限位收紧到物理行程 (2026-05-09, develop, commit febc844)
+- [x] X 限位 `(-80000, 80000)` → `(-10, 115000)` μm；Y `(-120000, 120000)` → `(-10, 76000)` μm
+- [x] 下限设 -10（而非 0）：home 后 XACTUAL=0，下限严格 < 0 才不会让 chip 在 SET_LIM 时立即触发 VSTOPL_ACTIVE_F
+- [x] 与旧 Squid 配置思路一致，便于本项目 software 复现 VSTOP 场景
 
 ### 旧 Squid 随机点动 X/Y 卡死根因定位与修复 (2026-05-08)
 - [x] **症状**：随机点动测试中 X 或 Y 概率性单轴卡死，位置冻结、互不影响、fw 通信正常、必须断电恢复
@@ -237,7 +256,7 @@
 <!-- 遇到的问题或阻塞项，需要解决后才能继续 -->
 
 - W 轴 config.h 中 homingSwitch=LEFT_SW 与实际硬件（RIGHT switch）不匹配，暂不影响功能但 latch 位置不准确
-- **固件 VSTOP 早完成行为隐患** (2026-05-08 发现): `Axis::checkLimitPosition()` 检测到 VSTOPL/VSTOPR 立即调 `completeMovement()` 并清 `_isMoving`，导致上位机收到提前的 COMPLETED 状态。当 XACTUAL 在 SET_LIM 时已在限位外（如旧 Squid 启动顺序），任何 MOVE 命令都会被 ~18ms 早完成。**当前方案**：通过配置层下放下限规避（Plan B）。固件方案 A 三次实施都失败，已 reset 到 8571106 搁置（详见「固件软限位延迟使能方案 A」节）
+- ~~**固件 VSTOP 早完成行为隐患**~~ (2026-05-08 发现, 2026-05-09 修复 commit 82dfe2d) — 方案 A 方向感知闸门已上线，`checkLimitPosition()` 不再因 VSTOP_ACTIVE 提前 completeMovement；上层 isMoveAllowedByDirection 闸门保证 in-progress move 朝安全方向
 - ~~**⚠ TMC2240 DRV_ENN 硬件问题**~~ (2026-03-25 已解决) — DRV_ENN 已从 NFREEZE 断开并接 GND
 - **TMC2240 Cover READ 不可靠**: `SPI_OUTPUT_FORMAT=0x0D` 40-bit auto SPI 响应覆盖 COVER_DRV 寄存器，导致 `tmc2240_fieldWrite` read-modify-write 损坏寄存器。已通过 shadow register 规避，但运行时 TMC2240 寄存器回读均不可信
 - **待查: TMC4361A format 0x0A vs 0x0D 方向差异根因** — TMC2240 使用 format 0x0D 时电机方向与 TMC2660 (format 0x0A) 相反，已通过 `REVERSE_MOTOR_DIR` 修复。已确认两芯片线圈约定一致(A=sin,B=cos)、PCB 接线一致，根因在 TMC4361A 内部两种格式的 coil A/B 映射差异，需查 TMC4361A 数据手册 SPI Output Stage 章节确认

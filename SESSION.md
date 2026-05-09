@@ -6,11 +6,91 @@
 
 ## 最新会话
 
-**日期**: 2026-05-08
-**分支**: develop（旧 Squid 在 `/home/hds/github.com/veerwang/lihongquan/Squid`，配置层修复）
-**位置**: 定位旧 Squid 5mm 移动短少根因 — VSTOP 早完成 bug
+**日期**: 2026-05-09
+**分支**: develop
+**位置**: 方案 A「软限位方向感知闸门」落地并硬件验证通过
 
 ### 本次完成
+
+#### 1. 上位机限位收紧（commit febc844）
+
+`software/utils/constants.py` AXIS_CONFIG：
+- X: `(-80000, 80000)` → `(-10, 115000)` μm
+- Y: `(-120000, 120000)` → `(-10, 76000)` μm
+
+下限设 `-10` μm 而非 0：home 后 XACTUAL=0，下限严格 < 0 才不会让 chip 在 SET_LIM 时立即触发 VSTOPL_ACTIVE_F（与旧 Squid Plan B 配置层 `y_negative=-0.01` 同思路）。上限按物理行程上限。本项目 software 现在和旧 Squid 配置一致，方便复现 VSTOP 场景。
+
+#### 2. 方案 A 方向感知闸门重启（commit 82dfe2d，硬件验证通过）
+
+**设计原则**（与用户共识）：「越界后只允许电机朝更安全方向移动，禁止朝更深越界方向移动」——即把限位检查从 chip 硬件层上移到 Axis 协议层。
+
+**核心规则**：
+```
+读 chip 当前 VIRT_STOP_LEFT (L), VIRT_STOP_RIGHT (R)、_softLimits.{leftValue,rightValue}
+读 XACTUAL = C, target = T
+
+effective_lower = (C ≤ L) ? C : L  // 越下限时下界=C（禁止再下）；安全区时下界=L
+effective_upper = (C ≥ R) ? C : R  // 对称
+
+接受 T ∈ [effective_lower, effective_upper]，否则拒绝
+```
+
+**实现要点**（axis.h / axis.cpp）：
+- `Axis::SoftLimitShadow` 结构追踪 SET_LIM 的上位机意图（leftEnabled/rightEnabled + leftValue/rightValue），与 chip 寄存器解耦——`motor_moveToMicrosteps` recovery 临时清 chip EN 位时，shadow 仍保留语义。
+- `setOneSoftLimit(direction, value)` 同步写 shadow 单侧；`setSoftLimits(lo, hi)` 写双侧；`enableSoftLimits(false)` 清空 shadow.enabled 标志。
+- 新增 `isMoveAllowedByDirection(target)` 实现上述规则，在 `moveToPositionMicrosteps` / `moveRelativeMicrosteps` 中 `motor_moveToMicrosteps` 之前调用。
+- `checkLimitPosition()` 移除「VSTOP_ACTIVE event → completeMovement()」分支：信任上层闸门已确保 in-progress move 朝安全方向，VSTOP_ACTIVE 在此期间是 chip 的 sticky/残留状态；完成判定交给 `checkMovementComplete()`（XACTUAL == XTARGET）。
+- chip-level VIRT_STOP_* 仍作为多重防御保留，不破坏现有 motor_moveToMicrosteps 的 recovery 流程。
+
+**前三次失败的差异**（v1/v2/v2 续都试图改 SET_LIM 写寄存器时序）：
+- 这次完全不动 SET_LIM 的寄存器写入策略，也不动 enableSoftLimits 的时序——避开了 v1/v2 的 TMC4361A 未文档化边界行为雷区。
+- 把决定权放在 Axis 协议层 + checkLimitPosition 的状态机决策，对硬件依赖最少。
+
+**调用链确认**（旧 Squid 与本项目 software 共享 `SET_LIM` (cmd_id=9) 协议）：
+- 上位机 → `serial.cpp:439 case Commands::SET_LIM` → `CommandProcessor::handleSetLim` (commandprocessor.cpp:171-189) → `Axis::setOneSoftLimit(direction, value)` → 写 TMC4361A `VIRT_STOP_LEFT/RIGHT` + `REFERENCE_CONF` 中 `VIRTUAL_*_LIMIT_EN` + `VIRT_STOP_MODE=1`（硬停止）
+- 触发：chip 实时比较 XACTUAL vs VIRT_STOP_*，越界写 EVENTS 的 VSTOPL/R_ACTIVE_MASK + STATUS 的 VSTOPL/R_ACTIVE_F
+
+#### 3. 旧 Squid 的处理方式核对
+
+旧 Squid 在 `MOVE_X/Y/Z` 命令处理里做了「按方向 clamp 到对侧限位」（main_controller_teensy41.ino:845）：
+```c
+X_commanded_target_position = (relative_position > 0
+    ? min(current_position + relative_position, X_POS_LIMIT)
+    : max(current_position + relative_position, X_NEG_LIMIT));
+```
+但**只 clamp 目标方向那一侧**、**MOVETO 完全不 clamp**、**没有 VSTOP recovery**，所以 SET_LIM 把电机置于禁区时只能「带病能跑」（每次走几百微步），靠配置（Plan B）规避。
+
+我们的方案 A 比旧 Squid 更彻底：MOVE/MOVETO 统一闸门、配合 motor_moveToMicrosteps 的 EN-disable recovery、homing 后 SET_LIM 把 0 置于下限禁区可立即往外爬。
+
+#### 4. 测试用例（硬件验证通过）
+
+| # | 准备 | 操作 | 期望 / 实际 |
+|---|---|---|---|
+| 1 | home X 完成 X≈0 | SET_LIM X 下限=5mm | SET_LIM 收到，无即刻 MOVE ✓ |
+| 2 | 同上 | MOVE_X +1mm | 电机朝+走 1mm，不假 COMPLETED ✓ |
+| 3 | 同上 | MOVE_X +10mm | 跨 5mm 进入安全区 ✓ |
+| 4 | 同上 | MOVE_X -1mm | 拒绝，log `Move rejected (direction)` ✓ |
+| 5 | X 在安全区 50mm | MOVE_X -100mm（target 越下限）| 拒绝 ✓ |
+| 6 | X 在安全区 | MOVE_X +5mm（内部）| 正常移动 ✓ |
+
+### 下次继续
+
+1. （可选清理）旧 Squid Plan B 配置 workaround 现在不再必需，但保留无副作用——下次有空可同步把旧 Squid `configuration_Squid+.ini` 恢复为原始的 `x_negative=5, y_negative=4` 验证方案 A 上位机兼容性
+2. （遗留独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时静默返回 false → cmd 假 COMPLETED（与方案 A 无关，可单独修）
+3. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
+4. （续）合并 W 轴编码器修复（maxpro → develop）
+5. （续）硬件验证照明/触发系统
+6. （搁置可清理）TODO.md 中「固件软限位延迟使能方案 A — 已搁置」整节可移到「已完成」
+
+---
+
+## 历史记录
+
+<!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-05-08 - 旧 Squid 5mm 短少 + 随机点动卡死定位
+
+**位置**: 定位旧 Squid 5mm 移动短少根因 — VSTOP 早完成 bug；方案 A 三次失败搁置（次日 2026-05-09 重启并落地）
 
 #### 1. 定位旧 Squid 5mm 实际位移短少的根因
 
@@ -141,15 +221,7 @@ Axis *yAxis = new StepAxis(Pins::X_AXIS_CS=41, 1, "Y");  // CS=41 = 物理 Y 电
 - 保留 `serial.cpp` 中的 `S:DUMPREGS [axisName]` 调试命令（dump TMC4361A 关键寄存器，未来卡死现场取证用）
 - `config.h` PIN_CS_X/Y 常量加注释说明命名是 PCB 引脚号历史，不代表物理轴对应
 
-### 下次继续
-
-1. **硬件验证**：烧固件后用 octoaxes 上位机点 X +5mm，确认物理 X 真的移动（之前是物理 Y）；旧 Squid 跑随机点动 stress 测试，X/Y 不应再卡死
-2. （搁置）方案 A 软限位延迟使能：等有更精确诊断手段（debug 固件 + 串口监视器、独立 SPI 寄存器 dump，现在 `S:DUMPREGS` 已经初步可用）后再做
-3. **保留 Plan B 配置 workaround** — 旧 Squid `configuration_Squid+.ini` 维持 `x_negative=0, y_negative=-0.01` 仍是当前已验证方案
-4. （遗留）cmd 29 MOVE_X +62992 17.2ms 早完成（`STATE_LEAVING_HOME` 时 `moveRelativeMicrosteps` 静默 false）— 与方案 A 无关的独立 bug，可单独修
-5. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
-6. （续）合并 W 轴编码器修复（maxpro → develop）
-7. （续）硬件验证照明/触发系统
+> 当时记录的「下次继续」中的方案 A 已于 2026-05-09 落地（commit 82dfe2d），见最新会话。
 
 ---
 
@@ -324,10 +396,6 @@ ENC_IN_CONF=0x00000400 STEP_CONF=0x00000C85 ENC_IN_RES(readback=ENC_CONST)=1000
 - 删除 Fields.h/Register.h/Constants.h，统一到 HW_Abstraction.h，248 警告→0
 
 ---
-
-## 历史记录
-
-<!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
 
 ### 2026-02-27（续）- W 轴回归测试 + 上位机 Bug 修复 + 协议对齐 (develop)
 - W 轴换孔时间回归测试：~60ms 平均，与 61.3ms 一致，无性能退化
