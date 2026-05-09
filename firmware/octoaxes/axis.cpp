@@ -524,6 +524,17 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
   // （兼容旧 Squid 行为：旧 Squid 上位机不可改，需要固件兜底处理越界 target）
   targetMicrosteps = clampTargetByDirection(targetMicrosteps);
 
+  // No-op short-circuit：clamp 后 target == 当前位置时电机本不需要移动，
+  // 跳过 motor_moveToMicrosteps + startMovement 直接返回，
+  // 避免 _isMoving 被误设导致上位机收到 IN_PROGRESS 5 秒等到 timeout。
+  // 典型场景：电机已经卡在限位边界，上位机继续发越界 MOVE 命令。
+  int32_t currentPos = motor_getPositionMicrosteps(_icID);
+  if (targetMicrosteps == currentPos) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINTLN(":Move no-op (clamped to current position), skipping motor command");
+    return true;
+  }
+
   // 检查是否需要 VSTOP recovery（motor_moveToMicrosteps 会禁用限位）
   uint32_t preStatus = motor_readStatus(_icID);
   bool vstopWasActive = (preStatus & TMC4361A_VSTOPL_ACTIVE_F_MASK) ||
@@ -573,6 +584,14 @@ bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
   // 方向感知 clamp：朝禁区方向的 target 截到边界，让电机停在边界处
   // （兼容旧 Squid 行为：旧 Squid 上位机不可改，需要固件兜底处理越界 target）
   targetPos = clampTargetByDirection(targetPos);
+
+  // No-op short-circuit：clamp 后 target == 当前位置时跳过 motor + startMovement，
+  // 避免 _isMoving 误设致上位机硬等 5 秒 timeout（详见 moveToPositionMicrosteps 同处注释）
+  if (targetPos == currentPos) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINTLN(":Move no-op (clamped to current position), skipping motor command");
+    return true;
+  }
 
   // 检查是否需要 VSTOP recovery（motor_moveToMicrosteps 会禁用限位）
   uint32_t preStatus = motor_readStatus(_icID);
