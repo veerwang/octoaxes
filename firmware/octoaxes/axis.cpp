@@ -779,17 +779,28 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
 }
 
 // 方向感知 clamp：参见 axis.h 注释
+//
+// 边界缓冲（BOUNDARY_MARGIN）防 chip ramp generator 减速精度不足导致 hard-stop latch：
+// 实测案例（main_hcs.log 2026-05-09 10:31:57，cmd 37 MOVETO_X usteps=6300 = L+1）：
+// 上位机 target=L+1（5mm = 6300，刚好贴 X_NEG_LIMIT=6299 边界 1 微步），
+// chip 写 XTARGET 启动 ramp 减速，亚微步精度让 ramp 短暂跨越 L → 触发
+// VSTOPL_ACTIVE 进入 hard-stop latch，**所有后续 MOVE_X 朝任何方向都
+// 启动不了 ramp**（chip 内部 latch 不释放，仅清 EVENTS 不能解锁）。
+// 在安全区时把 target 强制离开边界至少 N 微步避开此 quirk。
+static constexpr int32_t BOUNDARY_MARGIN_MICROSTEPS = 100;
+
 int32_t Axis::clampTargetByDirection(int32_t target) const {
   int32_t C = motor_getPositionMicrosteps(_icID);
   int32_t original = target;
   if (_softLimits.leftEnabled) {
     int32_t L = _softLimits.leftValue;
-    int32_t effective_lower = (C <= L) ? C : L;
+    // 越界时下界 = C（禁止再下）；安全区时下界 = L + margin（防 ramp 越界）
+    int32_t effective_lower = (C <= L) ? C : (L + BOUNDARY_MARGIN_MICROSTEPS);
     if (target < effective_lower) target = effective_lower;
   }
   if (_softLimits.rightEnabled) {
     int32_t R = _softLimits.rightValue;
-    int32_t effective_upper = (C >= R) ? C : R;
+    int32_t effective_upper = (C >= R) ? C : (R - BOUNDARY_MARGIN_MICROSTEPS);
     if (target > effective_upper) target = effective_upper;
   }
   if (target != original) {
