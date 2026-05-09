@@ -32,6 +32,7 @@ from PyQt5.QtGui import QFont
 
 from hardware.serial_thread import SerialThread
 from gui.widgets import AxisStatusDisplay, ControlPanel, LogDisplay, IlluminationPanel
+from gui.test_panel import IntegrationTestPanel
 from hardware.axis_manager import AxisManager
 from utils.constants import AXIS_CONFIG, AXIS_MM_PER_STEP
 from utils.helpers import format_command, find_teensy_port
@@ -111,6 +112,10 @@ class TeensyControlGUI(QMainWindow):
         # Tab 3: Log — 日志
         log_tab = self.create_log_tab()
         self.tab_widget.addTab(log_tab, "Log")
+
+        # Tab 4: Integration Test — 集成测试
+        test_tab = self.create_integration_test_tab()
+        self.tab_widget.addTab(test_tab, "Integration Test")
 
         main_layout.addWidget(self.tab_widget)
 
@@ -262,6 +267,17 @@ class TeensyControlGUI(QMainWindow):
         self.illumination_panel.intensity_factor_cmd.connect(self._send_illu_intensity_factor)
         layout.addWidget(self.illumination_panel)
 
+        return tab
+
+    def create_integration_test_tab(self):
+        """Integration Test 标签页：连通性 / 协议自检"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        self.test_panel = IntegrationTestPanel()
+        self.test_panel.request_send_command.connect(
+            lambda cmd: self.send_command(cmd, "Test"))
+        self.test_panel.log_message.connect(self.log)
+        layout.addWidget(self.test_panel)
         return tab
 
     def create_log_tab(self):
@@ -763,6 +779,10 @@ class TeensyControlGUI(QMainWindow):
     def handle_received_data(self, data):
         if data is None:
             return
+
+        # 转发给集成测试面板，让 pending 的测试有机会捕获响应
+        if hasattr(self, "test_panel") and self.test_panel is not None:
+            self.test_panel.on_response(data)
 
         if data.startswith("S:VERSION:"):
             version = data.split(":")[-1].strip()
