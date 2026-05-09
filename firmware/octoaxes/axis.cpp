@@ -250,16 +250,18 @@ void Axis::reportStateIfChanged(bool force) {
 void Axis::checkLimitPosition() {
   uint32_t event = readAxisEvent();
 
-  // 虚拟限位（软件限位）：不检查方向，因为 TMC4361A 硬件已保证
-  // VSTOPR 仅在正向越界时触发，VSTOPL 仅在负向越界时触发。
-  // 移除方向检查可避免 recovery 路径重新触发 VSTOP 后方向不匹配的问题。
+  // 虚拟限位（软件限位）：信任上层 isMoveAllowedByDirection() 已保证
+  // in-progress move 朝更安全方向移动，VSTOP_ACTIVE 在此期间是 chip
+  // 在 SET_LIM 把电机置于禁区后留下的 sticky/残留状态，不应视为「真实越界」。
+  // motor_moveToMicrosteps() 已临时清掉 VIRT_*_LIMIT_EN 让电机能动；
+  // 完成判定由 checkMovementComplete()（XACTUAL == XTARGET）负责。
   uint32_t vstop_bits =
       event & (TMC4361A_VSTOPL_ACTIVE_MASK | TMC4361A_VSTOPR_ACTIVE_MASK);
   if (vstop_bits) {
-    DEBUG_PRINT("Software Limit Stop: event=0x");
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":VSTOP active during move (ignored, gate handled upstream): event=0x");
     DEBUG_PRINTLNF(event, HEX);
-    completeMovement();
-    return;
+    // 不调 completeMovement()，让 checkMovementComplete() 在 XACTUAL 到达 XTARGET 时正常收尾
   }
 
   // 硬件限位（保留方向检查，硬件限位需要方向匹配）
@@ -518,6 +520,11 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
     return false;
   }
 
+  // 方向感知闸门：拒绝「朝更深越界」的目标（核心安全网，替代 chip VSTOP 截停）
+  if (!isMoveAllowedByDirection(targetMicrosteps)) {
+    return false;
+  }
+
   // 检查是否需要 VSTOP recovery（motor_moveToMicrosteps 会禁用限位）
   uint32_t preStatus = motor_readStatus(_icID);
   bool vstopWasActive = (preStatus & TMC4361A_VSTOPL_ACTIVE_F_MASK) ||
@@ -561,6 +568,11 @@ bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
   int32_t targetPos = currentPos + deltaMicrosteps;
 
   if (!isWithinSoftLimits(targetPos)) {
+    return false;
+  }
+
+  // 方向感知闸门：拒绝「朝更深越界」的目标
+  if (!isMoveAllowedByDirection(targetPos)) {
     return false;
   }
 
@@ -704,6 +716,13 @@ void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
   int32_t upperMicrosteps = motor_mmToMicrosteps(_icID, upperLimitMM);
 
   motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
+
+  // 同步方向闸门 shadow（双侧）
+  _softLimits.leftEnabled = true;
+  _softLimits.leftValue = lowerMicrosteps;
+  _softLimits.rightEnabled = true;
+  _softLimits.rightValue = upperMicrosteps;
+
   enableSoftLimits(true);
 }
 
@@ -711,6 +730,11 @@ void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
 void Axis::enableSoftLimits(bool enable) {
   motor_enableSoftLimits(_icID, enable, enable);
   _softLimitsEnabled = enable;
+  if (!enable) {
+    // 显式关闭软限位时清空方向闸门 shadow，允许任意方向移动
+    _softLimits.leftEnabled = false;
+    _softLimits.rightEnabled = false;
+  }
 }
 
 // 设置单侧软限位 (direction: +1=上限/右, -1=下限/左)
@@ -724,13 +748,55 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_RIGHT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
+    _softLimits.rightEnabled = true;
+    _softLimits.rightValue = valueMicrosteps;
   } else {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_LEFT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
+    _softLimits.leftEnabled = true;
+    _softLimits.leftValue = valueMicrosteps;
   }
   tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
   _softLimitsEnabled = true;
+}
+
+// 方向感知闸门：参见 axis.h 注释
+bool Axis::isMoveAllowedByDirection(int32_t target) const {
+  int32_t C = motor_getPositionMicrosteps(_icID);
+  if (_softLimits.leftEnabled) {
+    int32_t L = _softLimits.leftValue;
+    int32_t effective_lower = (C <= L) ? C : L;
+    if (target < effective_lower) {
+      DEBUG_PRINT(_axisName);
+      DEBUG_PRINT(":Move rejected (direction): target=");
+      DEBUG_PRINT(target);
+      DEBUG_PRINT(" C=");
+      DEBUG_PRINT(C);
+      DEBUG_PRINT(" L=");
+      DEBUG_PRINT(L);
+      DEBUG_PRINT(" eff_lower=");
+      DEBUG_PRINTLN(effective_lower);
+      return false;
+    }
+  }
+  if (_softLimits.rightEnabled) {
+    int32_t R = _softLimits.rightValue;
+    int32_t effective_upper = (C >= R) ? C : R;
+    if (target > effective_upper) {
+      DEBUG_PRINT(_axisName);
+      DEBUG_PRINT(":Move rejected (direction): target=");
+      DEBUG_PRINT(target);
+      DEBUG_PRINT(" C=");
+      DEBUG_PRINT(C);
+      DEBUG_PRINT(" R=");
+      DEBUG_PRINT(R);
+      DEBUG_PRINT(" eff_upper=");
+      DEBUG_PRINTLN(effective_upper);
+      return false;
+    }
+  }
+  return true;
 }
 
 // PID 控制

@@ -102,6 +102,18 @@ protected:
   // 软限位状态追踪（homing 后自动恢复用）
   bool _softLimitsEnabled;
 
+  // 软限位方向感知闸门的 shadow state：
+  // SET_LIM 单边设置后记录上位机意图，与 chip 寄存器解耦。
+  // 即使 motor_moveToMicrosteps recovery 临时清掉 chip 上的 EN 位，
+  // 这里仍保留「该侧是否被设置过」的语义，用于 isMoveAllowedByDirection()。
+  struct SoftLimitShadow {
+    bool leftEnabled;        // X-/Y-/Z- 是否被 SET_LIM 设置过
+    bool rightEnabled;       // X+/Y+/Z+ 是否被 SET_LIM 设置过
+    int32_t leftValue;       // VIRT_STOP_LEFT 的最新设置值（微步）
+    int32_t rightValue;      // VIRT_STOP_RIGHT 的最新设置值（微步）
+  };
+  SoftLimitShadow _softLimits = {false, false, INT32_MIN, INT32_MAX};
+
   // 虚拟限位 recovery 后延迟恢复标志
   // motor_moveToMicrosteps() 在 VSTOP 恢复时禁用限位，
   // 需等电机离开边界后（STATUS 中 VSTOP flags 清除）才能重新使能
@@ -191,6 +203,14 @@ public:
   virtual void setSoftLimits(float lowerLimitMM, float upperLimitMM);
   virtual void enableSoftLimits(bool enable);
   void setOneSoftLimit(int direction, int32_t valueMicrosteps);
+
+  // 方向感知闸门：判断目标位置是否符合「朝更安全方向移动」原则
+  // 当前位置 C、target T、_softLimits 中 leftValue=L / rightValue=R：
+  //   effective_lower = (C ≤ L) ? C : L  // 越下限时禁止再下；安全区时下界=L
+  //   effective_upper = (C ≥ R) ? C : R  // 对称
+  //   接受 T ∈ [effective_lower, effective_upper]
+  // 未启用的那一侧不参与判断
+  bool isMoveAllowedByDirection(int32_t targetMicrosteps) const;
 
   // PID 控制
   void configureStagePID(bool flip_direction, uint16_t transitions_per_rev);
