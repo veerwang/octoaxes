@@ -520,10 +520,9 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
     return false;
   }
 
-  // 方向感知闸门：拒绝「朝更深越界」的目标（核心安全网，替代 chip VSTOP 截停）
-  if (!isMoveAllowedByDirection(targetMicrosteps)) {
-    return false;
-  }
+  // 方向感知 clamp：朝禁区方向的 target 截到边界，让电机停在边界处
+  // （兼容旧 Squid 行为：旧 Squid 上位机不可改，需要固件兜底处理越界 target）
+  targetMicrosteps = clampTargetByDirection(targetMicrosteps);
 
   // 检查是否需要 VSTOP recovery（motor_moveToMicrosteps 会禁用限位）
   uint32_t preStatus = motor_readStatus(_icID);
@@ -571,10 +570,9 @@ bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
     return false;
   }
 
-  // 方向感知闸门：拒绝「朝更深越界」的目标
-  if (!isMoveAllowedByDirection(targetPos)) {
-    return false;
-  }
+  // 方向感知 clamp：朝禁区方向的 target 截到边界，让电机停在边界处
+  // （兼容旧 Squid 行为：旧 Squid 上位机不可改，需要固件兜底处理越界 target）
+  targetPos = clampTargetByDirection(targetPos);
 
   // 检查是否需要 VSTOP recovery（motor_moveToMicrosteps 会禁用限位）
   uint32_t preStatus = motor_readStatus(_icID);
@@ -761,42 +759,35 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
   _softLimitsEnabled = true;
 }
 
-// 方向感知闸门：参见 axis.h 注释
-bool Axis::isMoveAllowedByDirection(int32_t target) const {
+// 方向感知 clamp：参见 axis.h 注释
+int32_t Axis::clampTargetByDirection(int32_t target) const {
   int32_t C = motor_getPositionMicrosteps(_icID);
+  int32_t original = target;
   if (_softLimits.leftEnabled) {
     int32_t L = _softLimits.leftValue;
     int32_t effective_lower = (C <= L) ? C : L;
-    if (target < effective_lower) {
-      DEBUG_PRINT(_axisName);
-      DEBUG_PRINT(":Move rejected (direction): target=");
-      DEBUG_PRINT(target);
-      DEBUG_PRINT(" C=");
-      DEBUG_PRINT(C);
-      DEBUG_PRINT(" L=");
-      DEBUG_PRINT(L);
-      DEBUG_PRINT(" eff_lower=");
-      DEBUG_PRINTLN(effective_lower);
-      return false;
-    }
+    if (target < effective_lower) target = effective_lower;
   }
   if (_softLimits.rightEnabled) {
     int32_t R = _softLimits.rightValue;
     int32_t effective_upper = (C >= R) ? C : R;
-    if (target > effective_upper) {
-      DEBUG_PRINT(_axisName);
-      DEBUG_PRINT(":Move rejected (direction): target=");
-      DEBUG_PRINT(target);
-      DEBUG_PRINT(" C=");
-      DEBUG_PRINT(C);
-      DEBUG_PRINT(" R=");
-      DEBUG_PRINT(R);
-      DEBUG_PRINT(" eff_upper=");
-      DEBUG_PRINTLN(effective_upper);
-      return false;
-    }
+    if (target > effective_upper) target = effective_upper;
   }
-  return true;
+  if (target != original) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":Move clamped (soft limit): target=");
+    DEBUG_PRINT(original);
+    DEBUG_PRINT(" → ");
+    DEBUG_PRINT(target);
+    DEBUG_PRINT(" (C=");
+    DEBUG_PRINT(C);
+    DEBUG_PRINT(" L=");
+    DEBUG_PRINT(_softLimits.leftEnabled ? _softLimits.leftValue : 0);
+    DEBUG_PRINT(" R=");
+    DEBUG_PRINT(_softLimits.rightEnabled ? _softLimits.rightValue : 0);
+    DEBUG_PRINTLN(")");
+  }
+  return target;
 }
 
 // PID 控制

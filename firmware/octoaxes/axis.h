@@ -204,13 +204,14 @@ public:
   virtual void enableSoftLimits(bool enable);
   void setOneSoftLimit(int direction, int32_t valueMicrosteps);
 
-  // 方向感知闸门：判断目标位置是否符合「朝更安全方向移动」原则
+  // 方向感知 clamp：把 target 截到「朝更安全方向移动」原则允许的范围
   // 当前位置 C、target T、_softLimits 中 leftValue=L / rightValue=R：
   //   effective_lower = (C ≤ L) ? C : L  // 越下限时禁止再下；安全区时下界=L
   //   effective_upper = (C ≥ R) ? C : R  // 对称
-  //   接受 T ∈ [effective_lower, effective_upper]
-  // 未启用的那一侧不参与判断
-  bool isMoveAllowedByDirection(int32_t targetMicrosteps) const;
+  //   返回 clamp(T, effective_lower, effective_upper)
+  // 未启用的那一侧不参与限制。截到边界后让电机停在边界，与旧 Squid 兼容
+  // （旧 Squid 在固件 callback_move_x/y/z 里也做 min/max clamp）
+  int32_t clampTargetByDirection(int32_t targetMicrosteps) const;
 
   // PID 控制
   void configureStagePID(bool flip_direction, uint16_t transitions_per_rev);
