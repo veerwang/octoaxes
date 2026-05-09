@@ -21,4 +21,10 @@
   #define DEBUG_PRINTLNF(x, y)
 #endif
 
+// 取消下行注释 → 临时禁用 24 字节二进制位置上报，让 SerialUSB 只输出 ASCII，
+// 方便 Arduino IDE Serial Monitor / 普通 terminal 查看 DEBUG_PRINT 输出
+// 不被二进制乱码干扰。注意：禁用后上位机收不到位置上报，无法连接。
+// === 调试 [FOCUS] / 其他 ASCII 输出时启用，调试完成后注释回 ===
+// #define DISABLE_BINARY_POS_UPDATE
+
 #endif /* INCLUDED_BUILD_OPT_H */

@@ -173,6 +173,11 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
 }
 
 void SerialProtocolHandler::send_position_update() {
+#ifdef DISABLE_BINARY_POS_UPDATE
+  // build_opt.h 中临时定义的开关：跳过 24 字节二进制位置上报，
+  // 让 SerialUSB 只剩 ASCII 调试输出，方便 Arduino Serial Monitor 看
+  return;
+#endif
   if (_us_since_last_pos_update < INTERVAL_SEND_POS_US)
     return;
   _us_since_last_pos_update = 0;

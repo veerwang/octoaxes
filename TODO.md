@@ -18,6 +18,13 @@
 
 ## 待办
 
+### 2026-05-10 今日完成 + 待跟踪
+- [x] **AF 激光启动常亮 + 关不掉** (2026-05-10) — `MCU_PINS.AF_LASER = pin 15`（旧 Squid `_def.py:158`），fw 缺旧 Squid `init_io()` 的 `digitial_output_pins[]={6,9,10,15}` 显式 OUTPUT+LOW 初始化 → pin 15 处于 INPUT 高阻 + 激光板上拉 → 常亮，且 cmd 41 `digitalWrite` 在 INPUT 模式下不改实际电平 → 关不掉。修复：① `illumination.cpp::illumination_init()` 增加 4 pin OUTPUT+LOW 初始化 ② `commandprocessor.cpp::handleSetPinLevel` 加 `pinMode(OUTPUT)` 防御。**硬件验证通过**。
+- [x] **LED 矩阵启动常亮（旧 Squid 也有）** (2026-05-10) — 两个原因叠加：① FastLED.addLeds 缺第 5 模板参数，SPI 默认 24MHz（旧 Squid 1MHz）clear_matrix 推 0 帧可能被 LED 错收；② `initializePowerManagement` 等 PG 信号 + 后续初始化累计数百 ms~5s，APA102 此期间处于上电默认亮态。修复：① FastLED.addLeds 加 `, 1` 设 1MHz 与旧 Squid 一致 ② 拆出 `illumination_init_matrix_early()`，在 `setup()` 最早期（serialProtocol.begin 后）调，多次 show 锁存全 0 帧。
+- [x] **开 D 通道时矩阵也亮（双开）** (2026-05-10) — `set_illumination_led_matrix` 与旧 Squid 行为相反：旧 Squid 仅缓存参数，octoaxes 立即点亮且置 `illumination_is_on=true`。上位机启动调此命令预设明场参数 → 矩阵立即亮 → 后续切 D 通道矩阵不被关。修复：与旧 Squid functions.cpp:359-368 对齐，仅缓存，仅 `if (illumination_is_on)` 才刷新点亮。
+- [ ] **启动卡死（chip 残留态）** (2026-05-10 发现) — Teensy / TMC chip 不断电（用户只重启上位机软件）→ chip 寄存器（XACTUAL / VMAX / RAMPMODE）保留上次断电前状态。cmd 0 RESET (`Axis::handleReset`) 和 cmd 1 INITIALIZE 都不清 chip。例如 `XACTUAL=1257654` + SET_LIM Z+=-1067 立即触发 VSTOPR latch，cmd 29 HOME 启动 motor_setVelocityInternal 但物理位置严重错位 → limit switch 永远不触发，cmd 29 永远不 ack。**短期解：USB 拔插重启 Teensy（已验证）**。**长期方案 A**：cmd 0 RESET handler 增加每轴 VMAX=0 + delay + motor_resetRampMode + 清 EVENTS。
+- [ ] **Z 1μm 精细调节问题（暂搁置）** (2026-05-10 排查中断) — 用户期望 joystick 调 Z 时 GUI 看到 1μm 级跳变，实际 10+μm。debug 抓到 `pkt_delta=256 microsteps/detent`：手控盒 ISR 4x 边沿 × `step=256` (sensitivity_z=8)，量化对齐 16 后输出 256。每 detent 实际位移 = 256 × Z 单步：Z 微步=256(octoaxes 默认) → 1.5μm；Z 微步=32(旧 Squid 配) → 12μm。可能解：① 改手控盒固件 control_panel_teensyLC.ino:142 量化对齐 16→4 ② 调 pot1 sensitivity ③ 旧 Squid 上位机配 Z 微步=256。**调试基础设施保留**：`firmware/octoaxes/joystick.cpp` 的 `[FOCUS]` DEBUG_PRINT、`build_opt.h` 的 `DISABLE_BINARY_POS_UPDATE` 编译开关（默认注释），下次调试直接启用。
+
 ### 运动效率优化（2026-05-09 记录，暂不动手）
 - [ ] **优化各轴运动效率** - X/Y/Z/W 全轴系统性 review 加速度/急动度/速度匹配。可调参：VMAX、AMAX/DMAX、ASTART/DFINAL、BOW1-4（S 形 ramp）、TMC2240/2660 电流与 StealthChop 切换阈值。目标：缩短小步距移动总用时（命令接收 → 真完成），保持定位误差 ≤1 微步。落地前需要先有基准测试脚本（记录 prep/motor/total 时间序列）
 
