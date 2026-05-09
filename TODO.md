@@ -18,6 +18,9 @@
 
 ## 待办
 
+### 运动效率优化（2026-05-09 记录，暂不动手）
+- [ ] **优化各轴运动效率** - X/Y/Z/W 全轴系统性 review 加速度/急动度/速度匹配。可调参：VMAX、AMAX/DMAX、ASTART/DFINAL、BOW1-4（S 形 ramp）、TMC2240/2660 电流与 StealthChop 切换阈值。目标：缩短小步距移动总用时（命令接收 → 真完成），保持定位误差 ≤1 微步。落地前需要先有基准测试脚本（记录 prep/motor/total 时间序列）
+
 ### 编码器（暂缓，已全部关闭）
 - [x] Z 轴编码器基础设施 (2026-04-13) - config.h 常量 + invertEncoderDir + motor_initABNEncoder
 - [x] 编码器透明上报方案 (2026-04-13) - getCurrentPositionMicrosteps 按 enableEncoder 切 XACTUAL/ENC_POS，MSG_LENGTH 保持 24
