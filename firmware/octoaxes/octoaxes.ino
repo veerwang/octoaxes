@@ -130,6 +130,11 @@ void setup() {
   // 初始化状态指示灯
   initializeStartupLED();
 
+  // 尽早把 APA102 矩阵清零，最小化"启动亮"窗口。
+  // 之后的 initializePowerManagement (等 PG) + delay + clock + SPI 初始化
+  // 累计可能数百 ms~5s，APA102 在此期间处于上电默认亮态。
+  illumination_init_matrix_early();
+
   DEBUG_PRINTLN("Initializing system...");
 
   // 初始化系统

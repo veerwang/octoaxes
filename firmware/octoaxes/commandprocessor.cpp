@@ -458,6 +458,9 @@ void CommandProcessor::handleSetAxisDisableEnable(const byte *data) {
 }
 
 void CommandProcessor::handleSetPinLevel(const byte *data) {
+  // 防御：若上位机请求的 pin 在 illumination_init 中未显式 OUTPUT，
+  // INPUT 模式下 digitalWrite 不改实际电平。第一次写入时强制配 OUTPUT。
+  pinMode(data[2], OUTPUT);
   digitalWrite(data[2], data[3]);
 }
 
