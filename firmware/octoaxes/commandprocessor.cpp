@@ -485,11 +485,26 @@ void CommandProcessor::handleInitFilterWheelW2(const byte *data) {
 }
 
 void CommandProcessor::handleInitialize(const byte *data) {
-  // 重新初始化 DAC 和触发系统；TMC 轴已在 setup 中初始化，不重复
+  // 对齐老 Squid 行为：cmd 254 INITIALIZE = 等价于"断电再上电"。
+  // 老 Squid 在 tmc4361A_tmc2660_init 第一行写 RESET_REG=0x52535400 做 chip 软复位，
+  // 然后重写全部配置。这样上位机重启 GUI（chip 不断电）后 XACTUAL/EVENTS/RAMPMODE
+  // 等残留状态被清掉，cmd 9 SET_LIM 和 cmd 29 HOME 才能从干净状态开始。
+  //
+  // Axis::begin() 内 motor_initMotionController 第一行 SW_RESET = 0x52535400 等价。
+  // beginAll 后再调 handleReset 重置 C++ 软件状态机（_currentState/_isMoving 等）。
+  if (!axisManager.beginAll()) {
+    DEBUG_PRINTLN("INITIALIZE: beginAll FAILED");
+  }
+  uint8_t count = axisManager.getAxisCount();
+  for (uint8_t i = 0; i < count; i++) {
+    Axis *axis = axisManager.getAxis(i);
+    if (axis) axis->handleReset();
+  }
+  // DAC + trigger 重置
   set_DAC8050x_config();
   set_DAC8050x_default_gain();
   trigger_mode = TRIGGER_MODE_NORMAL;
-  DEBUG_PRINTLN("INITIALIZE: DAC + trigger_mode reset");
+  DEBUG_PRINTLN("INITIALIZE: chip SW_RESET + reconfig + state machine reset done");
 }
 
 void CommandProcessor::handleReset(const byte *data) {
