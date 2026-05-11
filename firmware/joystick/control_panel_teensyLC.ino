@@ -127,10 +127,18 @@ void loop()
 
   // read joystick
   joystick_delta_x = analogRead(pin_joystick_x) - joystick_offset_x;
+#ifdef REGION_OVERSEAS
+  joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/4;
+#else
   joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/8;
+#endif
   joystick_delta_x = sgn(joystick_delta_x)*min(abs(joystick_delta_x),32767);
   joystick_delta_y = analogRead(pin_joystick_y) - joystick_offset_y;
+#ifdef REGION_OVERSEAS
+  joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/4;
+#else
   joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/8;
+#endif
   joystick_delta_y = sgn(joystick_delta_y)*min(abs(joystick_delta_y),32767);
 
   // read key
