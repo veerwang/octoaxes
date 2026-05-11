@@ -35,10 +35,17 @@
     **后续排查方向**（待优先级）：(a) chopper 参数 TOFF/HSTRT/HEND/TBL 与老 Squid 对齐；(b) 方案 E homing 速度联动 vmax（10mm/s → 24mm/s 测试不同速度是否避开共振）；(c) StealthChop/SpreadCycle 切换阈值；(d) 抓串口 DEBUG_PRINT 日志看 homing 启动序列时序。
     **当前位置**：commit 7533516（含 D2 电流 + HOME 方向 fix），其他修改已回退。
 
-### 运动效率优化（2026-05-09 记录，2026-05-11 基线已建立）
-- [x] **基线测试脚本** (2026-05-11 commit a3d797c) — `software/tests/benchmark_xyz_speed.py` 见上条
+### 运动效率优化（2026-05-09 记录，2026-05-11 第一轮完成）
+- [x] **基线测试脚本** (2026-05-11 commit a3d797c) — `software/tests/benchmark_xyz_speed.py`
 - [x] **首次基线数据** (2026-05-11) — `documents/baselines/benchmark_xyz_20260511_145604.{csv,md}`
-- [ ] **优化各轴运动效率** - X/Y/Z/W 全轴系统性 review 加速度/急动度/速度匹配。可调参：VMAX、AMAX/DMAX、ASTART/DFINAL、BOW1-4（S 形 ramp）、TMC2240/2660 电流与 StealthChop 切换阈值。**优化重点**：小距离基线开销（X/Y 10μm 已 ~120ms，主要来自 ramp 加减速时间）；大距离的巡航段（30mm 1.6s，可调 VMAX）。落地后跑同脚本对比 baseline。
+- [x] **VMAX 提升 commit 405efb7** — X/Y 25→30 mm/s，Z 3→3.8 mm/s。30mm 档减 9% (1593→1450ms)，其他档位 < 1% 变化（ramp 主导）
+- [x] **AMAX_Z 100 尝试已撤销** — 实测 Z 加速度从 20 提到 100 mm/s² 反而让 Z 1mm 时间从 697→1569ms (+125%)，疑似 motor_adjustBows BOW 算太大 + Z 电机扭矩不足。AMAX_Z 保留 20。
+- [x] **benchmark 启动序列对齐 GUI** (commit a257d22 + 9c00d65) — 加 SET_MAX_VELOCITY_ACCELERATION / SET_LIM_SWITCH_POLARITY / SET_HOME_SAFETY_MERGIN，可在两个 firmware 上公平对比
+- [x] **octoaxes vs 老 Squid firmware 对比归档** (2026-05-11 commit 9c00d65) — `documents/baselines/comparison_2026-05-11.md`
+   - 同参数下小距离 (10μm-1mm) octoaxes 快 3-14ms (3-7%)
+   - 同参数下大距离 (5mm-30mm) 老 Squid 快 20-76ms (3-9%)
+   - 总体性能相当，差距 < 10%
+- [ ] **（暂搁置）大距离 ramp 优化** — octoaxes 30mm 比老 Squid 慢 74ms (5%)，BOW 已 saturate 到 BOWMAX。可能差距来源：`motor_isRunning` 判定方式（octoaxes 用 VACTUAL vs 老 Squid 用 STATUS TARGET_REACHED/RAMP_STATE）、`axis.update()` 状态机间接调用 vs 主 loop 直接判定。要追这 5% 需要 firmware 调试打点测精确延迟。当前接受现状
 
 ### 编码器（暂缓，已全部关闭）
 - [x] Z 轴编码器基础设施 (2026-04-13) - config.h 常量 + invertEncoderDir + motor_initABNEncoder
