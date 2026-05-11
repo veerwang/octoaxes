@@ -189,7 +189,9 @@ void CommandProcessor::handleSetLim(const byte *data) {
 }
 
 void CommandProcessor::handleTurnOnIllumination(const byte *data) {
-  illumination_source = data[2];
+  // 与老 Squid main_controller_teensy41.ino:1529 对齐：不动 illumination_source。
+  // 老 Squid 上位机 turn_on_illumination() 命令包 cmd[2]=0；若此处读 data[2] 写 source，
+  // 会把 source 强制覆盖为 0 (LED_ARRAY_FULL = 明场)，导致切荧光通道后明场被点亮。
   turn_on_illumination();
 }
 

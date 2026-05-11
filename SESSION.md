@@ -6,11 +6,98 @@
 
 ## 最新会话
 
-**日期**: 2026-05-09
+**日期**: 2026-05-11
 **分支**: develop
-**位置**: 方案 A「软限位方向感知闸门」落地并硬件验证通过
+**位置**: 荧光通道 405/638 等点不亮问题双重根因修复 + 联锁禁用烧录脚本
 
 ### 本次完成
+
+#### 1. Joystick Z 1μm 精细调节"问题"澄清（无代码改动）
+
+- 现象：用户期望 joystick 拨 Z 每 detent 1μm 跳变，实际 10+μm。
+- 真相：是用户烧错了固件版本。烧上正确固件后 Z 调节行为符合预期。
+- 此前推断的 `pkt_delta=256 microsteps/detent` + 量化对齐 16 是错版本固件的现象，不再适用。
+- 调试基础设施（`joystick.cpp` 的 `[FOCUS]` DEBUG_PRINT、`build_opt.h` 的
+  `DISABLE_BINARY_POS_UPDATE` 编译开关，默认注释）保留，未来排查直接启用。
+- TODO.md 对应条目已标记 (2026-05-11 解决)。
+
+#### 2. 老 Squid 切荧光通道（405/561/638…）实际开了明场（commit 待提交）
+
+**症状**：在老 Squid 上位机选 405/488/561/638/730 任一荧光通道后开灯，发现实际亮的是明场（LED 矩阵），而对应的 D1-D5 TTL 端口不通电。
+
+**根因**：`firmware/octoaxes/commandprocessor.cpp:191-194` 的 `handleTurnOnIllumination` 比老 Squid 固件多了一行 `illumination_source = data[2]`。
+
+对比老 Squid 固件 `main_controller_teensy41.ino:1529-1535`：
+
+```cpp
+case TURN_ON_ILLUMINATION:
+{
+  turn_on_illumination();   // 不动 illumination_source
+  break;
+}
+```
+
+老 Squid 上位机 `microcontroller.py:582` 发 `turn_on_illumination()` 命令包内 `cmd[2]=0`（未设此字段）。octoaxes 固件读 `data[2]=0` 当作 source 写回 → `illumination_source = 0` = `LED_ARRAY_FULL` = 明场。前置 `set_illumination(11, intensity)` 设的 D1 source 被毁，turn_on 走 LED_ARRAY 分支点亮矩阵。
+
+**修复**：删除 `illumination_source = data[2]` 那一行，与老 Squid 固件对齐。cmd 10 只做"打开"动作，source 由前置 `set_illumination(source, intensity)` 维护。
+
+**回归风险评估**：
+- octoaxes GUI 不发 cmd 10（grep 确认），不影响。
+- `software/tests/test_illumination.py` 冗余地在 cmd 10 包里塞 source，但每个测试都先发 SET_ILLUMINATION 设置 source，行为不变。
+
+#### 3. 荧光通道 D1-D5 TTL 输出永远不亮（联锁失效）（commit 待提交）
+
+**症状**：上一条 fix 落地后，明场不再误亮，但用户报告 D1-D5 荧光通道也都不亮——切 405/638 没有任何输出。
+
+**根因链**：
+1. `config.h:94` `ILLUMINATION_INTERLOCK = pin 2`
+2. `illumination.cpp:52` `pinMode(ILLUMINATION_INTERLOCK, INPUT_PULLUP)`
+3. 这台机器没接激光联锁信号 → pin 2 浮空 → 被内部上拉到 HIGH
+4. `illumination.cpp:99-106` `illumination_interlock_ok()` 要求 `digitalRead == LOW` 才返回 true → 现状返回 false
+5. `illumination.cpp:343-364` `turn_on_illumination()` 的 D1-D5 case 全部 gated by `illumination_interlock_ok()` → `digitalWrite(HIGH)` 全部跳过
+6. 更糟：`octoaxes.ino:158-165` 主循环每个周期都主动把 D1-D5 强拉 LOW
+7. LED 矩阵（明场）走 APA102 SPI，**不经联锁检查** → 所以明场能正常控制——这也解释了上一条 bug 为什么"明场总是亮"
+
+**修复**（参考 `firmware/joystick/download.sh` 风格）：
+
+①  `firmware/octoaxes/platformio.ini` 新增环境：
+```ini
+[env:teensy41_nointerlock]
+extends = env:teensy41
+build_flags =
+    ${env:teensy41.build_flags}
+    -D DISABLE_LASER_INTERLOCK
+```
+默认 `teensy41` 环境保持联锁启用（出厂安全默认）。
+
+②  新增 `firmware/octoaxes/download.sh`（已 chmod +x）：
+```bash
+./download.sh                # 交互选择
+./download.sh safe           # 启用联锁（默认）
+./download.sh nointerlock    # 禁用联锁（本工位用）
+```
+
+`DISABLE_LASER_INTERLOCK` 是编译期 `#ifdef`，让 `illumination_interlock_ok()` 直接 `return true`，零运行时开销。FLASH 由 72124 → 72060（-64 字节）确认优化生效。
+
+**硬件验证**：烧 nointerlock 版本后，老 Squid 切 405/638 等荧光通道实测正常点亮，对应 TTL 端口拉高，DAC 输出按 intensity 设置 ✓。
+
+### 下次继续
+
+1. **启动卡死（chip 残留态）** — 长期方案 A：cmd 0 RESET handler 增加每轴 VMAX=0 + delay + motor_resetRampMode + 清 EVENTS。短期靠拔 USB 重启 Teensy。
+2. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
+3. （续）合并 W 轴编码器修复（maxpro → develop）
+4. （续）W 轴换孔时间优化（61.3ms → ≤60ms）
+5. （续，独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不应静默 return false，应排队或上报错误
+
+---
+
+## 历史记录
+
+<!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-05-09 - 方案 A 软限位方向感知闸门完整落地（5 次迭代）
+
+**位置**: 方案 A「软限位方向感知闸门」落地并硬件验证通过
 
 #### 1. 上位机限位收紧（commit febc844）
 
@@ -121,20 +208,7 @@ effective_upper = (C ≥ R) ? C : (R - BOUNDARY_MARGIN_MICROSTEPS);
 
 复现「X=0 + SET_LIM x_neg=5mm + HOME_X」启动卡死场景的 Python 测试脚本，可用于回归验证。
 
-### 下次继续
-
-1. （可选清理）旧 Squid Plan B 配置 workaround 不再必需，可还原 `configuration_Squid+.ini` 的 `x_negative=5, y_negative=4` 默认值
-2. （遗留独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时静默返回 false → cmd 假 COMPLETED（与方案 A 无关，可单独修）
-3. （考虑）若发现 100 微步 boundary margin 过大或不够，调整 `BOUNDARY_MARGIN_MICROSTEPS` 常数
-4. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
-5. （续）合并 W 轴编码器修复（maxpro → develop）
-6. （续）硬件验证照明/触发系统
-
 ---
-
-## 历史记录
-
-<!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
 
 ### 2026-05-08 - 旧 Squid 5mm 短少 + 随机点动卡死定位
 
