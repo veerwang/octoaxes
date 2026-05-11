@@ -151,9 +151,14 @@ namespace AxisConstDefinition {
 		const int HOMING_MICROSTEPPING_FILTERWHEEL = 256;
 		const int HOMING_MICROSTEPPING_OBJECTIVES = 256;
 
-		const float MAX_VELOCITY_X_mm = 25;
-		const float MAX_VELOCITY_Y_mm = 25;
-		const float MAX_VELOCITY_Z_mm = 3;
+		// 2026-05-11 速度优化第一轮：对齐老 Squid HCS v2 配置
+		// 老 Squid configuration_HCS_v2.ini: max_velocity_x/y/z_mm = 30/30/3.8
+		// AMAX_Z 100 实测反而让 Z 1mm 时间从 697→1569ms（+125%），疑似
+		// motor_adjustBows 自动算出的 BOW 过大 + 电机扭矩不够导致 ramp 异常。
+		// 保留 vmax 提升，Z 加速度回退到原值 20 mm/s²。
+		const float MAX_VELOCITY_X_mm = 30;
+		const float MAX_VELOCITY_Y_mm = 30;
+		const float MAX_VELOCITY_Z_mm = 3.8;
 		const float MAX_VELOCITY_FILTERWHEEL_mm = 4.2 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float MAX_VELOCITY_OBJECTIVES_mm = 0.5 * SCREW_PITCH_OBJECTIVES_MM;
 
