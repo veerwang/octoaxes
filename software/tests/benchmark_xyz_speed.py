@@ -42,6 +42,7 @@ CMD_MOVETO = {"X": 6, "Y": 7, "Z": 8}
 CMD_SET_LIM = 9
 CMD_HOME = 5
 CMD_CONFIGURE_STEPPER_DRIVER = 21
+CMD_SET_MAX_VELOCITY_ACCELERATION = 22
 CMD_SET_LEAD_SCREW_PITCH = 23
 RESPONSE_LEN = 24
 
@@ -191,17 +192,24 @@ AXIS_PARAMS = OrderedDict(
         # MOVE/MOVETO 发给 firmware 前要乘 movement_sign。
         # test_range_um: 上位机坐标系下的安全测试范围（home 后绝对位置 μm）
         # 用户指定 2026-05-11：X 10mm-112mm / Y 6mm-76mm / Z 0.1mm-6.5mm
+        # vmax_mm_s / accel_mm_s2: 通过 SET_MAX_VELOCITY_ACCELERATION 强制下发，
+        # 让两个 firmware（octoaxes / 老 Squid）在同一组运动参数下公平对比。
+        # 当前值 = octoaxes config.h commit 405efb7（与老 Squid software ini
+        # 配置 vmax 一致；accel 保留 octoaxes 原值，Z accel 100→20 因实测退化）
         ("X", {"pitch_mm": 2.54, "microstepping": 256, "fs_per_rev": 200,
                "current_ma": 1000, "hold_ratio": 0.25,
                "movement_sign": 1,
+               "vmax_mm_s": 30, "accel_mm_s2": 500,
                "test_range_um": (10_000, 112_000)}),
         ("Y", {"pitch_mm": 2.54, "microstepping": 256, "fs_per_rev": 200,
                "current_ma": 1000, "hold_ratio": 0.25,
                "movement_sign": 1,
+               "vmax_mm_s": 30, "accel_mm_s2": 500,
                "test_range_um": (6_000, 76_000)}),
         ("Z", {"pitch_mm": 0.3, "microstepping": 256, "fs_per_rev": 200,
                "current_ma": 500, "hold_ratio": 0.5,
                "movement_sign": -1,
+               "vmax_mm_s": 3.8, "accel_mm_s2": 20,
                "test_range_um": (100, 6_500)}),
     ]
 )
@@ -294,6 +302,24 @@ def _send_set_lead_screw_pitch(ser, cmd_id, axis_code, pitch_mm):
     ser.write(pkt)
 
 
+def _send_set_max_velocity_acceleration(ser, cmd_id, axis_code, vmax_mm_s, accel_mm_s2):
+    """SET_MAX_VELOCITY_ACCELERATION (cmd 22):
+        byte[2]=axis, byte[3..4]=vmax×100 uint16 BE, byte[5..6]=accel×10 uint16 BE.
+    """
+    vel_int = int(round(vmax_mm_s * 100)) & 0xFFFF
+    acc_int = int(round(accel_mm_s2 * 10)) & 0xFFFF
+    pkt = bytearray(8)
+    pkt[0] = cmd_id & 0xFF
+    pkt[1] = CMD_SET_MAX_VELOCITY_ACCELERATION
+    pkt[2] = axis_code & 0xFF
+    pkt[3] = (vel_int >> 8) & 0xFF
+    pkt[4] = vel_int & 0xFF
+    pkt[5] = (acc_int >> 8) & 0xFF
+    pkt[6] = acc_int & 0xFF
+    pkt[7] = crc8(pkt[:7])
+    ser.write(pkt)
+
+
 def _send_configure_stepper_driver(ser, cmd_id, axis_code, microstepping, current_ma, hold_ratio):
     """CONFIGURE_STEPPER_DRIVER (cmd 21):
         byte[2]=axis, byte[3]=ms_byte (1→0, 256→255, else→ms),
@@ -320,12 +346,16 @@ def _send_configure_stepper_driver(ser, cmd_id, axis_code, microstepping, curren
 
 
 def configure_actuators(ser, reader, axes, cmd_id):
-    """对齐 GUI 的 _configure_actuators：每轴下发 pitch + 微步/电流。
+    """对齐 GUI 的 _configure_actuators：每轴下发 pitch + 微步/电流 + vmax/accel。
 
     防止 firmware 残留旧 Squid 的 16 微步配置等 → benchmark 单位换算与 firmware
     不一致 → 电机走不到目标。
+
+    2026-05-11 增加 SET_MAX_VELOCITY_ACCELERATION：让两个 firmware（octoaxes
+    与老 Squid）在同一组 vmax/accel 下公平对比，避免 firmware 默认值差异
+    （老 Squid def_octopi_80120.h vmax=50 vs octoaxes config.h vmax=30 等）。
     """
-    print("\n[0a] 配置 actuator（pitch + 微步 + 电流，对齐 GUI startup）")
+    print("\n[0a] 配置 actuator（pitch + 微步 + 电流 + vmax/accel，对齐 GUI startup）")
     for axis in axes:
         if axis not in AXIS_PROTOCOL:
             continue
@@ -339,8 +369,14 @@ def configure_actuators(ser, reader, axes, cmd_id):
                                         p["microstepping"], p["current_ma"], p["hold_ratio"])
         wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
         cmd_id = (cmd_id + 1) % 256
+        # SET_MAX_VELOCITY_ACCELERATION
+        _send_set_max_velocity_acceleration(ser, cmd_id, AXIS_PROTOCOL[axis],
+                                             p["vmax_mm_s"], p["accel_mm_s2"])
+        wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
+        cmd_id = (cmd_id + 1) % 256
         print(f"  ✓ {axis}: pitch={p['pitch_mm']}mm, ms={p['microstepping']}, "
-              f"current={p['current_ma']}mA, hold={p['hold_ratio']}")
+              f"current={p['current_ma']}mA, hold={p['hold_ratio']}, "
+              f"vmax={p['vmax_mm_s']}mm/s, accel={p['accel_mm_s2']}mm/s²")
     return cmd_id
 
 
