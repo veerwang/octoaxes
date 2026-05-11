@@ -41,9 +41,11 @@ CMD_MOVE = {"X": 0, "Y": 1, "Z": 2}
 CMD_MOVETO = {"X": 6, "Y": 7, "Z": 8}
 CMD_SET_LIM = 9
 CMD_HOME = 5
+CMD_SET_LIM_SWITCH_POLARITY = 20
 CMD_CONFIGURE_STEPPER_DRIVER = 21
 CMD_SET_MAX_VELOCITY_ACCELERATION = 22
 CMD_SET_LEAD_SCREW_PITCH = 23
+CMD_SET_HOME_SAFETY_MERGIN = 28
 RESPONSE_LEN = 24
 
 # SET_LIM 限位码（与固件 commandprocessor.cpp LIM_CODE_* 一致）
@@ -194,22 +196,27 @@ AXIS_PARAMS = OrderedDict(
         # 用户指定 2026-05-11：X 10mm-112mm / Y 6mm-76mm / Z 0.1mm-6.5mm
         # vmax_mm_s / accel_mm_s2: 通过 SET_MAX_VELOCITY_ACCELERATION 强制下发，
         # 让两个 firmware（octoaxes / 老 Squid）在同一组运动参数下公平对比。
-        # 当前值 = octoaxes config.h commit 405efb7（与老 Squid software ini
-        # 配置 vmax 一致；accel 保留 octoaxes 原值，Z accel 100→20 因实测退化）
+        # home_pol / home_margin_um: 通过 SET_LIM_SWITCH_POLARITY + SET_HOME_SAFETY_MERGIN
+        # 下发，对齐 configuration_HCS_v2.ini 的 [LIMIT_SWITCH_POLARITY]（X/Y=1, Z=0）。
+        # 老 Squid firmware 默认 polarity=0 (ACTIVE_LOW) 与实际硬件 ACTIVE_HIGH 不符
+        # 时 home limit 永不触发 → homing 卡死。
         ("X", {"pitch_mm": 2.54, "microstepping": 256, "fs_per_rev": 200,
                "current_ma": 1000, "hold_ratio": 0.25,
                "movement_sign": 1,
                "vmax_mm_s": 30, "accel_mm_s2": 500,
+               "home_pol": 1, "home_margin_um": 50,
                "test_range_um": (10_000, 112_000)}),
         ("Y", {"pitch_mm": 2.54, "microstepping": 256, "fs_per_rev": 200,
                "current_ma": 1000, "hold_ratio": 0.25,
                "movement_sign": 1,
                "vmax_mm_s": 30, "accel_mm_s2": 500,
+               "home_pol": 1, "home_margin_um": 50,
                "test_range_um": (6_000, 76_000)}),
         ("Z", {"pitch_mm": 0.3, "microstepping": 256, "fs_per_rev": 200,
                "current_ma": 500, "hold_ratio": 0.5,
                "movement_sign": -1,
                "vmax_mm_s": 3.8, "accel_mm_s2": 20,
+               "home_pol": 0, "home_margin_um": 50,
                "test_range_um": (100, 6_500)}),
     ]
 )
@@ -302,6 +309,32 @@ def _send_set_lead_screw_pitch(ser, cmd_id, axis_code, pitch_mm):
     ser.write(pkt)
 
 
+def _send_set_lim_switch_polarity(ser, cmd_id, axis_code, polarity):
+    """SET_LIM_SWITCH_POLARITY (cmd 20): byte[2]=axis, byte[3]=polarity (0/1/2)."""
+    pkt = bytearray(8)
+    pkt[0] = cmd_id & 0xFF
+    pkt[1] = CMD_SET_LIM_SWITCH_POLARITY
+    pkt[2] = axis_code & 0xFF
+    pkt[3] = polarity & 0xFF
+    pkt[7] = crc8(pkt[:7])
+    ser.write(pkt)
+
+
+def _send_set_home_safety_margin(ser, cmd_id, axis_code, margin_um):
+    """SET_HOME_SAFETY_MERGIN (cmd 28): byte[2]=axis, byte[3..6]=int32 BE margin (μm)."""
+    val = int(margin_um) & 0xFFFFFFFF
+    pkt = bytearray(8)
+    pkt[0] = cmd_id & 0xFF
+    pkt[1] = CMD_SET_HOME_SAFETY_MERGIN
+    pkt[2] = axis_code & 0xFF
+    pkt[3] = (val >> 24) & 0xFF
+    pkt[4] = (val >> 16) & 0xFF
+    pkt[5] = (val >> 8) & 0xFF
+    pkt[6] = val & 0xFF
+    pkt[7] = crc8(pkt[:7])
+    ser.write(pkt)
+
+
 def _send_set_max_velocity_acceleration(ser, cmd_id, axis_code, vmax_mm_s, accel_mm_s2):
     """SET_MAX_VELOCITY_ACCELERATION (cmd 22):
         byte[2]=axis, byte[3..4]=vmax×100 uint16 BE, byte[5..6]=accel×10 uint16 BE.
@@ -374,9 +407,18 @@ def configure_actuators(ser, reader, axes, cmd_id):
                                              p["vmax_mm_s"], p["accel_mm_s2"])
         wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
         cmd_id = (cmd_id + 1) % 256
+        # SET_LIM_SWITCH_POLARITY（home switch 极性）
+        _send_set_lim_switch_polarity(ser, cmd_id, AXIS_PROTOCOL[axis], p["home_pol"])
+        wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
+        cmd_id = (cmd_id + 1) % 256
+        # SET_HOME_SAFETY_MERGIN（home 安全余量，μm）
+        _send_set_home_safety_margin(ser, cmd_id, AXIS_PROTOCOL[axis], p["home_margin_um"])
+        wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
+        cmd_id = (cmd_id + 1) % 256
         print(f"  ✓ {axis}: pitch={p['pitch_mm']}mm, ms={p['microstepping']}, "
               f"current={p['current_ma']}mA, hold={p['hold_ratio']}, "
-              f"vmax={p['vmax_mm_s']}mm/s, accel={p['accel_mm_s2']}mm/s²")
+              f"vmax={p['vmax_mm_s']}mm/s, accel={p['accel_mm_s2']}mm/s², "
+              f"home_pol={p['home_pol']}, home_margin={p['home_margin_um']}μm")
     return cmd_id
 
 
