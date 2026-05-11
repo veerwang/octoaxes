@@ -102,7 +102,7 @@ void CommandProcessor::handleMoveW(const byte *data) {
 
 void CommandProcessor::handleHomeOrZero(const byte *data) {
   // data[2]: 协议轴值（0=X,1=Y,2=Z,4=XY,5=W,6=W2）
-  // data[3]: HOME_POSITIVE=0, HOME_NEGATIVE=1, HOME_OR_ZERO_ZERO=2
+  // data[3]: HOME_POSITIVE=0 (朝+方向), HOME_NEGATIVE=1 (朝-方向), HOME_OR_ZERO_ZERO=2 (仅清零)
   if (data[3] == HOME_OR_ZERO_ZERO) {
     // 归零模式：将当前位置设为 0，不移动
     if (data[2] == 4) {  // AXES_XY 联合
@@ -119,18 +119,38 @@ void CommandProcessor::handleHomeOrZero(const byte *data) {
     }
     return;
   }
-  // Homing 模式（HOME_POSITIVE / HOME_NEGATIVE）
-  // 方向由各轴 homing_direct 配置决定，忽略 data[3]
+  // Homing 模式（HOME_POSITIVE / HOME_NEGATIVE）：
+  // 2026-05-11：按协议 data[3] 解析方向，兼容老 Squid software
+  //   老 Squid microcontroller.py:88 按 stage_movement_sign_x 派生 data[3]，
+  //   老 Squid firmware (main_controller_teensy41.ino:1252) 读 data[3] 决定方向。
+  // 之前 octoaxes 忽略 data[3] 仅用 config.homing_direct，在 octoaxes GUI 下行为正确
+  // （constants.py 的 sign 与 config.homing_direct 配对一致），但老 Squid software
+  // 发的 data[3] 不被解读时 → 方向可能反（X home 朝物理 + 端撞限位）。
+  //
+  // 兼容策略：用 data[3] 覆盖 config.homing_direct：
+  //   HOME_POSITIVE (0) → homing_direct = +1（朝 + 方向）
+  //   HOME_NEGATIVE (1) → homing_direct = -1（朝 - 方向）
+  // 永久写入 _config，后续 startHoming() 即按新方向走。
+  int8_t new_direct = (data[3] == HOME_NEGATIVE) ? -1 : +1;
   if (data[2] == 4) {  // AXES_XY 联合归位
     Axis *axX = axisManager.findAxisByName("X");
     Axis *axY = axisManager.findAxisByName("Y");
-    if (axX) axX->startHoming();
-    if (axY) axY->startHoming();
+    if (axX) {
+      axX->getMutableConfig().homing_direct = new_direct;
+      axX->startHoming();
+    }
+    if (axY) {
+      axY->getMutableConfig().homing_direct = new_direct;
+      axY->startHoming();
+    }
   } else {
     const char *name = protocolAxisToName(data[2]);
     if (name) {
       Axis *axis = axisManager.findAxisByName(name);
-      if (axis) axis->startHoming();
+      if (axis) {
+        axis->getMutableConfig().homing_direct = new_direct;
+        axis->startHoming();
+      }
     }
   }
 }

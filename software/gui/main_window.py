@@ -687,7 +687,13 @@ class TeensyControlGUI(QMainWindow):
             return
 
         # 使用二进制命令发送 Homing
-        self._home_or_zero(protocol_axis)
+        # 2026-05-11：按 movement_sign 派生 data[3]（与老 Squid microcontroller.py:88 一致）
+        # firmware 收 data[3] 后用它覆盖 _config.homing_direct
+        #   X/Y sign=+1 → data[3]=1 (HOME_NEGATIVE=朝-方向)
+        #   Z   sign=-1 → data[3]=0 (HOME_POSITIVE=朝+方向)
+        sign = AXIS_CONFIG.get(axis, {}).get("movement_sign", 1)
+        home_dir = 1 if sign == 1 else 0
+        self._home_or_zero(protocol_axis, home_dir)
 
         # 更新状态
         self.axis_manager.axis_status[axis]["state"] = "HOMING_INIT"
@@ -1068,13 +1074,14 @@ class TeensyControlGUI(QMainWindow):
 
         return self.serial_thread.send_binary_command(cmd)
 
-    def _home_or_zero(self, axis_index):
+    def _home_or_zero(self, axis_index, home_dir=1):
+        """发 HOME_OR_ZERO 命令。home_dir：0=HOME_POSITIVE(朝+方向), 1=HOME_NEGATIVE(朝-方向)."""
         if self.serial_thread is None:
             return
         cmd = bytearray(8)
         cmd[1] = CMD_SET.HOME_OR_ZERO
         cmd[2] = axis_index
-        cmd[3] = 0
+        cmd[3] = home_dir
         self.serial_thread.send_binary_command(cmd)
 
     def _set_axis_enable(self, axis_name, enable):

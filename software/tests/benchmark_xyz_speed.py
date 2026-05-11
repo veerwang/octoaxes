@@ -54,8 +54,14 @@ LIM_Z_POS, LIM_Z_NEG = 4, 5
 HOME_AXIS = {"X": 0, "Y": 1, "Z": 2}
 # CONFIGURE_STEPPER_DRIVER / SET_LEAD_SCREW_PITCH 也用相同协议轴号
 AXIS_PROTOCOL = {"X": 0, "Y": 1, "Z": 2}
-HOME_POSITIVE = 0  # data[3]: 0=POSITIVE, 1=NEGATIVE, 2=ZERO（仅清零不真 home）
-                   # 固件忽略 data[3]，方向由 axis config homing_direct 决定
+HOME_POSITIVE = 0  # data[3]: 0=POSITIVE/FORWARD, 1=NEGATIVE/BACKWARD, 2=ZERO（仅清零不真 home）
+HOME_NEGATIVE = 1
+# 兼容性差异：
+#   - octoaxes firmware: 忽略 data[3]，按 _config.homing_direct 决定方向（X/Y/Z 都是 -1，即朝负方向）
+#   - 老 Squid firmware: 按 data[3] 决定方向，对 X 而言 0=朝+，1=朝-
+# 老 Squid 上位机的算法（microcontroller.py:88）：data[3] = (sign+1)/2
+#   X/Y sign=+1 → BACKWARD(1=朝-)，Z sign=-1 → FORWARD(0=朝+)
+# 与之对齐：本脚本用 movement_sign 派生 home direction，老 Squid firmware 上行为一致
 
 
 def crc8(data):
@@ -361,9 +367,14 @@ def home_all_axes(ser, reader, axes, cmd_id):
         if axis not in HOME_AXIS:
             print(f"  ⚠ 跳过 {axis}（不支持 home）")
             continue
-        print(f"  [{axis}] HOME 开始...", end=" ", flush=True)
+        # 按 movement_sign 派生 home direction（与老 Squid microcontroller.py:88 一致）：
+        #   sign = +1 → BACKWARD(1=朝-)  /  sign = -1 → FORWARD(0=朝+)
+        # 对 octoaxes firmware 无影响（忽略 data[3]）；对老 Squid firmware 关键
+        sign = AXIS_PARAMS[axis]["movement_sign"]
+        direction = HOME_NEGATIVE if sign == 1 else HOME_POSITIVE
+        print(f"  [{axis}] HOME 开始（dir={'-' if direction == HOME_NEGATIVE else '+'}）...", end=" ", flush=True)
         t0 = time.perf_counter()
-        _send_home(ser, cmd_id, HOME_AXIS[axis])
+        _send_home(ser, cmd_id, HOME_AXIS[axis], direction=direction)
         t_end, end_pos = wait_completed(reader, cmd_id, timeout_s=30.0)
         if t_end is None:
             print(f"\n  ❌ {axis} HOME 超时（>30s），中止")
