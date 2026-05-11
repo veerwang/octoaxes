@@ -81,12 +81,66 @@ build_flags =
 
 **硬件验证**：烧 nointerlock 版本后，老 Squid 切 405/638 等荧光通道实测正常点亮，对应 TTL 端口拉高，DAC 输出按 intensity 设置 ✓。
 
+#### 4. 启动卡死（chip 残留态）修复（commit f3fc03f + ef05554，硬件验证通过）
+
+**症状**：Teensy/TMC chip 不断电只重启上位机 → chip 寄存器（XACTUAL/VMAX/EVENTS）保留旧值 → cmd 9 SET_LIM 对照旧 XACTUAL 立即触发 VSTOP latch → cmd 29 HOME 物理位置严重错位、limit switch 永不触发，必须拔 USB 才能恢复。
+
+**根因**：原 `handleInitialize` 注释"TMC 轴已在 setup 中初始化，不重复"，只重置 DAC+trigger，完全不动 chip。对比老 Squid `tmc4361A_tmc2660_init` 第一行 `writeInt(RESET_REG, 0x52535400)` 做 chip 软复位，再重写全部配置——这才是"等价于断电再上电"的语义。
+
+octoaxes 同样的 SW_RESET 调用在 `motor_initMotionController` (MotorControl.cpp:281)，但只有 setup() 路径走到，cmd 1 不再触发。
+
+**修复**：`handleInitialize` 改为重跑 `axisManager.beginAll()`（内部 motor_initMotionController 第一行 SW_RESET）+ 逐轴 `handleReset()` 清 C++ 软件状态机。`Axis::begin` 幂等性已扫描确认（覆盖写、无重复 new/SPI.begin/attachInterrupt）。
+
+**TODO 笔误修正**：把记录的"Z XACTUAL=1257654"改为"X/Y 中段位置"——按 2.54mm pitch / 256 微步换算 1257654 μstep ≈ 62.4mm，是 X/Y 工作区中段；Z pitch=0.3mm 算出 7.4mm 与典型工作位不符。
+
+#### 5. XYZ 运动速度基线测试脚本（commit a3d797c，基线收档）
+
+新增 `software/tests/benchmark_xyz_speed.py`（760 行）+ baseline 报告归档到 `documents/baselines/benchmark_xyz_20260511_145604.{csv,md}`。
+
+**执行流程**：
+- [0a] configure_actuators —— SET_LEAD_SCREW_PITCH + CONFIGURE_STEPPER_DRIVER 对齐 GUI startup
+- [0b] widen_soft_limits —— ±100mm 等效微步消除残留 SET_LIM 干扰
+- [1]  home_all_axes —— X/Y/Z 顺序 HOME
+- [2]  move_to_center —— 顺序 Y→X→Z（避开上下料装置）
+- [2.5] 人工确认 pause（--yes 跳过）
+- [3]  benchmark —— for axis × dist × 10 trial × 2 direction 交替 +d/-d
+- [4]  写 CSV + Markdown
+
+**关键设计**：
+- movement_sign 转换 ↔ GUI: Z sign=-1，MOVE/MOVETO target 乘 sign 转 firmware 坐标系
+- wait_completed 防抖：必须先看到 IN_PROGRESS（status=1）才信任后续 status=0，且连续 5 帧 idle 才确认完成
+- fits_in_travel 自动跳过超半行程档位（Z 5/10/30mm 自动 skip）
+- 测试范围用户指定：X 10-112mm / Y 6-76mm / Z 0.1-6.5mm
+
+**调试中发现的关键 bug**（已解决）：
+1. 缺 configure_actuators → firmware 残留 16 微步 → 全轴单位换算错乱 → 走 25% 就停
+2. 漏 movement_sign 转换 → Z+3300μm 实际走 firmware 负方向撞底
+3. 残留 SET_LIM 触发 clampTargetByDirection 短路 → 假 COMPLETED
+
+**完整基线（10 trials × 6 distances，总耗时 ~3 分钟）**：
+
+| 距离 | X (ms) | Y (ms) | Z (ms) |
+|---|---|---|---|
+| 10μm | 122.8 | 123.2 | 187.5 |
+| 100μm | 197.1 | 197.0 | 348.2 |
+| 1mm | 366.1 | 366.0 | 697.1 |
+| 5mm | 620.9 | 621.2 | skip |
+| 10mm | 823.1 | 822.7 | skip |
+| 30mm | 1592.7 | 1592.7 | skip |
+
+- X/Y 几乎完全对称（差 <1ms）
+- Z 比 X/Y 慢约 1.5-2 倍（vmax 3 vs 25 mm/s）
+- +/- 方向 mean 差 <3ms 高度对称
+- 距离从 10μm → 30mm（×3000），耗时只增 ×13—— ramp 加减速时间占小距离的主导
+
+`.gitignore` 加 `software/tests/results/`，原始输出不入库；归档版在 `documents/baselines/`。
+
 ### 下次继续
 
-1. **启动卡死（chip 残留态）** — 长期方案 A：cmd 0 RESET handler 增加每轴 VMAX=0 + delay + motor_resetRampMode + 清 EVENTS。短期靠拔 USB 重启 Teensy。
-2. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
-3. （续）合并 W 轴编码器修复（maxpro → develop）
-4. （续）W 轴换孔时间优化（61.3ms → ≤60ms）
+1. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
+2. （续）合并 W 轴编码器修复（maxpro → develop）
+3. （续）W 轴换孔时间优化（61.3ms → ≤60ms）
+4. **运动效率优化** —— 有 baseline 后可以系统性 review VMAX/AMAX/BOW/电流参数，主要优化小距离的 ~120ms 基线开销
 5. （续，独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不应静默 return false，应排队或上报错误
 
 ---
