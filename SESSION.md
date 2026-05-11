@@ -169,12 +169,13 @@ octoaxes 同样的 SW_RESET 调用在 `motor_initMotionController` (MotorControl
 ### 下次继续
 
 1. **TMC2240 StealthChop 参数调优 + 清理调试代码**（中等优先）
-2. **合并 W 轴编码器修复（maxpro → develop）**（低难度）
-3. **W 轴换孔时间优化（61.3ms → ≤60ms）**（高难度）
-4. **修正 W 轴 config.h（LEFT_SW → RGHT_SW + 极性）**（低难度，可顺手做）
-5. **Y homing 异响**（暂搁置，4 次尝试未消除）
-6. **XYZ 大距离 5% ramp 差距**（暂搁置，需 firmware 调试打点）
-7. （独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不应静默 return false
+2. **W 轴换孔时间优化（61.3ms → ≤60ms）**（高难度）
+3. **修正 W 轴 config.h（LEFT_SW → RGHT_SW + 极性）**（低难度，可顺手做）
+4. **Y homing 异响**（暂搁置，4 次尝试未消除）
+5. **XYZ 大距离 5% ramp 差距**（暂搁置，需 firmware 调试打点）
+6. （独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不应静默 return false
+
+> 2026-05-11 核实：「合并 W 轴编码器修复（maxpro → develop）」已无需合并 —— 2026-03-27 maxpro 上 W 轴 ABN 编码器 4 个 commit（f986305 / 4d3f36d / 94e5911 / c09ae84）位于两分支共同祖先 47570ae 之前，已在 develop。maxpro 领先 develop 的 12 个 commit 全部是 `octoaxesplus`（双相机变体）独立工程。
 
 ---
 
