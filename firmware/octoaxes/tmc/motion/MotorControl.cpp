@@ -117,8 +117,15 @@ static void motor_adjustBows(uint8_t icID)
 // 芯片绝对上限: 4A 峰值 (2.8A RMS), CS 范围 0~31
 static uint8_t calculateCurrentScale(float currentMA, float rSense)
 {
-    // CS = (I_peak × R_sense × 32 / V_FS) - 1
-    float cs = (currentMA / 1000.0f) * rSense * 32.0f / 0.310f - 1.0f;
+    // 2026-05-11 修复：currentMA 按 RMS 解读（与老 Squid firmware 一致）
+    // 老 Squid software → octoaxes firmware 时若按 PEAK 解读会导致实际电流低 ~30%
+    // → Y 轴加速段失步异响（详见 SESSION.md 2026-05-11 #6）
+    //
+    // TMC2660 datasheet: I_peak = (CS+1)/32 × V_FS/R_sense
+    // 由 I_RMS = I_peak/√2 反推：CS = I_RMS × R_sense × 32 × √2 / V_FS - 1
+    // V_FS = 0.310 V (VSENSE=0, 高量程, 与 DRVCONF 设置一致)
+    static const float SQRT2 = 1.41421356f;
+    float cs = (currentMA / 1000.0f) * rSense * 32.0f * SQRT2 / 0.310f - 1.0f;
 
     if (cs < 0) cs = 0;
     if (cs > 31) cs = 31;
