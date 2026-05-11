@@ -135,13 +135,46 @@ octoaxes 同样的 SW_RESET 调用在 `motor_initMotionController` (MotorControl
 
 `.gitignore` 加 `software/tests/results/`，原始输出不入库；归档版在 `documents/baselines/`。
 
+#### 6. 老 Squid software 兼容性深挖（commit 3c490ed + 7533516）
+
+用老 Squid software + octoaxes firmware 时 Y homing 异响 + 速度慢，单独问题独立修复：
+
+**6.1 电流 RMS 公式修正（commit 3c490ed）**：老 Squid software `current_rms` 字段意图是 RMS，老 Squid firmware 公式 `(RMS_mA/1000) × R_sense / 0.2298 × 31` 按 RMS 处理；octoaxes firmware `calculateCurrentScale` 当 PEAK 处理 → 实际 RMS 低 30%（X/Y 0.685A 而非 0.997A）。修正公式 `CS = RMS_A × R × 32 × √2 / 0.310 - 1`，影响 X/Y/Z 三 TMC2660 轴（W TMC2240 不受影响）。修后 X/Y/Z RMS 0.997/0.997/0.494 A。**实测异响减弱但未完全消除**。
+
+**6.2 HOME data[3] 解析（commit 7533516）**：老 Squid firmware 按 data[3] 决定 home 方向，octoaxes 之前忽略仅用 config.homing_direct。GUI/benchmark 改为按 `movement_sign` 派生 data[3]（X/Y=1, Z=0），firmware 按 data[3] 覆盖 config.homing_direct。修复 X home 方向反置（独立 bug，对异响无帮助）。
+
+**6.3 Y homing 异响后续 4 次尝试均失败，搁置**：HOMING_MICROSTEPPING 同步、VSTOP recovery 条件化、配置回退测试都无效。详见 TODO.md 对应条目。
+
+#### 7. XYZ 速度优化第一轮（commit 405efb7 + a257d22 + 9c00d65 + 52d9f92）
+
+**7.1 VMAX 优化（commit 405efb7）**：对齐老 Squid HCS v2 配置 `max_velocity_x/y/z_mm = 30/30/3.8`（octoaxes 之前 25/25/3）。30mm 大距离 benchmark 减 9% (1593→1450ms)，其他档位 <1% 变化（ramp 主导）。
+
+**7.2 AMAX_Z 100 撤销**：老 Squid HCS v2 `max_acceleration_z_mm = 100`（octoaxes 20）。实测把 Z 加速度提到 100 反而让 Z 1mm 时间 697→1569ms（+125%），疑似 BOW 自动算太大 + Z 电机扭矩不足。撤销，AMAX_Z 保留 20。
+
+**7.3 benchmark 启动序列对齐 GUI（commit a257d22 + 9c00d65）**：
+- 加 SET_MAX_VELOCITY_ACCELERATION（cmd 22）下发 vmax/accel
+- 加 SET_LIM_SWITCH_POLARITY（cmd 20）—— **关键**：老 Squid firmware 默认 polarity=0 但 ini 配 X/Y=1，不发就 home 永不触发
+- 加 SET_HOME_SAFETY_MERGIN（cmd 28）
+
+完整启动序列对齐老 Squid microcontroller.py:1369 `configure_actuators`。
+
+**7.4 octoaxes vs 老 Squid firmware 对比归档（commit 9c00d65）**：
+- `documents/baselines/comparison_2026-05-11.md` 详细对比表
+- 同参数小距离 (10μm-1mm) octoaxes 快 3-14ms (3-7%)
+- 同参数大距离 (5mm-30mm) 老 Squid 快 20-76ms (3-9%)
+- 总体性能相当，差距 < 10%
+
+大距离 5% 差距分析（BOW 已 saturate 到 BOWMAX，差异可能在 motor_isRunning 判定方式 / axis.update 状态机延迟），追这 5% 需 firmware 调试打点。**接受现状，搁置**。
+
 ### 下次继续
 
-1. （续）TMC2240 StealthChop 参数调优 + 清理调试代码
-2. （续）合并 W 轴编码器修复（maxpro → develop）
-3. （续）W 轴换孔时间优化（61.3ms → ≤60ms）
-4. **运动效率优化** —— 有 baseline 后可以系统性 review VMAX/AMAX/BOW/电流参数，主要优化小距离的 ~120ms 基线开销
-5. （续，独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不应静默 return false，应排队或上报错误
+1. **TMC2240 StealthChop 参数调优 + 清理调试代码**（中等优先）
+2. **合并 W 轴编码器修复（maxpro → develop）**（低难度）
+3. **W 轴换孔时间优化（61.3ms → ≤60ms）**（高难度）
+4. **修正 W 轴 config.h（LEFT_SW → RGHT_SW + 极性）**（低难度，可顺手做）
+5. **Y homing 异响**（暂搁置，4 次尝试未消除）
+6. **XYZ 大距离 5% ramp 差距**（暂搁置，需 firmware 调试打点）
+7. （独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不应静默 return false
 
 ---
 
