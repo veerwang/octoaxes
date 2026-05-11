@@ -153,3 +153,8 @@ cscope.*
 .env.*.local
 secrets.json
 credentials.json
+
+# =============================================================================
+# Test outputs / benchmark results
+# =============================================================================
+software/tests/results/
