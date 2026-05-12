@@ -55,16 +55,59 @@ triggered、Moving to safe position（单行）、Homing completed、各类 Time
 
 TODO.md 对应两条 `[ ]` 任务标记 `[x]` 完成。
 
+#### 4. `Axis::moveRelativeMicrosteps` 静默 reject bug 复现 + 修复（commit d103a71 + 475b9fe + 1601cce，硬件实测）
+
+SESSION.md 2026-05-08 的 推测 bug 实证 + 用方案 D（仿老 Squid）修复。
+
+**复现脚本**（`software/tests/test_silent_reject_repro.py`，530 行）：
+- 完整测试环境初始化：configure (pitch/microstepping/vmax/polarity/margin) + X home（清 chip VSTOP latch / EVENTS sticky）+ 软限位放宽到 (-50, 150)mm
+- 控制组：两条 MOVE 串行 → 累计 25mm（baseline）
+- 实验组：cmd 21 MOVE +20mm 发出 200ms 后（mid-flight）发 cmd 22 MOVE +5mm
+
+**实测结果（修复前 firmware ef05554）**：
+- 控制组 25mm ✓
+- 实验组 **累计 20mm**（cmd 22 被 silent reject），cmd 22 在 884ms 内报 COMPLETED 假信号
+  - cmd 22 响应轨迹 84 帧 IN_PROGRESS → COMPLETED 时间精确对应 cmd 21 真实完成时间
+  - 电机从未为 cmd 22 移动哪怕 1 微步
+  - 上位机视角看完全正常 → 最坑的"完美伪装"
+
+**根因（axis.cpp:573-575）**：
+```cpp
+if (_currentState != STATE_IDLE) {
+    return false;  // 静默 reject
+}
+```
+配合 serial.cpp:102（cmd_id 全局已被刷新）+ serial.cpp:219（status = any_moving ? IN_PROGRESS : COMPLETED）→ 假信号成立。
+
+**修复方案 D 仿老 Squid**（参考 `main_controller_teensy41.ino:845-857` MOVE_X handler 无忙检查，直接 `tmc4361A_moveTo` 覆盖）：
+
+`axis.cpp` 两处条件改为：
+```cpp
+if (_currentState != STATE_IDLE && _currentState != STATE_MOVING) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":Move rejected: Axis is homing, current state: ");
+    DEBUG_PRINTLN(_currentState);
+    return false;
+}
+```
+
+- **STATE_IDLE / STATE_MOVING**：走完整 soft-limit + clamp + `motor_moveToMicrosteps` 路径，chip ramp generator 平滑切换 XTARGET，`startMovement()` 重调刷新 `_moveStartMicros`（重置 timeout 窗口）
+- **STATE_HOMING_INIT/SEARCH/SET_ZERO/LEAVING_HOME**：仍 reject 但加 DEBUG_PRINT 不再静默。homing 期 chip 在 velocity 模式，覆盖会破坏 homing 序列
+
+**修复后实测**：
+- 控制组 25mm ✓（IDLE 路径未受影响）
+- 实验组 **累计 6.11mm**（cmd 22 在 mid-flight=61mm 时重瞄准 66mm，chip 平滑切换，最终到达 66mm；cmd 22 在 427ms 报 COMPLETED 即真实减速到新 target 的时间）
+- **行为与老 Squid 完全一致**：相对位移基于命令到达时 chip 当前位置，不是叠加上一条命令的目标
+
+生产 FLASH 持平 72060 字节。
+
 ### 下次继续
 
-1. **TMC2240 StealthChop 参数调优 + 清理 Cover40 debug 打印**（中等优先，与本次
-   清理风格一致）
+1. **TMC2240 StealthChop 参数调优 + 清理 Cover40 debug 打印**（中等优先，与 homing 清理风格一致）
 2. **W 轴换孔时间优化（61.3ms → ≤60ms）**（高难度，ASTART 已到 BOW 截断硬约束）
-3. **`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 静默 return false**
-   （低难度独立 bug，应排队等 IDLE 或上报错误）
-4. **修正 W 轴 config.h LEFT_SW → RGHT_SW + 极性**（需硬件实测，暂搁置）
-5. **Y homing 异响**（4 次尝试未消除，已搁置）
-6. **XYZ 大距离 5% ramp 差距**（需 firmware 调试打点，已搁置）
+3. **修正 W 轴 config.h LEFT_SW → RGHT_SW + 极性**（需硬件实测，暂搁置）
+4. **Y homing 异响**（4 次尝试未消除，已搁置）
+5. **XYZ 大距离 5% ramp 差距**（需 firmware 调试打点，已搁置）
 
 ---
 
