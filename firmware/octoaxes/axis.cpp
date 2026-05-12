@@ -507,9 +507,14 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
     handleReset();
   }
 
-  if (_currentState != STATE_IDLE) {
+  // STATE_IDLE：正常路径
+  // STATE_MOVING：仿老 Squid（main_controller_teensy41.ino:900 MOVETO_X handler 无忙检查）
+  //   —— 覆盖 chip XTARGET，由 chip ramp generator 平滑切换目标。
+  // STATE_HOMING_*/LEAVING_HOME：homing 期间 chip 在 velocity 模式，覆盖会破坏 homing，
+  //   仍然 reject（这是显式拒绝，调用方应等 homing 完成后再发）。
+  if (_currentState != STATE_IDLE && _currentState != STATE_MOVING) {
     DEBUG_PRINT(_axisName);
-    DEBUG_PRINT(":Movement rejected: Axis is busy, current state: ");
+    DEBUG_PRINT(":Movement rejected: Axis is homing, current state: ");
     DEBUG_PRINTLN(_currentState);
     return false;
   }
@@ -570,7 +575,15 @@ bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
     handleReset();
   }
 
-  if (_currentState != STATE_IDLE) {
+  // STATE_IDLE：正常路径
+  // STATE_MOVING：仿老 Squid（main_controller_teensy41.ino:845 MOVE_X handler 无忙检查）
+  //   —— 基于 chip 当前位置重算 target 并覆盖 XTARGET。语义与老 Squid 一致：
+  //   delta 相对的是「命令到达时的 chip 当前位置」，不是「上一条命令的目标位置」。
+  // STATE_HOMING_*/LEAVING_HOME：reject（与 moveToPositionMicrosteps 同）。
+  if (_currentState != STATE_IDLE && _currentState != STATE_MOVING) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":Move rejected: Axis is homing, current state: ");
+    DEBUG_PRINTLN(_currentState);
     return false;
   }
 

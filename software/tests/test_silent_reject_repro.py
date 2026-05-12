@@ -512,14 +512,23 @@ def main():
               f"(期望 {(MOVE_A_UM+MOVE_B_UM)/1000}mm)")
     if bug_delta is not None:
         print(f"BUG     累计位移: {bug_delta:.4f} mm")
-        expected_no_bug = (MOVE_A_UM + MOVE_B_UM) / 1000.0
-        expected_buggy = MOVE_A_UM / 1000.0
-        if abs(bug_delta - expected_buggy) < 1.0:
-            print(f"✗ BUG 复现成功：cmd 22 被静默 reject，实际位移 ≈ {expected_buggy}mm")
+        # 三种可能的语义：
+        #   A. silent reject (旧 bug)：电机只走 cmd 21 的 +MOVE_A_UM；上位机收 cmd 22 假 COMPLETED
+        #   B. 覆盖语义 (老 Squid + 修复后)：cmd 22 基于 chip 当前位置重算 target，覆盖前一条
+        #      → 累计 = (cmd 22 发出时 chip 已走的距离) + MOVE_B_UM；典型 < 10mm
+        #   C. 排队语义：两条都执行，累计 = MOVE_A_UM + MOVE_B_UM
+        bug_silent_reject_mm = MOVE_A_UM / 1000.0           # 20mm
+        bug_queued_mm = (MOVE_A_UM + MOVE_B_UM) / 1000.0     # 25mm
+        if abs(bug_delta - bug_silent_reject_mm) < 1.0:
+            print(f"✗ Silent reject bug 仍存在：cmd 22 被静默 reject，实际位移 ≈ {bug_silent_reject_mm}mm")
             print(f"  上位机却收到 cmd 22 status=COMPLETED → 误以为成功")
-        elif abs(bug_delta - expected_no_bug) < 1.0:
-            print(f"✓ 行为正常：累计位移 ≈ {expected_no_bug}mm，cmd 22 似乎被某种方式执行了")
-            print(f"  可能 firmware 有排队机制 / cmd 22 实际到达时 cmd 21 已完成")
+        elif abs(bug_delta - bug_queued_mm) < 1.0:
+            print(f"? 排队语义：累计位移 ≈ {bug_queued_mm}mm，cmd 22 似乎在 cmd 21 后执行")
+        elif bug_delta < MOVE_A_UM / 1000.0:
+            # 覆盖语义：cmd 22 把 target 改成基于 mid-flight 位置，累计 < MOVE_A_UM
+            print(f"✓ 覆盖语义 (老 Squid 兼容)：cmd 22 重定向 chip target")
+            print(f"  累计 {bug_delta:.2f}mm = mid-flight 位置 + MOVE_B_UM/1000")
+            print(f"  cmd 22 不再静默 reject，电机为它真实移动了")
         else:
             print(f"? 异常位移，需进一步分析")
 
