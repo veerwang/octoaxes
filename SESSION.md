@@ -307,6 +307,44 @@ chip TARGET_REACHED_F 信号可靠（无误触发漏触发）。
 未归零」的边缘 case，B.6 会误判完成。SPI 成本相同（同一次 STATUS 读取多个
 bit），可作下一步迭代。
 
+#### 10. B.6.1 三 bit 严格判完（commit a0e03d5，硬件实测）
+
+按 B.6 末尾预告实施。`motor_isTargetReached` 由「单 bit (TARGET_REACHED_F)」
+改为「三 bit AND」（对齐旧 Squid `tmc4361A_isRunning` 取反语义）：
+
+```cpp
+uint32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
+return (status & TMC4361A_TARGET_REACHED_F_MASK) &&         // bit 0
+       !(status & (TMC4361A_VEL_STATE_F_MASK |              // bits 3-4 == 0
+                   TMC4361A_RAMP_STATE_F_MASK));             // bits 5-6 == 0
+```
+
+mask 通过 TMC4361A.h 间接引入 TMC4361A_HW_Abstraction.h，单次 STATUS 读
+多 bit 提取零额外 SPI 成本。
+
+**实测验证**（两次跑 benchmark，第一次 Y home 24.32s 是样本干涉，重测正常）：
+
+| 距离 | B.6.1 X | B.6 X | Δ |
+|---|---|---|---|
+| 10μm | 115.7 / 115.2 | 115.6 / 115.6 | ±0.2 |
+| 100μm | 192.5 / 193.1 | 192.6 / 193.1 | 0 |
+| 1mm | 364.1 / 364.0 | 363.6 / 363.8 | +0.3 |
+| 5mm | 616.8 / 621.8 | 616.9 / 618.1 | +1.8 |
+| 10mm | 822.4 / 819.9 | 822.2 / 819.7 | +0.2 |
+| 30mm | 1447.9 / 1444.2 | 1448.0 / 1444.3 | 0 |
+
+**B.6.1 与 B.6 时间完全一致**（差异 ±2ms 在测量噪声内）。Y 全档同步。
+480 trial 全过。
+
+**结论**：
+- 多 bit 比较零额外 SPI 成本 ✓
+- 现有 vmax/accel 参数下，chip ramp 末尾「位置到但速度未归零」边缘 case
+  **不存在或窗口太短**，B.6 单 bit 也未误判过——B.6.1 是预防性升级
+- 主要价值：为未来 Target Pipeline 高速切换 / 参数调优后 ramp 变化更剧烈
+  的场景做防御性铺垫
+
+FLASH 持平 72188 字节（多 bit 提取无额外代码体积）。
+
 ### 下次继续
 
 **TMC2240 StallGuard4 调优 + chip-level latch 恢复修复**（中等优先）：

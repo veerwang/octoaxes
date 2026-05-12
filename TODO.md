@@ -46,7 +46,7 @@
 ### 框架效率优化（2026-05-12 启动新一轮，协议层）
 - [x] **移动完成下降沿立即发包** (2026-05-12, commit a6c5786, **硬件实测**) — `send_position_update` 增加 any_moving 下降沿检测，所有轴 moving→idle 那一帧绕过 10ms 心跳节流立即发 COMPLETED；对旧 Squid + GUI + benchmark 三端同时有效。实测 X/Y 短距离命令省 2-7ms（平均 5ms，10μm 122→116ms 省 5%）；Z 几乎无收益（vmax 慢一个量级，已与心跳 phase 对齐）。每完成一次只触发 1 包，流量影响可忽略
 - [x] **B.6 STATUS.TARGET_REACHED 替代 XACTUAL==XTARGET 判完** (2026-05-12, commit 5e487aa, **硬件实测**) — `Axis::checkMovementComplete` 改用 `motor_isTargetReached`，1 SPI 读替代 2 SPI 读（XACTUAL+XTARGET）。顺手清 `_lastPosition` 死字段。实测 X/Y 全档省 0.4-1.0ms，Z 无变化，480 trial 无误判。FLASH +192 字节（linker 拉入未用函数体）。主要价值：判完用 chip 权威信号 + 给 B.5 铺路
-- [ ] **B.6.1 三 bit 严格判完**（低难度）— 旧 Squid `tmc4361A_isRunning` 一次 STATUS 读检查 `TARGET_REACHED AND !VEL_STATE_F AND !RAMP_STATE_F` 三 bit。改 `motor_isTargetReached` 同样语义防 chip ramp 末尾「位置到但速度未归零」边缘 case。SPI 成本不变（单次读多 bit），可靠性↑
+- [x] **B.6.1 三 bit 严格判完** (2026-05-12, commit a0e03d5, **硬件实测**) — `motor_isTargetReached` 改为 `TARGET_REACHED AND !VEL_STATE_F AND !RAMP_STATE_F` 三 bit 检查，对齐旧 Squid `tmc4361A_isRunning` 取反语义。单次 STATUS 读多 bit 提取零额外 SPI 成本。实测与 B.6 时间一致（差异 ±2ms 噪声内），480 trial 全过。现有参数下 chip ramp 末尾边缘 case 不存在，B.6.1 是预防性升级，为 Target Pipeline 高速切换铺路。FLASH 持平 72188 字节
 - [ ] **TMC4361A Target Pipeline (§9.2)**（中难度）— 当前 ramp 期间预写下一个 XTARGET，避免减速到 0 再加速。扫描/stitching 路径理论提速 20-50%
 - [ ] **多轴并行 home**（中难度）— 现 `home_xyz` 串行 X→Y→Z 约 14s，并行可省 2/3 时间
 - [ ] **MOVETO_BATCH 批量命令**（高难度）— 扫描场景一次下发 N 个目标点减少串口往返
