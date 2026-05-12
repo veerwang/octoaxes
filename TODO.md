@@ -49,15 +49,8 @@
     4. 用 measure_sg_result.py 扫不同 TCOOLTHRS 下的 SG_RESULT，找到「正常运动 p10 > 100」配置
     5. 上层 stall 语义设计：触发时上报上位机决定（撤回 / 接受 / reset）
     6. 移除 axis.cpp:152 TMC2240 守卫，启用 X/Y 碰撞保护
-- [ ] **Y homing 异响 + 慢（硬件变更，调试方向重新规划）** (2026-05-12 更新) — **硬件从 TMC2660 切换到 TMC2240** 后之前所有"对齐老 Squid" chopper 思路不适用（老 Squid 不支持 TMC2240）。新方向（按 TMC2240 芯片特性）：① 启用 StealthChop2 PWM 静音模式（octoaxes 当前 `enableStealthChop=false`）—— 理论上能彻底消除 Y homing 慢速异响；② TMC2240 chopper TOFF/HSTRT 重新调优（字段位置与 TMC2660 不同）；③ CURRENT_RANGE 三档（0/1/2 = 1/2/3A）选择审查。
-- [x] **2026-05-12 尝试方案 (a) TMC2660 chopper 对齐被中止** — 解码老 Squid `tmc4361A_tmc2660_init` CHOPCONF=0x000900C3 后定位差异：HSTRT 4→0、HEND -2→0；改完编译通过准备烧录时用户澄清硬件已换 TMC2240，回退 axis.cpp 改动。结论：方案 (a) 不适用 TMC2240 硬件
-- [ ] **(已废) Y homing 异响 TMC2660 原始记录** (2026-05-11 暂停) — 老 Squid software + 老 Squid firmware 正常；老 Squid software + octoaxes firmware Y homing 异响 + 速度慢。**已尝试方案**：
-    1. **D2 电流 RMS 修正**（commit 3c490ed）：`calculateCurrentScale` 公式改 RMS 解读，X/Y/Z 三 TMC2660 轴 RMS 从 0.685/0.685/0.335 A 升到 0.997/0.997/0.494 A。异响**减弱但未消除**。
-    2. **HOME 方向 data[3] 解析**（commit 7533516）：firmware 改为按 data[3] 覆盖 homing_direct，GUI/benchmark 按 movement_sign 派生 data[3]。修复了 X home 方向反置 bug（独立问题）。对 Y 异响无帮助。
-    3. **HOMING_MICROSTEPPING 同步**（config.h `HOMING_MICROSTEPPING_X/Y = 32` + axis.cpp `configureDriver` 同步 `homingMicrostepping = microstepping`）：让 homing 不再 32↔256 切换。**异响仍在**，已回退。
-    4. **STATE_HOMING_INIT 仅在 VSTOP 激活时做 recovery**：避免 `motor_moveToMicrosteps(current)` 引发 VMAX 25→10 突变 + POSITION→VELOCITY mode 切换。未实测（用户决定先搁置），已回退。
-    **后续排查方向**（待优先级）：(a) chopper 参数 TOFF/HSTRT/HEND/TBL 与老 Squid 对齐；(b) 方案 E homing 速度联动 vmax（10mm/s → 24mm/s 测试不同速度是否避开共振）；(c) StealthChop/SpreadCycle 切换阈值；(d) 抓串口 DEBUG_PRINT 日志看 homing 启动序列时序。
-    **当前位置**：commit 7533516（含 D2 电流 + HOME 方向 fix），其他修改已回退。
+- [x] **Y homing 异响 + 慢（2026-05-12 解决：256 微步 + 30 mm/s）** — 硬件切回 TMC2660 后用 `diag_y_homing_noise.py` 扫 (微步 × 速度) 矩阵，**实测最优：微步 256 + 速度 30 mm/s 最安静**。配置改动：① `config.h HOMING_VELOCITY_Y_MM = 30`（原 10/15）；② `axis.cpp configureDriver` 撤回 `_config.homingMicrostepping = microstepping` 同步，让 Y homing 永远走 config.h 默认 `HOMING_MICROSTEPPING_Y = 256`；③ chopper HSTRT=0/HEND=0 保留（对齐老 Squid 全局默认）。新增 `S:SET_HOMING_VEL <axis> <vel>` 调试命令（serial.cpp +40 行，FLASH +8K String 库），运行时设 homingVelocityMM 不重烧。新增 `check_homing_vel_cmd.py` 验证 firmware 支持 + `diag_y_homing_noise.py` 交互扫描脚本。**理论**：满速 + 高微步避开 SpreadCycle 低速噪声段，未触及根因（chopper 模式/电流/接地），但生产可接受。**新性能**：76mm / 30 mm/s ≈ 3-4s（原 ~8s，缩半）。**调试基础设施关键发现**：firmware ASCII 调试协议需 `0x55 0xAA` 二进制前缀（DEBUG_PROTOCOL_HEADER_1/2），不是直接 S: ASCII
+- [x] **2026-05-12 chopper 对齐 TMC2660 全局默认**（前置改动，axis.cpp `Axis::begin` + `configureDriver` 两处 HSTRT 4→0、HEND -2→0）— 对齐老 Squid `CHOPCONF=0x000900C3` 零滞回静音配置，三 TMC2660 轴同改。单独看未消除异响，但与最终方案叠加无副作用，保留
 
 ### 框架效率优化（2026-05-12 启动新一轮，协议层）
 - [x] **移动完成下降沿立即发包** (2026-05-12, commit a6c5786, **硬件实测**) — `send_position_update` 增加 any_moving 下降沿检测，所有轴 moving→idle 那一帧绕过 10ms 心跳节流立即发 COMPLETED；对旧 Squid + GUI + benchmark 三端同时有效。实测 X/Y 短距离命令省 2-7ms（平均 5ms，10μm 122→116ms 省 5%）；Z 几乎无收益（vmax 慢一个量级，已与心跳 phase 对齐）。每完成一次只触发 1 包，流量影响可忽略
