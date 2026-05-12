@@ -150,89 +150,28 @@ void StepAxis::performHomingSequence() {
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Starting homing process...");
         int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
-        DEBUG_PRINT(_axisName);
-        DEBUG_PRINT(":homing_direct=");
-        DEBUG_PRINT(_config.homing_direct);
-        DEBUG_PRINT(" homingVelocityMM=");
-        DEBUG_PRINT(_config.homingVelocityMM);
-        DEBUG_PRINT(" speedInternal=");
-        DEBUG_PRINTLN(speedInternal);
         motor_setVelocityInternal(_icID, speedInternal);
         setState(STATE_HOMING_SEARCH);
       }
       break;
 
     case STATE_HOMING_SEARCH:
-      {
-        // 周期性打印 debug：每 200ms 打印一次限位状态
-        static unsigned long lastDbgTime = 0;
-        if (millis() - lastDbgTime > 200) {
-          [[maybe_unused]] uint32_t rawStatus = motor_readStatus(_icID);
-          [[maybe_unused]] int32_t xactual = motor_getPositionMicrosteps(_icID);
-          [[maybe_unused]] int32_t vactual = motor_getVelocityInternal(_icID);
-          DEBUG_PRINT(_axisName);
-          DEBUG_PRINT(":SEARCH limit_state=0x");
-          DEBUG_PRINTF(limit_state, HEX);
-          DEBUG_PRINT(" homingSwitch=0x");
-          DEBUG_PRINTF(_config.homingSwitch, HEX);
-          DEBUG_PRINT(" STATUS=0x");
-          DEBUG_PRINTF(rawStatus, HEX);
-          DEBUG_PRINT(" XACTUAL=");
-          DEBUG_PRINT(xactual);
-          DEBUG_PRINT(" VACTUAL=");
-          DEBUG_PRINTLN(vactual);
-          lastDbgTime = millis();
-        }
-      }
       if (limit_state & _config.homingSwitch) {
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Home limit switch triggered!");
 
-        // 读取触发前状态
-        [[maybe_unused]] uint32_t statusBefore = motor_readStatus(_icID);
-        [[maybe_unused]] int32_t xactualBefore = motor_getPositionMicrosteps(_icID);
-        DEBUG_PRINT(_axisName);
-        DEBUG_PRINT(":Before stop - XACTUAL=");
-        DEBUG_PRINT(xactualBefore);
-        DEBUG_PRINT(" STATUS=0x");
-        DEBUG_PRINTLNF(statusBefore, HEX);
-
         motor_setVelocityInternal(_icID, 0); // 停止
-
-        // 等待完全停止
-        delay(100);
-
-        // 确认停车结果
-        [[maybe_unused]] int32_t xactualAfterStop = motor_getPositionMicrosteps(_icID);
-        [[maybe_unused]] int32_t vactual = motor_getVelocityInternal(_icID);
-        DEBUG_PRINT(_axisName);
-        DEBUG_PRINT(":After stop - XACTUAL=");
-        DEBUG_PRINT(xactualAfterStop);
-        DEBUG_PRINT(" VACTUAL=");
-        DEBUG_PRINTLN(vactual);
+        delay(100);                          // 等待完全停止
 
         int32_t latchedPosition = motor_readLatchPosition(_icID);
-        DEBUG_PRINT(_axisName);
-        DEBUG_PRINT(":Latched position: ");
-        DEBUG_PRINTLN(latchedPosition);
 
         // 计算安全位置（离开限位开关）
         int32_t safePosition = latchedPosition;
         int32_t margin = motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
         if (_config.homingSwitch == RGHT_SW) {
           safePosition -= margin;
-          DEBUG_PRINT(_axisName);
-          DEBUG_PRINT(":RGHT_SW: safePos = latched(");
-          DEBUG_PRINT(latchedPosition);
-          DEBUG_PRINT(") - margin(");
-          DEBUG_PRINT(margin);
-          DEBUG_PRINT(") = ");
-          DEBUG_PRINTLN(safePosition);
         } else {
           safePosition += margin;
-          DEBUG_PRINT(_axisName);
-          DEBUG_PRINT(":LEFT_SW: safePos = latched + margin = ");
-          DEBUG_PRINTLN(safePosition);
         }
 
         DEBUG_PRINT(_axisName);
@@ -272,17 +211,6 @@ void StepAxis::performHomingSequence() {
         }
 
         setState(STATE_IDLE);
-      } else {
-        // 可选：添加进度显示
-        static unsigned long lastProgressTime = 0;
-        if (millis() - lastProgressTime > 500) {
-          DEBUG_PRINT(_axisName);
-          DEBUG_PRINT(":Moving to safe position... Current: ");
-          DEBUG_PRINT(getCurrentPositionMM());
-          DEBUG_PRINT("mm, Target: ");
-          DEBUG_PRINTLN(motor_microstepsToMM(_icID, motor_getTargetMicrosteps(_icID)));
-          lastProgressTime = millis();
-        }
       }
       break;
 
