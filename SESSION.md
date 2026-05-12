@@ -146,22 +146,93 @@ step/dir 或 SPI 线圈电流，对 ramp 行为无影响。芯片差异体现在
 - `documents/baselines/benchmark_xyz_tmc2240_20260512_141441.{csv,md}` TMC2240 首次基线
 - `documents/baselines/comparison_tmc2240_vs_tmc2660_20260512.md` 详细对比 + 后续调优方向
 
+#### 7. 旧 Squid X 卡死根因定位 + StallGuard TMC2240 跳过（硬件实测）
+
+**用户报告**：旧 Squid 启动后移动几次 X/Y → X 卡死（Y 正常），octoaxes software 也无法
+恢复 X，必须断电拔 USB 才能复位。
+
+**新增诊断工具** `software/tests/dump_axis_state.py`：
+- 用 `S:DUMPREGS [axis]` 调试命令打 TMC4361A 关键寄存器
+- 自动按 `TMC4361A_HW_Abstraction.h` 解码 STATUS / EVENTS bit 位含义
+- 自动诊断 latch 类型（VSTOP / STALL / HOME_ERROR / 软件状态异常）
+
+**X 卡死现场抓取**（用户用旧 Squid 触发卡死后跑 dump）：
+
+```
+STATUS=0xC1001804:
+  bit 11 ACTIVE_STALL_F   latched ⚠⚠  ← 根因
+  bit 12 HOME_ERROR_F     latched ⚠
+VMAX=0                                  ← handleError → motor_stop 清零
+state=6 (ERROR)
+XACTUAL=119207 != XTARGET=139364        ← 上次 move 未到目标 1mm
+```
+
+（最初解码用了错误的 bit 位置 11/12，正确解码后发现是 `ACTIVE_STALL_F` bit 11
+而非 `VSTOPL_ACTIVE_F` bit 9——dump 脚本 STATUS_BITS 已修正）
+
+**根因链**：
+1. X 配置 `enableStallSensitivity=true, stallSensitivity=12`，这套参数为 TMC2660
+   StallGuard2 调优
+2. TMC2240 用 **StallGuard4**（完全不同算法），同样 SGT=12 在 TMC2240 上变得过敏感
+3. 正常运动的电流尖峰被 SG4 误判为 stall
+4. TMC4361A `REFCONF` 的 `STOP_ON_STALL` (bit 26) 启用 → chip 停车 + ACTIVE_STALL_F latch
+5. Axis 等 5s 超时 → `handleError("Movement timeout")` → `smoothStop` → `motor_stop` 写 VMAX=0
+6. 软件 state=ERROR；下次 MOVE 触发 handleReset 恢复 VMAX，但
+   `motor_moveToMicrosteps` 的 recovery 路径**只检查 VSTOPL/R_ACTIVE_F (bit 9/10)**，
+   完全不清 ACTIVE_STALL_F (bit 11) latch
+7. chip 拒绝启动新 ramp → 再次 5s timeout → 死循环
+8. **必须断电让 chip 重新上电才能清 latch**
+
+**为何 TMC2660 不会卡死**：StallGuard2 算法更保守，SGT=12 是「需较大负载触发」的设置；
+TMC2660 + 同参数实测稳定无误触发，所以历史上 TMC2660 平台从未暴露这个 chip-level
+latch 恢复缺陷。
+
+**修复方案 — 按驱动芯片分离参数**：
+
+不是简单关闭 StallGuard，而是按 chip 类型分支。`config.h` 中 X/Y 的
+`enableStallSensitivity=true, stallSensitivity=12` 参数**保持不变**（TMC2660 baseline），
+在 `axis.cpp:152` 启用处加守卫：
+
+```cpp
+if (_config.enableStallSensitivity && _config.driverType != DRIVER_TMC2240)
+    motor_configStallGuard(...);
+```
+
+- **TMC2660**：照常启用 StallGuard2，碰撞保护正常工作
+- **TMC2240**：跳过启用（保留参数 / 注释中标注 TMC2240 暂不启用的原因），
+  等未来 SG4 调优完成 + chip-level latch 恢复修复后移除守卫
+
+**硬件实测验证**：
+- 重新烧录后 dump X/Y 均「完全 idle 无 latch」✓
+- 用户用旧 Squid 反复 jog X/Y 不再卡死 ✓
+- 生产 FLASH 不变
+
+**取舍**：TMC2240 上 X/Y 当前**没有碰撞保护**（撞到东西不会自动停车）。等
+StallGuard4 调优后恢复。Z 配置本就 `enableStallSensitivity=false`，无影响。
+
 ### 下次继续
+
+**TMC2240 StallGuard4 调优 + chip-level latch 恢复修复**（中等优先）：
+1. 调研 TMC2240 datasheet 中 SG4_THRS / SGT / SEMIN / SEMAX 参数语义，实测找到
+   既不误触发又能检测真实 stall 的阈值
+2. 修 `motor_moveToMicrosteps` recovery：同时清 STATUS 中 ACTIVE_STALL_F / HOME_ERROR_F
+   latch（写 EVENTS 触发 / 暂时禁 STOP_ON_STALL / SW_RESET ramp generator）
+3. 上层设计 stall 处理语义：触发时上报上位机由操作员决定（撤回 / 接受 / reset），
+   不让 chip 默默死锁
 
 **Y homing 异响（TMC2240 视角重新规划）**：之前 4 次失败的方向 + 今天 TMC2660 chopper
 对齐方案都不适用于 TMC2240，需要从 TMC2240 芯片特性入手：
 1. **启用 StealthChop2** — TMC2240 独有的 PWM 静音模式，专门为低速静音设计，
    理论上能彻底消除 Y homing 异响。octoaxes 当前 `enableStealthChop=false`。
-2. **TMC2240 chopper 参数从默认值调** — TOFF/HSTRT 字段位置与 TMC2660 不同，
-   需查 TMC2240 datasheet 重新调优
-3. **CURRENT_RANGE 审查** — TMC2240 三档（0/1/2 = 1/2/3 A 全量程）选择是否合适
+2. **TMC2240 chopper 参数从默认值调** — TOFF/HSTRT 字段位置与 TMC2660 不同
+3. **CURRENT_RANGE 审查** — TMC2240 三档（0/1/2 = 1/2/3 A 全量程）选择
 
 **其他**：
 
 1. **W 轴换孔时间优化（61.3ms → ≤60ms）**（高难度，ASTART 已到 BOW 截断硬约束）
-2. **清理 TMC2240 Cover40 debug 打印 + StallGuard 调优**（中等优先，与今天 homing 清理风格一致）
+2. **清理 TMC2240 Cover40 debug 打印**（中等优先）
 3. **修正 W 轴 config.h LEFT_SW → RGHT_SW + 极性**（需硬件实测，暂搁置）
-4. **XYZ 大距离 5% ramp 差距**（需 firmware 调试打点，已搁置 / TMC2240 上待重测确认）
+4. **XYZ 大距离 5% ramp 差距**（需 firmware 调试打点，TMC2240 上待重测确认）
 
 ---
 
