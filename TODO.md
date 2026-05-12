@@ -64,7 +64,7 @@
 - [x] **边界 margin 防 chip hard-stop latch** (2026-05-09 commit 17b8f71) — target 紧贴 VIRT_STOP 边界 1 微步会让 chip ramp 减速精度跨界触发 VSTOP_ACTIVE，进入永久 latched 状态（必须断电恢复）；clamp 在安全区时强制 target 离开边界至少 100 微步
 - [x] **测试脚本** (2026-05-09) — `software/tests/test_homing_with_vstop_latch.py` 复现「X=0 + SET_LIM x_neg + HOME_X」启动卡死场景
 - [x] 双端硬件验证通过：octoaxes GUI + 旧 Squid software 启动序列、MOVE/MOVETO 各种越界场景
-- [ ] （独立 bug，可单独修）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不要静默返回 false — 应排队等待 IDLE 或上报错误（避免假 COMPLETED；cmd 29 现象）
+- [x] **`Axis::moveRelativeMicrosteps` 静默 reject bug** (2026-05-12, commit 475b9fe, **硬件实测验证**) — 复现脚本（test_silent_reject_repro.py）证实 cmd 22 撞 cmd 21 mid-flight 时 silent reject 累计位移 20mm + 假 COMPLETED 误报；按方案 D 仿老 Squid（main_controller_teensy41.ino:845）：STATE_MOVING 时不再 reject 而覆盖 chip XTARGET，chip ramp generator 平滑切换；STATE_HOMING_* 仍 reject 但加 DEBUG_PRINT。修复后 cmd 22 真实驱动电机，最终位移 = mid_position + delta（与老 Squid 行为一致）
 
 
 
