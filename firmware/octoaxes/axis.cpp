@@ -33,7 +33,6 @@ Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char *axisName)
 
   // 新增：初始化移动状态
   _isMoving = false;
-  _lastPosition = 0;
   _moveDirection = 0;
   _softLimitsEnabled = false;
   _needReenableLimits = false;
@@ -414,15 +413,12 @@ void Axis::checkMovementComplete() {
   if (!_isMoving)
     return;
 
-  int32_t currentPos = motor_getPositionMicrosteps(_icID);
-  int32_t targetPos = motor_getTargetMicrosteps(_icID);
-
-  // 检查是否到达目标位置
-  if (currentPos == targetPos) {
+  // 用 chip STATUS.TARGET_REACHED_F bit 替代「读 XACTUAL + 读 XTARGET 比较」。
+  // chip 内部在写 XTARGET 后实时更新该 bit（XACTUAL == XTARGET 时置 1，
+  // motor_moveToMicrosteps 后已清 EVENTS 防 sticky 残留），无需等待。
+  // 完成判定路径从 2 个 SPI 读减为 1 个，且更可靠（chip 权威信号）。
+  if (motor_isTargetReached(_icID)) {
     completeMovement();
-  } else {
-    // 更新最后位置，用于后续的移动检测
-    _lastPosition = currentPos;
   }
 }
 
@@ -430,7 +426,6 @@ void Axis::checkMovementComplete() {
 void Axis::startMovement() {
   _isMoving = true;
   _moveStartMicros = micros();
-  _lastPosition = motor_getPositionMicrosteps(_icID);
   setState(STATE_MOVING);
 }
 
