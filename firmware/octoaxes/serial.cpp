@@ -178,7 +178,24 @@ void SerialProtocolHandler::send_position_update() {
   // 让 SerialUSB 只剩 ASCII 调试输出，方便 Arduino Serial Monitor 看
   return;
 #endif
-  if (_us_since_last_pos_update < INTERVAL_SEND_POS_US)
+
+  // 先算 any_moving，用于检测「移动完成」下降沿（true→false）
+  bool any_moving = false;
+  uint8_t count = axisManager.getAxisCount();
+  for (uint8_t i = 0; i < count; i++) {
+    Axis *axis = axisManager.getAxis(i);
+    if (axis && (axis->isMoving() || axis->isHomingInProgress())) {
+      any_moving = true;
+      break;
+    }
+  }
+  // 完成边缘：所有轴刚刚停下。绕过 10ms 心跳节流立即发一帧 COMPLETED，
+  // 让上位机 wait_till_operation_is_completed 在物理停止后 < 1ms 内被唤醒
+  // （平均省 5ms，worst case 省 10ms 心跳延迟）。下降沿每次 transition 只触发一次。
+  bool falling_edge = _last_any_moving && !any_moving;
+  _last_any_moving = any_moving;
+
+  if (_us_since_last_pos_update < INTERVAL_SEND_POS_US && !falling_edge)
     return;
   _us_since_last_pos_update = 0;
 
@@ -192,17 +209,6 @@ void SerialProtocolHandler::send_position_update() {
   int32_t y_pos = yAxis ? yAxis->getCurrentPositionMicrosteps() : 0;
   int32_t z_pos = zAxis ? zAxis->getCurrentPositionMicrosteps() : 0;
   int32_t w_pos = wAxis ? wAxis->getCurrentPositionMicrosteps() : 0;
-
-  // 判断是否有轴在运动中
-  bool any_moving = false;
-  uint8_t count = axisManager.getAxisCount();
-  for (uint8_t i = 0; i < count; i++) {
-    Axis *axis = axisManager.getAxis(i);
-    if (axis && (axis->isMoving() || axis->isHomingInProgress())) {
-      any_moving = true;
-      break;
-    }
-  }
 
   // 摇杆按钮失效安全：超过 1000ms 未 ACK 则自动清除
   if (joystick_button_pressed &&
