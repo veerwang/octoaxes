@@ -50,9 +50,10 @@
 ### 编码器（暂缓，已全部关闭）
 - [x] Z 轴编码器基础设施 (2026-04-13) - config.h 常量 + invertEncoderDir + motor_initABNEncoder
 - [x] 编码器透明上报方案 (2026-04-13) - getCurrentPositionMicrosteps 按 enableEncoder 切 XACTUAL/ENC_POS，MSG_LENGTH 保持 24
-- [ ] （暂缓）Z 轴编码器硬件验证 - Encoder 与 Steps μm 值对比 Δ≈0
+- [x] **Z 轴编码器硬件验证 + 启用** (2026-05-11) — 用户硬件验证编码器读数与 Steps 一致，`software/utils/constants.py` Z 轴 `has_encoder` False → True，GUI 启动自动下发 CONFIGURE_STAGE_PID(Z, flip=True, tpr=3000)，固件 `getCurrentPositionMicrosteps()` 切到 ENC_POS
 - [x] **合并 W 轴编码器修复（maxpro → develop）** (2026-05-11 核实，已无需合并) — 2026-03-27 在 maxpro 上做的 W 轴 ABN 编码器 4 个 commit（f986305 / 4d3f36d / 94e5911 / c09ae84）均位于两分支共同祖先 47570ae 之前，已在 develop 内。maxpro 领先 develop 的 12 个 commit 全部是 `octoaxesplus`（双相机变体）独立工程，与 W 轴编码器无关
-- [ ] （暂缓）重新启用编码器并开启 PID 闭环
+- [ ] （暂缓）X/Y 轴编码器验证 + 启用（硬件已布编码器，参数未验证）
+- [ ] （暂缓）开启 PID 闭环（当前仅开环 + ENC_POS 上报，未启用 enableStagePID）
 
 ### 固件软限位方向感知闸门方案 A — 已落地（2026-05-09，五次迭代）
 - [x] **v1/v2/v2 续三次失败** (2026-05-08) — 都试图改 SET_LIM 寄存器时序，触及 TMC4361A 未文档化边界行为

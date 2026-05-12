@@ -166,6 +166,18 @@ octoaxes 同样的 SW_RESET 调用在 `motor_initMotionController` (MotorControl
 
 大距离 5% 差距分析（BOW 已 saturate 到 BOWMAX，差异可能在 motor_isRunning 判定方式 / axis.update 状态机延迟），追这 5% 需 firmware 调试打点。**接受现状，搁置**。
 
+#### 8. Z 轴编码器启用（硬件验证通过）
+
+用户实测确认 Z 编码器读数有效。`software/utils/constants.py:54` Z 轴 `has_encoder: False → True`：
+
+- GUI 启动 `_configure_encoders()` 自动下发 CONFIGURE_STAGE_PID(cmd 25)：axis=Z(2), flip=1, tpr=3000
+- 固件 `Axis::configureStagePID()` 运行时设 `_config.enableEncoder=true` + `motor_initABNEncoder(icID, 3000, ..., invertEncoderDir=true)`
+- `getCurrentPositionMicrosteps()` 切到读 TMC4361A_ENC_POS（经 ENC_CONST 换算单位仍是微步）
+- 响应包 bytes[10-13] 现在是编码器位置；MSG_LENGTH 仍 24 字节，对纯 XYZ 上位机透明
+- GUI 位置标签：Z 轴显示 `(encoder)` 后缀
+
+X/Y 编码器硬件已布但参数未验证，保持 `has_encoder: False`。PID 闭环（`enableStagePID`）仍未开，当前是「开环驱动 + 编码器读数上报」模式。
+
 ### 下次继续
 
 1. **TMC2240 StealthChop 参数调优 + 清理调试代码**（中等优先）
