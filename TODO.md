@@ -28,11 +28,27 @@
 - [x] **荧光通道 D1-D5 TTL 输出永远不亮（联锁失效）** (2026-05-11 修复，**硬件验证通过**) — 上一条 fix 后明场不再误亮，但 D1-D5 也都不亮。根因：`config.h:94` `ILLUMINATION_INTERLOCK = pin 2` + `illumination.cpp:52` `INPUT_PULLUP`，无联锁设备时 pin 2 浮空被上拉为 HIGH → `illumination_interlock_ok()` 返回 false → `turn_on_illumination` 的 D1-D5 case 全部跳过 `digitalWrite(HIGH)`，主循环 `octoaxes.ino:159-165` 还每周期把 D1-D5 强拉 LOW。LED 矩阵（明场）走 APA102 SPI 不经联锁所以不受影响。**修复**：① `platformio.ini` 新增 `[env:teensy41_nointerlock]` 加 `-D DISABLE_LASER_INTERLOCK` ② 新增 `firmware/octoaxes/download.sh` 烧录前交互选 safe/nointerlock，参考 joystick `download.sh` 风格。安全的 teensy41 环境保持默认。烧 nointerlock 版本后实测 405/638 等荧光通道正常点亮。
 - [x] **XYZ 运动速度基线测试脚本 + 基线收档** (2026-05-11 commit a3d797c + dbc0598) — 新增 `software/tests/benchmark_xyz_speed.py`（760 行），独立 pyserial 脚本，对齐 GUI 启动序列（configure_actuators + widen_soft_limits + HOME + MOVETO 中心 + 人工确认 pause）后跑 X/Y × 6 档 + Z × 3 档（自动跳过半行程不够的大档）× 每方向 10 trial 交替 +/-。**关键设计**：① movement_sign 转换（Z=-1 与 GUI 一致）；② wait_completed 必须先看 IN_PROGRESS 再看连续 5 帧 status=0 防抖；③ MOVE/MOVETO target 乘 sign 转 firmware 坐标系，读回位置乘 sign 转用户坐标。**调试中暴露并修复的 3 个 bug**：缺 configure_actuators 致 firmware 残留 16 微步、漏 movement_sign 致 Z 撞底、残留 SET_LIM 触发 clampTargetByDirection 短路假完成。**基线**（firmware ef05554，归档至 `documents/baselines/benchmark_xyz_20260511_145604.{csv,md}`）：X/Y 几乎完全对称（差 <1ms），10μm=123ms / 100μm=197ms / 1mm=366ms / 5mm=621ms / 10mm=823ms / 30mm=1593ms；Z 比 X/Y 慢约 2 倍（vmax 3 vs 25 mm/s），10μm=187ms / 100μm=348ms / 1mm=697ms。距离 ×3000 耗时只 ×13，小距离的 ~120ms 基线开销是 ramp 加减速时间主导。
 - [x] **旧 Squid X 卡死 chip-level lockup**（2026-05-12，硬件实测验证）— 根因：TMC2240 上 X/Y `enableStallSensitivity=true, stallSensitivity=12` 沿用 TMC2660 SG2 参数，TMC2240 用 SG4 算法过敏感 → 正常电流尖峰误判 → `ACTIVE_STALL_F` (STATUS bit 11) latch → 5s timeout → handleError 写 VMAX=0 → `motor_moveToMicrosteps` recovery 不清此 latch → 必须断电拔 USB 复位。**修复**：`axis.cpp:152` 启用处加 `&& _config.driverType != DRIVER_TMC2240` 守卫，TMC2660 保持启用 SG2，TMC2240 跳过；config.h 参数保留。新增 `software/tests/dump_axis_state.py` 卡死现场诊断工具。
-- [ ] **TMC2240 StallGuard4 调优 + chip-level latch 恢复**（新任务，2026-05-12 提出，中等优先）：
-    1. 调研 TMC2240 datasheet SG4_THRS / SGT / SEMIN / SEMAX 参数语义，找到稳定阈值
-    2. 修 `motor_moveToMicrosteps` recovery：同时清 ACTIVE_STALL_F / HOME_ERROR_F latch
-    3. 上层 stall 语义：触发时上报上位机由操作员决定，不默死
-    4. 移除 `axis.cpp:152` 的 TMC2240 守卫，重新启用 X/Y 碰撞保护
+- [ ] **TMC2240 StallGuard4 调优 + chip-level latch 恢复**（2026-05-12 提出，**同日深挖后用户主动 reset --hard 89fbd15 暂搁**，下次重做）
+
+    **2026-05-12 深挖收获（下次接手必读，避免重复研究）**：
+    1. **chip-level recovery 架构验证**：硬件实测 `S:RECOVERY_STATS` counter Y stall=3 / Z stall=5，证实 motor_moveToMicrosteps 的 ACTIVE_STALL_F 恢复路径**真实被调用**（与 VSTOP recovery 对称设计可行）。**X stall=0**（X 同硬件配置但 SG4 没触发，说明触发频度跟机械/接线相关）
+    2. **DRV_AFTER_STALL=1 是必需补丁**（TMC4361A Programming Guide §19）：单独禁 STOP_ON_STALL 不够，chip 的驱动器仍 latched 在 disabled 状态导致电机不动。**A 方案的 motor_setStopOnStall 必须同时操作 bit 26 和 bit 27**
+    3. **SG_RESULT 实测数据（致命发现）**：测 X 轴 6 距离档 × 2 方向，`S:READ_SG` 高频采样。**所有距离的 min/p10 都是 0**（即正常运动期间 ~10% 的样本 SG_RESULT 触底）。p50 ≈ 100-200，p90 300-700，max=1023。这说明 SG2/SG4 算法在 ramp 加速/减速段不可靠，**调 SGT 数值解决不了**（SG_RESULT 已到 0，任何非负阈值都触发；负 SGT 等于关 SG）
+    4. **真正修复方向 = TCOOLTHRS**：TMC2240 datasheet §7 明确"工作条件 TCOOLTHRS < TSTEP < THIGH"。当前 TCOOLTHRS=0 → SG 在所有速度激活包括不可靠的低速段。需加 `MotorConfig.tcoolThresh` 字段 + 走 `tmc2240_writeRegister(TMC2240_TCOOLTHRS, val)`（起步经验值 400-1000，需实测扫描确认）
+    5. **用户体感问题**：临时移除守卫开 SG（测试）→ Y MOVE 不再 lockup 但每次 stall 误触发 5s timeout + recovery 重试，体感「卡顿 1.5-2s/次」**用户拒绝接受**
+
+    **预留资产**（stash 保留）：
+    - `stash@{0}` = "DEFERRED: TMC2240 SG tuning Phase A"
+    - 包含 firmware `S:READ_SG` 调试命令 + `motor_readSGResult()` helper + `software/tests/measure_sg_result.py` 高频采样脚本
+    - 下次接手第一步：`git stash apply stash@{0}` 取回
+
+    **下次接手 6 步流程**：
+    1. `git stash apply stash@{0}` 取回 Phase A 工具
+    2. MotorConfig 加 `uint32_t tcoolThresh` 字段；axis.cpp begin 中给 X/Y/Z 设合理初值；motor_initDriver_TMC2240 写 TMC2240_TCOOLTHRS
+    3. 重做 DRV_AFTER_STALL=1 补丁（参考被 reset 丢弃的逻辑：motor_setStopOnStall enable=false 时同时设 STOP_ON_STALL=0 + DRV_AFTER_STALL=1）
+    4. 用 measure_sg_result.py 扫不同 TCOOLTHRS 下的 SG_RESULT，找到「正常运动 p10 > 100」配置
+    5. 上层 stall 语义设计：触发时上报上位机决定（撤回 / 接受 / reset）
+    6. 移除 axis.cpp:152 TMC2240 守卫，启用 X/Y 碰撞保护
 - [ ] **Y homing 异响 + 慢（硬件变更，调试方向重新规划）** (2026-05-12 更新) — **硬件从 TMC2660 切换到 TMC2240** 后之前所有"对齐老 Squid" chopper 思路不适用（老 Squid 不支持 TMC2240）。新方向（按 TMC2240 芯片特性）：① 启用 StealthChop2 PWM 静音模式（octoaxes 当前 `enableStealthChop=false`）—— 理论上能彻底消除 Y homing 慢速异响；② TMC2240 chopper TOFF/HSTRT 重新调优（字段位置与 TMC2660 不同）；③ CURRENT_RANGE 三档（0/1/2 = 1/2/3A）选择审查。
 - [x] **2026-05-12 尝试方案 (a) TMC2660 chopper 对齐被中止** — 解码老 Squid `tmc4361A_tmc2660_init` CHOPCONF=0x000900C3 后定位差异：HSTRT 4→0、HEND -2→0；改完编译通过准备烧录时用户澄清硬件已换 TMC2240，回退 axis.cpp 改动。结论：方案 (a) 不适用 TMC2240 硬件
 - [ ] **(已废) Y homing 异响 TMC2660 原始记录** (2026-05-11 暂停) — 老 Squid software + 老 Squid firmware 正常；老 Squid software + octoaxes firmware Y homing 异响 + 速度慢。**已尝试方案**：
