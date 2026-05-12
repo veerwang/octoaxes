@@ -169,7 +169,7 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 200 * SCREW_PITCH_OBJECTIVES_MM;
 
 		const float HOMING_VELOCITY_X_MM = 10;
-		const float HOMING_VELOCITY_Y_MM = 10;
+		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 实测确定：256 微步 + 30 mm/s 最安静
 		const float HOMING_VELOCITY_Z_MM = 1;
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;

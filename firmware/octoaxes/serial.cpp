@@ -390,6 +390,41 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
+    // S:SET_HOMING_VEL <axisName> <vel_mm_per_s>
+    // 诊断用：运行时设 homingVelocityMM 不重烧 firmware
+    // 例：S:SET_HOMING_VEL Y 5.0
+    if (command.startsWith("S:SET_HOMING_VEL")) {
+      String rest = command.substring(16);
+      rest.trim();
+      int sp = rest.indexOf(' ');
+      if (sp < 0) {
+        SerialUSB.println("S:SET_HOMING_VEL:ERR:missing_args");
+        return;
+      }
+      String axisName = rest.substring(0, sp);
+      String velStr = rest.substring(sp + 1);
+      axisName.trim();
+      velStr.trim();
+      float vel = velStr.toFloat();
+      bool found = false;
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (!axis) continue;
+        if (axisName != String(axis->getAxisName())) continue;
+        axis->getMutableConfig().homingVelocityMM = vel;
+        char buf[80];
+        snprintf(buf, sizeof(buf), "S:SET_HOMING_VEL:OK:%s=%.3f", axis->getAxisName(), vel);
+        SerialUSB.println(buf);
+        found = true;
+        break;
+      }
+      if (!found) {
+        SerialUSB.print("S:SET_HOMING_VEL:ERR:axis_not_found:");
+        SerialUSB.println(axisName);
+      }
+      return;
+    }
+
     // 处理其他调试命令
     DEBUG_PRINT("Serial:TO_AXISMGR:");
     DEBUG_PRINTLN(command);  // 调试点 - 发往AxisManager

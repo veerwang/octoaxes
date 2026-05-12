@@ -89,8 +89,8 @@ bool Axis::begin(const AxisConfig &config) {
       .microstepRes = 0,  // 256 microsteps
       .interpolation = true,
       .toff = 3,   // TOFF = 3
-      .hstrt = 4,  // HSTRT = 4
-      .hend = -2,  // HEND 寄存器值 = 1, 实际值 = 1 + (-3) = -2
+      .hstrt = 0,  // HSTRT = 0（对齐老 Squid CHOPCONF=0x000900C3，零滞回静音）
+      .hend = 0,   // HEND 寄存器值 = 3, 实际值 = 0（对齐老 Squid）
       .tbl = 2,    // TBL = 2
       .stallThreshold = (int8_t)_config.stallSensitivity,
       .stallFilter = true,
@@ -930,6 +930,8 @@ void Axis::setLeadScrewPitch(float pitchMM) {
 void Axis::configureDriver(uint16_t microstepping, float currentMA,
                             float holdCurrentRatio) {
   _config.microstepping = microstepping;
+  // 注意：不同步 homingMicrostepping —— Y 实测 256 微步 + 30 mm/s 最安静，
+  // 即便老 Squid software 下发 32 微步运行，homing 仍走 256 微步切换。
   _config.motorCurrentMA = currentMA;
   _config.holdCurrent = holdCurrentRatio;
 
@@ -945,8 +947,8 @@ void Axis::configureDriver(uint16_t microstepping, float currentMA,
       .microstepRes = 0,
       .interpolation = true,
       .toff = 3,
-      .hstrt = 4,
-      .hend = -2,
+      .hstrt = 0,  // 对齐老 Squid 零滞回（见 begin() 注释）
+      .hend = 0,
       .tbl = 2,
       .stallThreshold = (int8_t)_config.stallSensitivity,
       .stallFilter = true,
