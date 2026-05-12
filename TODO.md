@@ -43,6 +43,14 @@
     **后续排查方向**（待优先级）：(a) chopper 参数 TOFF/HSTRT/HEND/TBL 与老 Squid 对齐；(b) 方案 E homing 速度联动 vmax（10mm/s → 24mm/s 测试不同速度是否避开共振）；(c) StealthChop/SpreadCycle 切换阈值；(d) 抓串口 DEBUG_PRINT 日志看 homing 启动序列时序。
     **当前位置**：commit 7533516（含 D2 电流 + HOME 方向 fix），其他修改已回退。
 
+### 框架效率优化（2026-05-12 启动新一轮，协议层）
+- [x] **移动完成下降沿立即发包** (2026-05-12, commit a6c5786, **硬件实测**) — `send_position_update` 增加 any_moving 下降沿检测，所有轴 moving→idle 那一帧绕过 10ms 心跳节流立即发 COMPLETED；对旧 Squid + GUI + benchmark 三端同时有效。实测 X/Y 短距离命令省 2-7ms（平均 5ms，10μm 122→116ms 省 5%）；Z 几乎无收益（vmax 慢一个量级，已与心跳 phase 对齐）。每完成一次只触发 1 包，流量影响可忽略
+- [ ] **STATUS.TARGET_REACHED 替代 XACTUAL==XTARGET 判完**（低难度）— `Axis::checkMovementComplete` 当前比较两个 32-bit 寄存器读，可换成 STATUS bit 单次读取，节省 1 SPI 周期 + 更可靠
+- [ ] **TMC4361A Target Pipeline (§9.2)**（中难度）— 当前 ramp 期间预写下一个 XTARGET，避免减速到 0 再加速。扫描/stitching 路径理论提速 20-50%
+- [ ] **多轴并行 home**（中难度）— 现 `home_xyz` 串行 X→Y→Z 约 14s，并行可省 2/3 时间
+- [ ] **MOVETO_BATCH 批量命令**（高难度）— 扫描场景一次下发 N 个目标点减少串口往返
+- [ ] **Look-ahead corner blending**（高难度）— stitching 路径不停顿过拐角
+
 ### 运动效率优化（2026-05-09 记录，2026-05-11 第一轮完成）
 - [x] **基线测试脚本** (2026-05-11 commit a3d797c) — `software/tests/benchmark_xyz_speed.py`
 - [x] **首次基线数据** (2026-05-11) — `documents/baselines/benchmark_xyz_20260511_145604.{csv,md}`
