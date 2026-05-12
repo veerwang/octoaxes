@@ -6,9 +6,73 @@
 
 ## 最新会话
 
-**日期**: 2026-05-11
+**日期**: 2026-05-12
 **分支**: develop
-**位置**: 荧光通道 405/638 等点不亮问题双重根因修复 + 联锁禁用烧录脚本
+**位置**: 文档同步 + Homing 调试打印清理
+
+### 本次完成
+
+#### 1. 提交 Z 轴编码器启用文档（commit 8a7c312）
+
+把上次会话未提交的 SESSION.md / TODO.md 改动提交：Z 编码器硬件验证通过后
+`software/utils/constants.py` Z 轴 `has_encoder: False → True`、TODO 对应任务
+从「暂缓」改为完成，补充 X/Y 编码器与 PID 闭环两个暂缓子项（实际代码改动
+在 cf2eef0 之前已合入）。
+
+#### 2. W 轴 LEFT_SW → RGHT_SW 修正讨论（暂不动）
+
+阅读 `config.h:368-403` W_AXIS 段、`stepaxis.cpp:220-236` safePosition 计算、
+`filterwheel.cpp:250` 离开感应区方向逻辑后，向用户解释：当前 `homingSwitch =
+LEFT_SW` 与硬件实际是 RIGHT 端开关不匹配；改动会涉及 `enableLeft/Right
+LimitSwitch` 翻转 + `rightSwitchPolarity` / `rightFlipped` 配置，需要硬件实测
+（一旦极性配错 W home 会撞死或永远找不到限位）。用户决定**暂不修改**，W 轴
+60ms 换孔时间已优化稳定，"暂不影响功能" 状态保留。任务条目仍在 TODO「阻塞/
+问题」section。
+
+#### 3. 清理 StepAxis/FilterWheel homing 调试打印（commit e127a18 + 16acedf）
+
+按 B 方案（中度清理）执行：
+
+**stepaxis.cpp 删除**（-73 行）：
+- SEARCH 周期性 dump（200ms 一次的 `limit_state / STATUS / XACTUAL / VACTUAL`，
+  2026-02-25 调 SOFT_STOP_EN bug 时加的）
+- Before stop / After stop XACTUAL+STATUS dump
+- Latched position 三行打印
+- RGHT_SW / LEFT_SW safePos = latched ± margin 公式展开（保留 if/else 数学
+  分支，仅删内嵌 print）
+- homing_direct / homingVelocityMM / speedInternal 启动 dump
+- STATE_HOMING_SET_ZERO 500ms 进度刷新整块（包括外层 else 分支）
+
+**filterwheel.cpp 删除**（-3 行）：
+- HOMING_INIT limit_state dump
+
+**保留**（约 10 处）：Starting homing、Already at home、Home limit switch
+triggered、Moving to safe position（单行）、Homing completed、各类 Timeout
+错误、PID re-enabled、Left home position。
+
+`DEBUG_PRINT` 在生产构建（`pio run -e teensy41`，无 `-D DEBUG`）展开为空，
+**生产 FLASH 持平 72060 字节**，本次纯代码可读性清理。两个环境均编译通过。
+
+TODO.md 对应两条 `[ ]` 任务标记 `[x]` 完成。
+
+### 下次继续
+
+1. **TMC2240 StealthChop 参数调优 + 清理 Cover40 debug 打印**（中等优先，与本次
+   清理风格一致）
+2. **W 轴换孔时间优化（61.3ms → ≤60ms）**（高难度，ASTART 已到 BOW 截断硬约束）
+3. **`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 静默 return false**
+   （低难度独立 bug，应排队等 IDLE 或上报错误）
+4. **修正 W 轴 config.h LEFT_SW → RGHT_SW + 极性**（需硬件实测，暂搁置）
+5. **Y homing 异响**（4 次尝试未消除，已搁置）
+6. **XYZ 大距离 5% ramp 差距**（需 firmware 调试打点，已搁置）
+
+---
+
+## 历史记录
+
+<!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
+
+### 2026-05-11 - 荧光通道点不亮双重根因修复 + 联锁禁用烧录脚本 + XYZ 速度基线 + Z 编码器启用
 
 ### 本次完成
 
@@ -178,22 +242,9 @@ octoaxes 同样的 SW_RESET 调用在 `motor_initMotionController` (MotorControl
 
 X/Y 编码器硬件已布但参数未验证，保持 `has_encoder: False`。PID 闭环（`enableStagePID`）仍未开，当前是「开环驱动 + 编码器读数上报」模式。
 
-### 下次继续
-
-1. **TMC2240 StealthChop 参数调优 + 清理调试代码**（中等优先）
-2. **W 轴换孔时间优化（61.3ms → ≤60ms）**（高难度）
-3. **修正 W 轴 config.h（LEFT_SW → RGHT_SW + 极性）**（低难度，可顺手做）
-4. **Y homing 异响**（暂搁置，4 次尝试未消除）
-5. **XYZ 大距离 5% ramp 差距**（暂搁置，需 firmware 调试打点）
-6. （独立 bug）`Axis::moveRelativeMicrosteps` 在 `STATE_LEAVING_HOME` 状态时不应静默 return false
-
 > 2026-05-11 核实：「合并 W 轴编码器修复（maxpro → develop）」已无需合并 —— 2026-03-27 maxpro 上 W 轴 ABN 编码器 4 个 commit（f986305 / 4d3f36d / 94e5911 / c09ae84）位于两分支共同祖先 47570ae 之前，已在 develop。maxpro 领先 develop 的 12 个 commit 全部是 `octoaxesplus`（双相机变体）独立工程。
 
 ---
-
-## 历史记录
-
-<!-- 保留最近 3-5 次会话记录，太旧的可以删除 -->
 
 ### 2026-05-09 - 方案 A 软限位方向感知闸门完整落地（5 次迭代）
 
