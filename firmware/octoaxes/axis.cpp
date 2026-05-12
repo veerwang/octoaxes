@@ -142,7 +142,14 @@ bool Axis::begin(const AxisConfig &config) {
   motor_disablePID(_icID);
 
   // 配置 StallGuard (使用新 API)
-  if (_config.enableStallSensitivity)
+  // TMC2660 SG2：参数 SGT=12 经长期实测稳定，正常运动不会误触发，碰撞会停车。
+  // TMC2240 SG4：算法与 SG2 不兼容，SGT=12 极易误触发 ACTIVE_STALL_F latch
+  // 锁死 chip（2026-05-12 旧 Squid X 卡死现场确诊，STATUS bit11 latched
+  // 触发后必须断电拔 USB 才能复位）。motor_moveToMicrosteps 的现有 VSTOP
+  // recovery 路径不清此 latch（仅清 VSTOPL/R_ACTIVE_F bit9/10）。
+  // 临时方案：TMC2240 跳过 stall 启用；保留 config.enableStallSensitivity /
+  // stallSensitivity 参数供未来 SG4 调优 + chip-level latch 恢复修复后启用。
+  if (_config.enableStallSensitivity && _config.driverType != DRIVER_TMC2240)
     motor_configStallGuard(_icID, _config.stallSensitivity, true, true);
 
   // 默认使能轴

@@ -274,6 +274,8 @@ namespace AxisConfigs {
         .holdCurrent = AxisConstDefinition::X_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::X_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::X_SAFEPOSITION,
+        // StallGuard 参数（仅 TMC2660 SG2 用，TMC2240 SG4 在 axis.cpp 启用处
+        // 暂跳过，参数保留待 SG4 调优后启用）
         .enableStallSensitivity = true,
         .stallSensitivity = 12,
         .useSShapedRamp = true,
@@ -312,6 +314,7 @@ namespace AxisConfigs {
         .holdCurrent = AxisConstDefinition::Y_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::Y_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::Y_SAFEPOSITION,
+        // 同 X 轴：StallGuard 参数仅 TMC2660 用，TMC2240 在启用处跳过
         .enableStallSensitivity = true,
         .stallSensitivity = 12,
         .useSShapedRamp = true,
