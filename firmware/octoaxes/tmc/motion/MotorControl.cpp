@@ -803,8 +803,15 @@ bool motor_isTargetReached(uint8_t icID)
     if (icID >= MOTOR_IC_COUNT)
         return true;
 
-    int32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
-    return (status & (1 << 0)) != 0;  // TARGET_REACHED bit
+    // 与旧 Squid tmc4361A_isRunning(取反) 等价：位置到达 AND 速度归零 AND ramp 不在变化
+    // - TARGET_REACHED_F (bit 0): XACTUAL == XTARGET
+    // - VEL_STATE_F (bits 3-4): 00 = velocity 已归零 (非 0 = +/- velocity)
+    // - RAMP_STATE_F (bits 5-6): 00 = ramp idle (非 0 = acc/dec/const)
+    // 单次 STATUS 读多 bit，SPI 成本不变；防 chip ramp 末尾「XACTUAL 短暂 == XTARGET
+    // 但速度未归零」的边缘 case 误判
+    uint32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
+    return (status & TMC4361A_TARGET_REACHED_F_MASK) &&
+           !(status & (TMC4361A_VEL_STATE_F_MASK | TMC4361A_RAMP_STATE_F_MASK));
 }
 
 bool motor_isRunning(uint8_t icID)
