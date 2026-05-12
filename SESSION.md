@@ -101,13 +101,67 @@ if (_currentState != STATE_IDLE && _currentState != STATE_MOVING) {
 
 生产 FLASH 持平 72060 字节。
 
+#### 5. Y homing 异响 TMC2660 chopper 对齐方案中止 + 硬件已切到 TMC2240
+
+按 SESSION.md 2026-05-11 列的后续方向 (a) 入手：找老 Squid `tmc4361A_tmc2660_init`
+CHOPCONF=0x000900C3 解码 (HSTRT=0, HEND=0, TOFF=3, TBL=2)，对比 octoaxes
+`motor_initDriver_TMC2660` 的 (HSTRT=4, HEND=-2, TOFF=3, TBL=2)。差异定位
+**仅在 HSTRT/HEND 两个 hysteresis 参数**——老 Squid 用零 hysteresis 静音
+配置，octoaxes 用高扭矩配置（低速更吵）。
+
+修改 `axis.cpp` 两处硬编码 HSTRT=4→0、HEND=-2→0 编译通过 FLASH 持平 72060。
+准备烧录时用户澄清：**当前硬件已全部更换为 TMC2240**（之前 SESSION.md 描述
+的 X/Y/Z = TMC2660 是更早一个硬件单元；本次会话之前的 benchmark/速度基线
+归档都是那台 TMC2660 机器）。TMC2660 chopper 调优思路不适用于 TMC2240 硬件，
+回退 axis.cpp 改动（`git checkout`）。
+
+`S:HWINFO` 验证当前硬件：Y/Z 报 TMC2240（W 报 UNKNOWN 是 TMC2240 Cover READ
+不可靠的已知问题，见 TODO 阻塞项；X 行被解析丢失但今天 silent reject 测试
+中 X 正常运动，芯片可信）。
+
+#### 6. 首次 TMC2240 速度基线 + TMC2240 vs TMC2660 对比（commit f3019f2）
+
+跑 `software/tests/benchmark_xyz_speed.py --yes`（脚本无需修改，firmware
+DRIVER_AUTO 自动适配）：
+
+**TMC2240 baseline XYZ**（vmax 30/30/3.8 mm/s, accel 500/500/20 mm/s²）：
+
+| 距离 | X (ms) | Y (ms) | Z (ms) |
+|---|---|---|---|
+| 10μm | 122.5 | 122.6 | 187.4 |
+| 100μm | 197.0 | 197.3 | 347.0 |
+| 1mm | 366.4 | 365.9 | 697.3 |
+| 5mm | 620.2 | 619.8 | skip |
+| 10mm | 830.0 | 828.6 | skip |
+| 30mm | 1453.6 | 1455.5 | skip |
+
+**对比 TMC2660 baseline**（2026-05-11 17:24，同 firmware vmax/accel/microstepping）：
+全档位差异 **< 1%**（最大差 +5ms @ 30mm，约 0.4%）。
+
+**原因**：运动 ramp 由 **TMC4361A 内置 generator** 控制，TMC2660/2240 仅接收
+step/dir 或 SPI 线圈电流，对 ramp 行为无影响。芯片差异体现在噪声/扭矩/电流
+精度，不在速度上。
+
+归档：
+- `documents/baselines/benchmark_xyz_tmc2240_20260512_141441.{csv,md}` TMC2240 首次基线
+- `documents/baselines/comparison_tmc2240_vs_tmc2660_20260512.md` 详细对比 + 后续调优方向
+
 ### 下次继续
 
-1. **TMC2240 StealthChop 参数调优 + 清理 Cover40 debug 打印**（中等优先，与 homing 清理风格一致）
-2. **W 轴换孔时间优化（61.3ms → ≤60ms）**（高难度，ASTART 已到 BOW 截断硬约束）
+**Y homing 异响（TMC2240 视角重新规划）**：之前 4 次失败的方向 + 今天 TMC2660 chopper
+对齐方案都不适用于 TMC2240，需要从 TMC2240 芯片特性入手：
+1. **启用 StealthChop2** — TMC2240 独有的 PWM 静音模式，专门为低速静音设计，
+   理论上能彻底消除 Y homing 异响。octoaxes 当前 `enableStealthChop=false`。
+2. **TMC2240 chopper 参数从默认值调** — TOFF/HSTRT 字段位置与 TMC2660 不同，
+   需查 TMC2240 datasheet 重新调优
+3. **CURRENT_RANGE 审查** — TMC2240 三档（0/1/2 = 1/2/3 A 全量程）选择是否合适
+
+**其他**：
+
+1. **W 轴换孔时间优化（61.3ms → ≤60ms）**（高难度，ASTART 已到 BOW 截断硬约束）
+2. **清理 TMC2240 Cover40 debug 打印 + StallGuard 调优**（中等优先，与今天 homing 清理风格一致）
 3. **修正 W 轴 config.h LEFT_SW → RGHT_SW + 极性**（需硬件实测，暂搁置）
-4. **Y homing 异响**（4 次尝试未消除，已搁置）
-5. **XYZ 大距离 5% ramp 差距**（需 firmware 调试打点，已搁置）
+4. **XYZ 大距离 5% ramp 差距**（需 firmware 调试打点，已搁置 / TMC2240 上待重测确认）
 
 ---
 
