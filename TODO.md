@@ -105,8 +105,8 @@
 - [x] 烧写固件并验证 Z 轴限位开关 (2026-01-23) - 限位状态 0x0 正确
 - [x] 验证 Z 轴基本移动功能 (2026-01-27) - MOVETO 命令正常工作
 - [x] 调试 Z 轴 homing 流程 (2026-02-25) - 修复 SOFT_STOP_EN 导致停车失败
-- [ ] 去掉 StepAxis homing debug 打印（确认稳定后）
-- [ ] 去掉 FilterWheel homing debug 打印
+- [x] 去掉 StepAxis homing debug 打印 (2026-05-12, commit e127a18) - 删除 SEARCH 周期性 dump、Before/After stop、Latched position、safePos 公式展开、homing_direct/speedInternal、Moving to safe position 进度刷新；保留状态转换 + Timeout/PID 关键打印
+- [x] 去掉 FilterWheel homing debug 打印 (2026-05-12, commit e127a18) - 删除 HOMING_INIT limit_state dump
 - [ ] 修正 W 轴 config.h 配置（LEFT_SW → RGHT_SW + 极性修正）
 
 ### 命令移植
