@@ -3,7 +3,6 @@
 #include "filterwheel.h"
 #include "illumination.h"
 #include "joystick.h"
-#include "mcp23s17.h"
 #include "trigger.h"
 #include "objectives.h"
 #include "serial.h"
@@ -12,6 +11,7 @@
 #include "tmc/motion/MotorControl.h"
 #include "tmc/ic/TMC4361A/TMC4361A.h"
 #include "utils.h"
+#include "mcp23s17.h"  // squid++：MCP23S17_1 扩展 IO（8 轴 INTR/TARGET 输入）
 
 void initializeClock(uint8_t clk_pin, uint32_t frequence) {
   pinMode(clk_pin, OUTPUT);
@@ -56,7 +56,7 @@ bool initializeSystem() {
     return false;
   }
 
-  // 初始化时钟（squid++ 单套时钟，取消 EXPAND_CLK 以避免与 TTL5 共用 pin 28）
+  // 初始化时钟（squid++ 单套时钟，取消 EXPAND_CLK 避免与 TTL5 共用 pin 28）
   initializeClock(Pins::TMC4361_STANDARD_CLK,
                   SystemConfig::TMC4361_CLOCK_FREQUENCY);
 
@@ -76,17 +76,21 @@ bool initializeSystem() {
   motor_initSubsystem();
 
   // 创建轴对象并添加到管理器
-  // 轴配置: X(index=1), Y(index=0), Z(index=2), W(index=3)
-  Axis *yAxis = new StepAxis(Pins::Y_AXIS_CS, 0, "Y");
-  Axis *xAxis = new StepAxis(Pins::X_AXIS_CS, 1, "X");
+  //
+  // squid++ 双相机硬件不需要 octoaxes 主线的 X/Y swap：
+  // squid++ HC154 片选通道命名与物理硬件接线对齐（HC154_AXIS_X=10 直接驱动物理 X 电机），
+  // tmc_ic_configs[] 中 icID=0 → HC154_AXIS_Y, icID=1 → HC154_AXIS_X，
+  // 故 axisName="Y" + icID=0 + Y_AXIS_CS、axisName="X" + icID=1 + X_AXIS_CS 即正确映射。
+  // (octoaxes 主线的 swap 是为了兼容老 Squid PCB 的反向接线，详见 octoaxes/octoaxes.ino)
+  Axis *yAxis = new StepAxis(Pins::Y_AXIS_CS, 0, "Y");  // HC154 通道 9 = 物理 Y 电机
+  Axis *xAxis = new StepAxis(Pins::X_AXIS_CS, 1, "X");  // HC154 通道 10 = 物理 X 电机
   Axis *zAxis = new StepAxis(Pins::Z_AXIS_CS, 2, "Z");
   Axis *wAxis = new FilterWheel(Pins::W_AXIS_CS, 3, "W");
   // Axis* expand1Axis = new Objectives(Pins::EXPAND1_AXIS_CS, 4, "E1");
   // Axis* expand3Axis = new StepAxis(Pins::EXPAND3_AXIS_CS, 6, "E3");
   // Axis* expand4Axis = new FilterWheel(Pins::EXPAND4_AXIS_CS, 7, "E4");
 
-  // 初始化顺序很重要，homing 的时候需要通过这个 index 获取句柄
-  // 按 index 顺序添加: Y(0), X(1), Z(2), W(3)
+  // 按 axisIndex 顺序添加: Y(0), X(1), Z(2), W(3)
   if (!axisManager.addAxis(yAxis) || !axisManager.addAxis(xAxis) ||
       !axisManager.addAxis(zAxis) || !axisManager.addAxis(wAxis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");
@@ -111,6 +115,11 @@ void setup() {
   // 初始化状态指示灯
   initializeStartupLED();
 
+  // 尽早把 APA102 矩阵清零，最小化"启动亮"窗口。
+  // 之后的 initializePowerManagement (等 PG) + delay + clock + SPI 初始化
+  // 累计可能数百 ms~5s，APA102 在此期间处于上电默认亮态。
+  illumination_init_matrix_early();
+
   DEBUG_PRINTLN("Initializing system...");
 
   // 初始化系统
@@ -132,6 +141,7 @@ void loop() {
   }
 
   // 安全联锁检查：联锁断开时直接拉低所有 TTL 激光端口（硬编码 GPIO，零开销）
+  // squid++ 双相机：D1-D8 共 8 路 TTL
   if (!illumination_interlock_ok()) {
     digitalWrite(Pins::ILLUMINATION_D1, LOW);
     digitalWrite(Pins::ILLUMINATION_D2, LOW);

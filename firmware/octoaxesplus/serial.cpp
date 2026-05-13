@@ -173,7 +173,29 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
 }
 
 void SerialProtocolHandler::send_position_update() {
-  if (_us_since_last_pos_update < INTERVAL_SEND_POS_US)
+#ifdef DISABLE_BINARY_POS_UPDATE
+  // build_opt.h 中临时定义的开关：跳过 24 字节二进制位置上报，
+  // 让 SerialUSB 只剩 ASCII 调试输出，方便 Arduino Serial Monitor 看
+  return;
+#endif
+
+  // 先算 any_moving，用于检测「移动完成」下降沿（true→false）
+  bool any_moving = false;
+  uint8_t count = axisManager.getAxisCount();
+  for (uint8_t i = 0; i < count; i++) {
+    Axis *axis = axisManager.getAxis(i);
+    if (axis && (axis->isMoving() || axis->isHomingInProgress())) {
+      any_moving = true;
+      break;
+    }
+  }
+  // 完成边缘：所有轴刚刚停下。绕过 10ms 心跳节流立即发一帧 COMPLETED，
+  // 让上位机 wait_till_operation_is_completed 在物理停止后 < 1ms 内被唤醒
+  // （平均省 5ms，worst case 省 10ms 心跳延迟）。下降沿每次 transition 只触发一次。
+  bool falling_edge = _last_any_moving && !any_moving;
+  _last_any_moving = any_moving;
+
+  if (_us_since_last_pos_update < INTERVAL_SEND_POS_US && !falling_edge)
     return;
   _us_since_last_pos_update = 0;
 
@@ -187,17 +209,6 @@ void SerialProtocolHandler::send_position_update() {
   int32_t y_pos = yAxis ? yAxis->getCurrentPositionMicrosteps() : 0;
   int32_t z_pos = zAxis ? zAxis->getCurrentPositionMicrosteps() : 0;
   int32_t w_pos = wAxis ? wAxis->getCurrentPositionMicrosteps() : 0;
-
-  // 判断是否有轴在运动中
-  bool any_moving = false;
-  uint8_t count = axisManager.getAxisCount();
-  for (uint8_t i = 0; i < count; i++) {
-    Axis *axis = axisManager.getAxis(i);
-    if (axis && (axis->isMoving() || axis->isHomingInProgress())) {
-      any_moving = true;
-      break;
-    }
-  }
 
   // 摇杆按钮失效安全：超过 1000ms 未 ACK 则自动清除
   if (joystick_button_pressed &&
@@ -326,6 +337,91 @@ void SerialProtocolHandler::processSerialDebugCommands() {
         }
       }
       SerialUSB.println("S:HWINFO:END");
+      return;
+    }
+
+    // S:DUMPREGS [axisName]
+    // 不带参数 → dump 所有轴；带参数（X/Y/Z/W）→ 只 dump 指定轴
+    // 用于卡死现场取证：打印 TMC4361A 关键寄存器，定位 ramp generator 异常根因
+    if (command.startsWith("S:DUMPREGS")) {
+      String filter = command.length() > 11 ? command.substring(11) : String("");
+      filter.trim();
+      char buf[160];
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (!axis) continue;
+        const char *name = axis->getAxisName();
+        if (filter.length() > 0 && filter != String(name)) continue;
+
+        uint8_t icID = axis->getIcID();
+        uint32_t status   = tmc4361A_readRegister(icID, TMC4361A_STATUS);
+        uint32_t events   = tmc4361A_readRegister(icID, TMC4361A_EVENTS);
+        uint32_t rampMode = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
+        uint32_t refConf  = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
+        int32_t  xactual  = (int32_t)tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
+        int32_t  xtarget  = (int32_t)tmc4361A_readRegister(icID, TMC4361A_XTARGET);
+        int32_t  vactual  = (int32_t)tmc4361A_readRegister(icID, TMC4361A_VACTUAL);
+        int32_t  vmax     = (int32_t)tmc4361A_readRegister(icID, TMC4361A_VMAX);
+        int32_t  vstopL   = (int32_t)tmc4361A_readRegister(icID, TMC4361A_VIRT_STOP_LEFT);
+        int32_t  vstopR   = (int32_t)tmc4361A_readRegister(icID, TMC4361A_VIRT_STOP_RIGHT);
+        uint32_t stepConf = tmc4361A_readRegister(icID, TMC4361A_STEP_CONF);
+
+        snprintf(buf, sizeof(buf),
+                 "S:DUMP %s STATUS=0x%08lX EVENTS=0x%08lX RAMPMODE=0x%08lX",
+                 name, (unsigned long)status, (unsigned long)events,
+                 (unsigned long)rampMode);
+        SerialUSB.println(buf);
+        snprintf(buf, sizeof(buf),
+                 "S:DUMP %s XACTUAL=%ld XTARGET=%ld VACTUAL=%ld VMAX=%ld",
+                 name, (long)xactual, (long)xtarget, (long)vactual, (long)vmax);
+        SerialUSB.println(buf);
+        snprintf(buf, sizeof(buf),
+                 "S:DUMP %s VSTOP_L=%ld VSTOP_R=%ld REFCONF=0x%08lX STEP_CONF=0x%08lX",
+                 name, (long)vstopL, (long)vstopR,
+                 (unsigned long)refConf, (unsigned long)stepConf);
+        SerialUSB.println(buf);
+        snprintf(buf, sizeof(buf),
+                 "S:DUMP %s isMoving=%d state=%d softLimEn=%d needReenable=%d",
+                 name, (int)axis->isMoving(), (int)axis->getCurrentState(),
+                 (int)axis->isSoftLimitsEnabled(), 0);
+        SerialUSB.println(buf);
+      }
+      SerialUSB.println("S:DUMPREGS:END");
+      return;
+    }
+
+    // S:SET_HOMING_VEL <axisName> <vel_mm_per_s>
+    // 诊断用：运行时设 homingVelocityMM 不重烧 firmware
+    // 例：S:SET_HOMING_VEL Y 5.0
+    if (command.startsWith("S:SET_HOMING_VEL")) {
+      String rest = command.substring(16);
+      rest.trim();
+      int sp = rest.indexOf(' ');
+      if (sp < 0) {
+        SerialUSB.println("S:SET_HOMING_VEL:ERR:missing_args");
+        return;
+      }
+      String axisName = rest.substring(0, sp);
+      String velStr = rest.substring(sp + 1);
+      axisName.trim();
+      velStr.trim();
+      float vel = velStr.toFloat();
+      bool found = false;
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (!axis) continue;
+        if (axisName != String(axis->getAxisName())) continue;
+        axis->getMutableConfig().homingVelocityMM = vel;
+        char buf[80];
+        snprintf(buf, sizeof(buf), "S:SET_HOMING_VEL:OK:%s=%.3f", axis->getAxisName(), vel);
+        SerialUSB.println(buf);
+        found = true;
+        break;
+      }
+      if (!found) {
+        SerialUSB.print("S:SET_HOMING_VEL:ERR:axis_not_found:");
+        SerialUSB.println(axisName);
+      }
       return;
     }
 

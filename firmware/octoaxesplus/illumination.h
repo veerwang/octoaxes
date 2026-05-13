@@ -24,6 +24,11 @@ extern uint16_t illumination_port_intensity[IlluminationConfig::NUM_PORTS];
 // 初始化照明硬件：引脚、LED 矩阵、DAC、联锁
 void illumination_init();
 
+// 仅初始化 LED 矩阵并清零，幂等。应在 setup() 最早期调用，
+// 在 initializePowerManagement (等 PG 信号) 等耗时初始化之前，
+// 把 APA102 上电默认亮态压灭最小化用户感知到的"启动亮"窗口。
+void illumination_init_matrix_early();
+
 // =============================================================================
 // 安全联锁
 // =============================================================================

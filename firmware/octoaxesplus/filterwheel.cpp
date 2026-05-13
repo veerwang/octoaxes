@@ -151,9 +151,6 @@ void FilterWheel::performHomingSequence() {
       motor_enableSoftLimits(_icID, false, false);
       _slowApproach = false;
       switchToHomingMicrosteps();
-      DEBUG_PRINT(_axisName);
-      DEBUG_PRINT(":HOMING_INIT limit_state=0x");
-      DEBUG_PRINTLNF(limit_state, HEX);
 
       if (limit_state == 0x00) {
         // 已在感应区，先移出

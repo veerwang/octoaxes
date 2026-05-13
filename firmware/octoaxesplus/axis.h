@@ -91,7 +91,6 @@ protected:
 
   // 新增：移动状态标志
   bool _isMoving;
-  int32_t _lastPosition; // 上次位置，用于检测是否真正在移动
   int32_t _moveDirection;
   unsigned long _cmdRecvMicros;   // 命令接收时间 (micros)
   unsigned long _moveStartMicros; // 移动开始时间 (micros)
@@ -101,6 +100,18 @@ protected:
 
   // 软限位状态追踪（homing 后自动恢复用）
   bool _softLimitsEnabled;
+
+  // 软限位方向感知闸门的 shadow state：
+  // SET_LIM 单边设置后记录上位机意图，与 chip 寄存器解耦。
+  // 即使 motor_moveToMicrosteps recovery 临时清掉 chip 上的 EN 位，
+  // 这里仍保留「该侧是否被设置过」的语义，用于 isMoveAllowedByDirection()。
+  struct SoftLimitShadow {
+    bool leftEnabled;        // X-/Y-/Z- 是否被 SET_LIM 设置过
+    bool rightEnabled;       // X+/Y+/Z+ 是否被 SET_LIM 设置过
+    int32_t leftValue;       // VIRT_STOP_LEFT 的最新设置值（微步）
+    int32_t rightValue;      // VIRT_STOP_RIGHT 的最新设置值（微步）
+  };
+  SoftLimitShadow _softLimits = {false, false, INT32_MIN, INT32_MAX};
 
   // 虚拟限位 recovery 后延迟恢复标志
   // motor_moveToMicrosteps() 在 VSTOP 恢复时禁用限位，
@@ -191,6 +202,15 @@ public:
   virtual void setSoftLimits(float lowerLimitMM, float upperLimitMM);
   virtual void enableSoftLimits(bool enable);
   void setOneSoftLimit(int direction, int32_t valueMicrosteps);
+
+  // 方向感知 clamp：把 target 截到「朝更安全方向移动」原则允许的范围
+  // 当前位置 C、target T、_softLimits 中 leftValue=L / rightValue=R：
+  //   effective_lower = (C ≤ L) ? C : L  // 越下限时禁止再下；安全区时下界=L
+  //   effective_upper = (C ≥ R) ? C : R  // 对称
+  //   返回 clamp(T, effective_lower, effective_upper)
+  // 未启用的那一侧不参与限制。截到边界后让电机停在边界，与旧 Squid 兼容
+  // （旧 Squid 在固件 callback_move_x/y/z 里也做 min/max clamp）
+  int32_t clampTargetByDirection(int32_t targetMicrosteps) const;
 
   // PID 控制
   void configureStagePID(bool flip_direction, uint16_t transitions_per_rev);
