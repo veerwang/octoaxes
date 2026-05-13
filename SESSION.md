@@ -6,11 +6,129 @@
 
 ## 最新会话
 
-**日期**: 2026-05-12
-**分支**: develop
-**位置**: 文档同步 + Homing 调试打印清理 + Y homing 异响参数确定（256/30）
+**日期**: 2026-05-13
+**分支**: maxpro
+**位置**: develop → maxpro 大合并 + octoaxesplus 同步主线 + 8 轴扩展 + 上位机 constants.py Phase 3.1
 
-### 本次完成
+### 本次完成（5 commits，按时间顺序）
+
+#### 1. Merge develop → maxpro（commit c03e7c4）
+
+合并 develop 主线 62 commits（2026-04-17 → 2026-05-12 全部进展）到 maxpro
+分支。冲突解决策略：以 develop 为骨架，叠加 maxpro 双相机 PCB 资源章节。
+
+**冲突文件 4 个**：
+- `constants.py` — 自动合并（develop 是 maxpro 的严格超集，X/Y limits 收紧 +
+  has_encoder=False + 全 7 轴 actuator_* 字段）
+- `TODO.md` — 自动合并（双方条目都保留，maxpro octoaxesplus 段在 lines 123-138）
+- `CLAUDE.md` — 手工合并（develop 当前状态块为底，新增完整"octoaxesplus 工程"
+  章节涵盖 74HC154/CAMERA_TRIGGER 8 路/MCP23S17/pin28 修复/照明 8 端口适配）
+- `SESSION.md` — 手工合并（develop 整版骨架，maxpro 04-14/04-16/04-17 四段
+  按时间倒序插入历史）
+
+**自动合并** 21 个 firmware/software 文件 + 10 个新 baseline 文件。
+
+编译验证：octoaxes 2.33s + octoaxesplus 14.27s 均 SUCCESS。
+
+#### 2. 同步 octoaxes 主线进展到 octoaxesplus（commit 266e589）
+
+octoaxesplus 是 2026-04-14 物理拷贝出的双相机变体（commit 6907952），不是
+git 分支，期间 octoaxes 主线在 develop 上累积 38+ 改进未流入。本次按 A/B/C
+三类策略一次性反向同步，**保留** squid++ 双相机硬件资源调整。
+
+**A 类（10 文件 byte-identical 直接 cp）**：axis.cpp/h、build_opt.h、
+commandprocessor.cpp、filterwheel.cpp、illumination.h、joystick.cpp、
+serial.cpp/h、stepaxis.cpp。拿到 38+ 改进：静默 reject 修复、
+checkMovementComplete 用 chip STATUS、handleInitialize 重跑 beginAll 做
+chip-level reset、AF_LASER 修复、Y homing 调试基础设施（S:SET_HOMING_VEL）、
+下降沿立即发包、二进制调试协议、TMC2240 SG 守卫等。
+
+**B 类（4 文件 3-way 合并）**：
+- `config.h`：增 VMAX 30/30/3.8 + HOMING_VEL_Y 30 + SG 注释；保留 74HC154
+- `illumination.cpp`：增 matrix early init + AF_LASER fix + set_led_matrix
+  仅缓存；保留 TTL 8 端口 + DAC HC154
+- `platformio.ini`：增 nointerlock 环境（pin 38）；保留 USE_HC154_CS
+- `octoaxesplus.ino`：增 chip-level reset + matrix early init + 删 DAC
+  pinMode；保留 hc154_init/mcp23s17_init/D8 interlock；**反转** octoaxes 的
+  X/Y swap（squid++ HC154 命名与硬件对齐，不需要老 Squid 反向接线兼容）
+
+**C 类（1 新增）**：`download.sh` 复制改适（pin 38 联锁 + D1-D8）。
+
+**等式确认**：octoaxes 与 octoaxesplus 当前仅 7 文件差异，全部 squid++
+硬件适配；A 类 10 文件 byte-identical 验证通过；3 环境编译均 SUCCESS。
+
+#### 3. 8 轴 AxisConfig 扩展 + Axis 实例化（commit 64fa643）
+
+squid++ 双相机硬件 8 轴基础设施 Phase 1（仅 firmware）：
+
+- `tmc/hal/TMC_SPI.h`：`TMC4361A_IC_COUNT` 用 ifdef USE_HC154_CS 区分
+  （squid++ = 8，octoaxes = 7），互不影响
+- `tmc/hal/TMC_SPI.cpp`：HC154 分支 `tmc_ic_configs[]` 扩到 8 条，顺序
+  Y(0)/X(1)/Z1(2)/F1(3)/Z2(4)/F2(5)/R(6)/T(7) 全 CLOCK_STANDARD
+- `octoaxesplus/config.h`：加 Z2_AXIS_CS=6/F2_AXIS_CS=5/R_AXIS_CS=3/
+  T_AXIS_CS=4 HC154 通道号；Z2_AXIS=Z_AXIS / F2_AXIS=W_AXIS /
+  R_AXIS=T_AXIS=EXPAND1_AXIS（const struct 拷贝，硬件实测后再单独定义）
+- `octoaxesplus/octoaxesplus.ino`：4 个新 Axis 实例化（z2 StepAxis、f2
+  FilterWheel、r/t Objectives）+ addAxis 顺序对齐 icID
+- `octoaxesplus/axesmrg.cpp`：`beginAll()` 加 Z1/F1/Z2/F2/R/T axisName
+  分支映射；Z/W 兼容旧别名保留
+
+编译：octoaxesplus 8 轴 SUCCESS（FLASH +1024B / RAM +1024B）；octoaxes
+不受影响。
+
+#### 4. 上位机 constants.py Phase 3.1（commit e9fd888）
+
+`software/utils/constants.py` AXIS_CONFIG 7 → 13 条目：
+- **共享 2 个**：X / Y（`enabled_for=["octoaxes","octoaxesplus"]`）
+- **octoaxes 5 个**：Z / W / E1 / E3 / E4（`enabled_for=["octoaxes"]`）
+- **octoaxesplus 6 个新增**：Z1 / F1 / Z2 / F2 / R / T
+  （`enabled_for=["octoaxesplus"]`）
+
+复用同类硬件参数：Z1/Z2 同 Z（screw 0.3 mm, 256 微步, 500 mA）；F1/F2
+同 W（screw 100, 8 微步）；R/T 同 E1（screw 1.0, 64 微步）。Z1 与 Z 共用
+firmware icID=2、F1 与 W 共用 icID=3，由 enabled_for 互斥保证运行时只
+激活一组。
+
+新增 `axes_for_model(model)` helper 返回指定固件型号下激活子集 + 常量
+`FIRMWARE_MODELS`、`DEFAULT_FIRMWARE_MODEL = "octoaxes"`（向后兼容）。
+
+向后兼容：现有 GUI import 全部保留，octoaxes 4 轴用户 X/Y/Z/W 配置
+byte-identical，AXIS_MM_PER_STEP 自动派生 13 项。
+
+### 关键决策记录
+
+1. **TMC4361A_IC_COUNT** 用 ifdef USE_HC154_CS 区分（与现有 ifdef 模式一致），
+   而非把 octoaxes 也升到 8 加 stub
+2. **R/T 都用 Objectives 类**（与现有 EXPAND1_AXIS 物镜参数一致）
+3. **Z2/F2/R/T 用 const struct 拷贝**（C++ 隐式 copy ctor）作为初始默认，
+   硬件实测想调单独参数时把 `=` 改成完整初始化器即可
+4. **squid++ X/Y 不需要老 Squid 反向接线 swap** — squid++ HC154 通道命名
+   （HC154_AXIS_X=10）与物理硬件对齐，与 octoaxes 主线的 octoaxes.ino:86-101
+   注释相反但有原理依据
+5. **Phase 3.1 只做 metadata** — 不动 GUI 渲染、不动协议；Phase 3.2-3.4
+   留下次会话（需要硬件验证识别固件型号 + 收 40 字节包）
+
+### 下次继续
+
+1. **Phase 3.2-3.4 上位机 8 轴完整支持**（需硬件连接验证）：
+   - 3.2：GUI 启动用 S:HWINFO 识别固件型号 + 按 profile 过滤渲染
+   - 3.3：固件响应包 24 → 40 字节（增 Z2/F2/R/T 4×int32 = 16 字节）
+   - 3.4：GUI 8 轴位置控件渲染 + serial_thread.py RESPONSE_LENGTH 动态
+2. **CAM_TRI_READY1/2（pin 7/6）双相机握手** — trigger 模块加 READY 输入等待
+3. **TRIGGER_IN/OUT1-2（pin 1-4）外部触发联动**
+4. **MCP23S17 接入 Axis 层** — TARGET_REACHED 用于运动完成判定（可选优化）
+5. **核实 squid++ 原表笔误** — GPB2 INTR_T/F2、GPB6 INTR_Z2/F1
+6. **LT3932 SYNC 方案** — squid++ 是否真取消 PWM 还是挪走
+7. **Z2/F2/R/T 真实硬件参数实测调优**
+8. **TMC2240 StallGuard4 调优 + chip-level latch 恢复**（2026-05-12 提出，
+   stash@{0} 保留 Phase A 调试工具，6 步流程见原 SESSION 记录）
+9. **TMC2240 StealthChop 调优**
+10. **清理 TMC2240 调试代码**
+11. **`tags` 加入 `.gitignore`**（实际已加，待核实并标完成）
+
+---
+
+### 2026-05-12 - 文档同步 + Homing 调试打印清理 + Y homing 异响参数确定（256/30）(develop)
 
 #### 1. 提交 Z 轴编码器启用文档（commit 8a7c312）
 

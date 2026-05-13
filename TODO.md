@@ -130,13 +130,20 @@
 - [x] MCP23S17_1 扩展 IO 驱动 (2026-04-17) - mcp23s17.h/cpp 新建；CS 走 HC154 通道 0；IOCON=0x00 + IODIR=0xFF 全输入 + GPPU=0xFF 上拉容错 + 关硬件中断（轮询模式）；API：readReg/writeReg/readPortA/B/readGPIO
 - [x] Pin 28 冲突修复 (2026-04-17) - 删除 TMC4361_EXPAND_CLK（与 TTL5 共用 pin 28 导致 2 MHz PWM 干扰 TTL 输出）；squid++ 单套时钟已够
 - [x] 补充 Pins 占位 (2026-04-17) - IIC_WP/SDA/SCL (pin 14/18/19)、RX2/TX2 (pin 16/17)
-- [ ] 8 轴 AxisConfig 扩展（Z2/F1/F2/R/T）- TMC4361A_IC_COUNT 7→8（ifdef 分支），HC154 通道分配；Axis 实例化按 X/Y/Z1/Z2=StepAxis, F1/F2=FilterWheel, R/T=Objectives
+- [x] **8 轴 AxisConfig 扩展（Z2/F1/F2/R/T）** (2026-05-13, commit 64fa643) - TMC4361A_IC_COUNT 用 ifdef USE_HC154_CS 区分（squid++=8, octoaxes=7）；TMC_SPI.cpp HC154 分支扩 8 条目；config.h 加 Z2/F2/R/T HC154 通道号 + AxisConfig（const struct 拷贝同类轴）；octoaxesplus.ino 实例化 8 轴（Y/X/Z1/F1/Z2/F2/R/T，R/T=Objectives）；axesmrg.cpp beginAll 加 6 个新 axisName 分支映射；两工程编译 SUCCESS
+- [x] **merge develop → maxpro** (2026-05-13, commit c03e7c4) - 合并 62 commits 主线进展（Y homing 256/30、Z 编码器、XYZ 速度基线、静默 reject 修复、AF 激光修复、B.6/B.6.1 判完优化等）；4 个冲突文件解决（CLAUDE.md/SESSION.md 手工，TODO.md/constants.py 自动）；两工程编译 SUCCESS
+- [x] **同步 octoaxes 主线全部进展到 octoaxesplus** (2026-05-13, commit 266e589) - A 类 10 文件 byte-identical cp、B 类 4 文件 3-way 合并（保留 squid++ HC154/MCP23S17/8 端口适配）、C 类 1 新增 download.sh；最终验证 octoaxes 与 octoaxesplus 仅 7 文件差异，全部 squid++ 硬件资源调整
+- [x] **上位机 constants.py Phase 3.1 - 8 轴扩展 + enabled_for** (2026-05-13, commit e9fd888) - AXIS_CONFIG 7→13 条目；X/Y 共享，Z/W/E1/E3/E4 标 octoaxes，新增 Z1/F1/Z2/F2/R/T 标 octoaxesplus；新增 axes_for_model() helper + FIRMWARE_MODELS 常量（默认 octoaxes 向后兼容）；现有 GUI import 全部保留
+- [ ] **Phase 3.2 GUI 启动用 S:HWINFO 识别固件型号 + 按 profile 过滤** (Phase 3.1 已完成 metadata 基础设施，需硬件验证)
+- [ ] **Phase 3.3 固件响应包扩展 24→40 字节** - 新增 Z2/F2/R/T 4×int32 = 16 字节；octoaxes 仍 24 字节兼容；GUI 根据 S:HWINFO 决定 RESPONSE_LENGTH（需硬件验证）
+- [ ] **Phase 3.4 GUI 8 轴位置控件渲染** - 配合 3.2 + 3.3 把 octoaxesplus 全 8 轴显示完整位置反馈
+- [ ] **Z2/F2/R/T 真实硬件参数实测调优** - 当前用 const struct 拷贝默认（Z 同 Z1、W 同 F1、EXPAND1 同 R/T），实测后改完整初始化器
 - [ ] MCP23S17 接入 Axis 层 - TARGET_REACHED 用于运动完成判定（可选，目前走 XACTUAL 轮询）
 - [ ] CAM_TRI_READY1/2 (pin 7/6) 定义 + 双相机握手 - trigger 模块增加 READY 输入等待
 - [ ] TRIGGER_IN/OUT1-2 (pin 1-4) 定义 - 外部触发联动
 - [ ] LT3932 SYNC 核实 - squid++ 是否取消独立 SYNC 引脚（目前占 pin 255 无效），还是挪走
 - [ ] 核实 GPB2 INTR_T/F2轴、GPB6 INTR_Z2/F1轴 标签是否原表笔误
-- [ ] `tags` 文件加入 `.gitignore`
+- [x] **`tags` 加入 `.gitignore`** (2026-05-09, commit 40bef79b 已在 develop) - tags/TAGS/cscope.* 全部加入
 
 ### 功能验证
 - [x] 编译测试 (2026-01-23)
