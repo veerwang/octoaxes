@@ -139,10 +139,15 @@
 - [ ] **Phase 3.4 GUI 8 轴位置控件渲染** - 配合 3.2 + 3.3 把 octoaxesplus 全 8 轴显示完整位置反馈
 - [ ] **Z2/F2/R/T 真实硬件参数实测调优** - 当前用 const struct 拷贝默认（Z 同 Z1、W 同 F1、EXPAND1 同 R/T），实测后改完整初始化器
 - [ ] MCP23S17 接入 Axis 层 - TARGET_REACHED 用于运动完成判定（可选，目前走 XACTUAL 轮询）
-- [ ] CAM_TRI_READY1/2 (pin 7/6) 定义 + 双相机握手 - trigger 模块增加 READY 输入等待
-- [ ] TRIGGER_IN/OUT1-2 (pin 1-4) 定义 - 外部触发联动
+- [x] **TRIGGER_IN/OUT1-2 (pin 1-4) 定义** (2026-05-13, commit 4ca1626) - 外部触发联动基础设施：Pins::TRIGGER_OUT1/IN1/OUT2/IN2 + trigger.h 加 NUM_EXT_TRIGGERS=2 + 数组 + 3 个 API (set_out/pulse_out/read_in)；trigger.cpp init OUT/LOW + IN INPUT_PULLUP；未接入命令字 handler 待协议层决策
+- [x] **CAM_TRI_READY1/2 (pin 7/6) 定义** (2026-05-13, commit TBD) - 双相机 READY 反馈输入；config.h 加 Pins::CAM_TRI_READY1=7/CAM_TRI_READY2=6；trigger.cpp init INPUT_PULLUP + cam_tri_read_ready(channel) helper。**双相机握手集成**（trigger 发射前等 READY 拉高）属于后续协议层任务
+- [ ] **双相机握手集成** - trigger 模块发射前等 CAM_TRI_READY 拉高的逻辑设计（中难度，需要超时/超时路径）
+- [x] **硬件资源使用率审计 + EXPAND CS 别名清理** (2026-05-13) - 扫描 44 个 Pin 常量：33 已用 / 5 占位（IIC/Serial2）/ 4 删除 EXPAND1-4_AXIS_CS / 2 补齐（CAM_TRI_READY）；EXPAND1_AXIS AxisConfig 保留作 R/T 模板
 - [ ] LT3932 SYNC 核实 - squid++ 是否取消独立 SYNC 引脚（目前占 pin 255 无效），还是挪走
 - [ ] 核实 GPB2 INTR_T/F2轴、GPB6 INTR_Z2/F1轴 标签是否原表笔误
+- [ ] **核实 squid++ 配置 §1 pin 5/6/7 描述与名称不一致** - 文档标 pin 6 CAM_TRI_READY2 描述"相机1_触发"、pin 7 CAM_TRI_READY1 描述"相机1_等待触发"、pin 5 RESERVED 描述"相机2_等待触发"，三者疑笔误，需对照原 xlsx
+- [ ] IIC_WP/SDA/SCL (pin 14/18/19) Wire1 外设方案落地（当前占位）
+- [ ] RX2/TX2 (pin 16/17) Serial2 用途定义（当前占位）
 - [x] **`tags` 加入 `.gitignore`** (2026-05-09, commit 40bef79b 已在 develop) - tags/TAGS/cscope.* 全部加入
 
 ### 功能验证

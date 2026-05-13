@@ -78,11 +78,10 @@ namespace Pins {
     const int R_AXIS_CS  = 3;   // HC154 Y3 = AXIS_R （物镜转换器 旋转）
     const int T_AXIS_CS  = 4;   // HC154 Y4 = AXIS_T （物镜转换器 平移）
 
-    // 旧 EXPAND 别名（保留以防未启用代码引用，新代码直接用 Z2/F2/R/T_AXIS_CS）
-    const int EXPAND1_AXIS_CS = 11;
-    const int EXPAND2_AXIS_CS = 11;
-    const int EXPAND3_AXIS_CS = 11;
-    const int EXPAND4_AXIS_CS = 11;
+    // EXPAND1-4_AXIS_CS 旧别名已于 2026-05-13 删除（审计发现完全无引用）
+    // squid++ 用 Z2_AXIS_CS=6 / F2_AXIS_CS=5 / R_AXIS_CS=3 / T_AXIS_CS=4 取代
+    // 注意：EXPAND1_AXIS / EXPAND3_AXIS / EXPAND4_AXIS AxisConfig 仍保留，
+    // 作为 R/T 等扩展轴的 AxisConfig 模板源（const struct 拷贝引用）
 
     // DAC80508_1 SPI 片选（HC154 通道号）
     const int DAC8050x_CS = 2;   // HC154 Y2 = DAC80508_1（8LED 模拟输出）
@@ -137,6 +136,13 @@ namespace Pins {
     const int TRIGGER_IN1  = 2;
     const int TRIGGER_OUT2 = 3;
     const int TRIGGER_IN2  = 4;
+
+    // 双相机握手 READY 输入（squid++ 双相机：相机就绪/采集完成反馈）
+    // 注意：squid++ 文档 pin 6/7 描述与名称不一致（pin 6 标"相机1_触发"、pin 7 标
+    // "相机1_等待触发"，与名称 CAM_TRI_READY2/1 不对应），按命名作为输入引脚处理，
+    // 文档描述存疑，待核实原表
+    const int CAM_TRI_READY1 = 7;   // 相机 1 READY 反馈
+    const int CAM_TRI_READY2 = 6;   // 相机 2 READY 反馈
 
     // 74HC154 4→16 译码器片选（squid++ 双相机）
     // A3:A2:A1:A0 二进制值 n → Yn 输出拉低，其余保持高；作为所有 SPI 设备的统一片选

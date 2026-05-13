@@ -10,7 +10,7 @@
 **分支**: maxpro
 **位置**: develop → maxpro 大合并 + octoaxesplus 同步主线 + 8 轴扩展 + 上位机 constants.py Phase 3.1
 
-### 本次完成（5 commits，按时间顺序）
+### 本次完成（7 commits，按时间顺序）
 
 #### 1. Merge develop → maxpro（commit c03e7c4）
 
@@ -94,6 +94,46 @@ firmware icID=2、F1 与 W 共用 icID=3，由 enabled_for 互斥保证运行时
 
 向后兼容：现有 GUI import 全部保留，octoaxes 4 轴用户 X/Y/Z/W 配置
 byte-identical，AXIS_MM_PER_STEP 自动派生 13 项。
+
+#### 5. TRIGGER_IN/OUT 1-2 引脚定义 + helper（commit 4ca1626）
+
+squid++ 双相机外部触发 IN/OUT 接入基础设施（pin 1-4）：
+- config.h 加 TRIGGER_OUT1=1 / TRIGGER_IN1=2 / TRIGGER_OUT2=3 / TRIGGER_IN2=4
+- trigger.h 加 NUM_EXT_TRIGGERS=2 + ext_trigger_out/in_pins[] 数组 + API
+- trigger.cpp: OUT pinMode OUTPUT/LOW + IN pinMode INPUT_PULLUP；实现
+  ext_trigger_set_out / ext_trigger_pulse_out / ext_trigger_read_in，
+  全部带越界检查
+
+#### 6. 硬件资源使用率审计 + CAM_TRI_READY + 删除 EXPAND CS 别名（commit TBD）
+
+**审计成果**：扫描 config.h 全部 44 个硬件 Pin 常量的使用率：
+- ✅ 33 个已实际使用（pinMode/digitalRead/digitalWrite 等）
+- 📌 5 个占位（IIC_WP/SDA/SCL + RX2/TX2，无对应外设方案）
+- 🗑️ 4 个完全无引用（EXPAND1-4_AXIS_CS=11 旧别名）→ 删除
+- 🔴 2 个 squid++ 文档要求但缺定义（CAM_TRI_READY1/2 pin 7/6）→ 补齐
+
+**本次补齐**：
+- 加 `CAM_TRI_READY1=7` / `CAM_TRI_READY2=6` 引脚常量（注释标注 squid++ 文档
+  描述与名称不一致，待核实原表）
+- trigger.h 加 `cam_tri_ready_pins[NUM_EXT_TRIGGERS]` 数组 + `cam_tri_read_ready()`
+  API 声明
+- trigger.cpp: trigger_init 加 INPUT_PULLUP 抗悬空；实现 cam_tri_read_ready helper
+
+**本次清理**：
+- 删除 EXPAND1-4_AXIS_CS 4 个常量（用 R/T_AXIS_CS 取代）
+- **保留** EXPAND1_AXIS / EXPAND3_AXIS / EXPAND4_AXIS AxisConfig（作为 R/T
+  扩展轴的 const struct 拷贝模板源）
+- 加注释说明删除原因 + 模板复用关系
+
+**Teensy 隐式使用 pin**（无需 Pins:: 常量）：
+- pin 11/12/13 = Teensy SPI 默认 → tmc/hal/TMC_SPI + DAC + MCP23S17 共用
+- pin 20/21 = Teensy Serial5 默认 → joystick.cpp
+- pin 26/27 = FastLED 通过 LED_MATRIX_DATA/CLOCK 显式使用
+
+**未解疑问**：
+- pin 5 标 RESERVED 但描述"相机2_等待触发"，与 pin 6 CAM_TRI_READY2 重叠
+- pin 6/7 CAM_TRI_READY1/2 名称与文档描述（"相机1_触发"/"相机1_等待触发"）不一致
+- 均待核实原始 xlsx 是否笔误
 
 ### 关键决策记录
 

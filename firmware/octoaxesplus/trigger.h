@@ -44,6 +44,12 @@ const int ext_trigger_in_pins[NUM_EXT_TRIGGERS] = {
     Pins::TRIGGER_IN2,   // pin 4
 };
 
+// 双相机 READY 反馈输入（squid++ 双相机：相机 1/2 READY 状态）
+const int cam_tri_ready_pins[NUM_EXT_TRIGGERS] = {
+    Pins::CAM_TRI_READY1,  // pin 7（相机 1）
+    Pins::CAM_TRI_READY2,  // pin 6（相机 2）
+};
+
 // =============================================================================
 // 状态变量（extern 声明，定义在 trigger.cpp）
 // =============================================================================
@@ -87,5 +93,10 @@ bool ext_trigger_pulse_out(uint8_t channel, uint32_t pulse_width_us = TRIGGER_PU
 // 读取外部输入电平（INPUT_PULLUP，低电平 = 触发激活）
 // 返回 true 表示电平 HIGH，false 表示 LOW；channel 越界默认返回 true（去激活态）
 bool ext_trigger_read_in(uint8_t channel);
+
+// 读取相机 READY 反馈电平（squid++ 双相机）
+// channel: 0=CAM1, 1=CAM2；越界返回 false（默认未就绪）
+// 高电平/低电平的语义解释待相机方案确定后再封装为 cam_is_ready()
+bool cam_tri_read_ready(uint8_t channel);
 
 #endif // TRIGGER_H

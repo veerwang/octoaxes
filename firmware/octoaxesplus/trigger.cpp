@@ -56,6 +56,11 @@ void trigger_init()
         pinMode(ext_trigger_in_pins[i], INPUT_PULLUP);
     }
 
+    // 双相机 READY 输入（squid++ 双相机）：INPUT_PULLUP 抗悬空
+    for (int i = 0; i < NUM_EXT_TRIGGERS; i++) {
+        pinMode(cam_tri_ready_pins[i], INPUT_PULLUP);
+    }
+
     // 启动频闪定时器（100μs 间隔）
     strobeTimer.begin(ISR_strobeTimer, STROBE_TIMER_INTERVAL_us);
 
@@ -87,6 +92,12 @@ bool ext_trigger_read_in(uint8_t channel)
 {
     if (channel >= NUM_EXT_TRIGGERS) return true;  // 越界默认去激活态
     return digitalRead(ext_trigger_in_pins[channel]) == HIGH;
+}
+
+bool cam_tri_read_ready(uint8_t channel)
+{
+    if (channel >= NUM_EXT_TRIGGERS) return false;  // 越界默认未就绪
+    return digitalRead(cam_tri_ready_pins[channel]) == HIGH;
 }
 
 // =============================================================================
