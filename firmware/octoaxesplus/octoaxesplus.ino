@@ -82,17 +82,22 @@ bool initializeSystem() {
   // tmc_ic_configs[] 中 icID=0 → HC154_AXIS_Y, icID=1 → HC154_AXIS_X，
   // 故 axisName="Y" + icID=0 + Y_AXIS_CS、axisName="X" + icID=1 + X_AXIS_CS 即正确映射。
   // (octoaxes 主线的 swap 是为了兼容老 Squid PCB 的反向接线，详见 octoaxes/octoaxes.ino)
-  Axis *yAxis = new StepAxis(Pins::Y_AXIS_CS, 0, "Y");  // HC154 通道 9 = 物理 Y 电机
-  Axis *xAxis = new StepAxis(Pins::X_AXIS_CS, 1, "X");  // HC154 通道 10 = 物理 X 电机
-  Axis *zAxis = new StepAxis(Pins::Z_AXIS_CS, 2, "Z");
-  Axis *wAxis = new FilterWheel(Pins::W_AXIS_CS, 3, "W");
-  // Axis* expand1Axis = new Objectives(Pins::EXPAND1_AXIS_CS, 4, "E1");
-  // Axis* expand3Axis = new StepAxis(Pins::EXPAND3_AXIS_CS, 6, "E3");
-  // Axis* expand4Axis = new FilterWheel(Pins::EXPAND4_AXIS_CS, 7, "E4");
+  Axis *yAxis  = new StepAxis   (Pins::Y_AXIS_CS,  0, "Y");   // HC154 通道 9 = 物理 Y 电机
+  Axis *xAxis  = new StepAxis   (Pins::X_AXIS_CS,  1, "X");   // HC154 通道 10 = 物理 X 电机
+  Axis *z1Axis = new StepAxis   (Pins::Z_AXIS_CS,  2, "Z1");  // HC154 通道 8 = Z1（主焦点）
+  Axis *f1Axis = new FilterWheel(Pins::W_AXIS_CS,  3, "F1");  // HC154 通道 7 = F1（滤光转盘 1）
+  // squid++ 双相机扩展 4 轴
+  Axis *z2Axis = new StepAxis   (Pins::Z2_AXIS_CS, 4, "Z2");  // HC154 通道 6 = Z2（双焦点）
+  Axis *f2Axis = new FilterWheel(Pins::F2_AXIS_CS, 5, "F2");  // HC154 通道 5 = F2（滤光转盘 2）
+  Axis *rAxis  = new Objectives (Pins::R_AXIS_CS,  6, "R");   // HC154 通道 3 = R（物镜转换器旋转）
+  Axis *tAxis  = new Objectives (Pins::T_AXIS_CS,  7, "T");   // HC154 通道 4 = T（物镜转换器平移）
 
-  // 按 axisIndex 顺序添加: Y(0), X(1), Z(2), W(3)
-  if (!axisManager.addAxis(yAxis) || !axisManager.addAxis(xAxis) ||
-      !axisManager.addAxis(zAxis) || !axisManager.addAxis(wAxis)) {
+  // 按 axisIndex 顺序添加: Y(0), X(1), Z1(2), F1(3), Z2(4), F2(5), R(6), T(7)
+  // 顺序必须与 tmc/hal/TMC_SPI.cpp 的 tmc_ic_configs[] HC154 分支一致
+  if (!axisManager.addAxis(yAxis)  || !axisManager.addAxis(xAxis)  ||
+      !axisManager.addAxis(z1Axis) || !axisManager.addAxis(f1Axis) ||
+      !axisManager.addAxis(z2Axis) || !axisManager.addAxis(f2Axis) ||
+      !axisManager.addAxis(rAxis)  || !axisManager.addAxis(tAxis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");
     return false;
   }

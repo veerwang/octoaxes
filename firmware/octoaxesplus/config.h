@@ -72,8 +72,14 @@ namespace Pins {
     const int Z_AXIS_CS = 8;   // HC154 Y8  = AXIS_Z1（Z 主轴）
     const int W_AXIS_CS = 7;   // HC154 Y7  = AXIS_F1（占位：squid++ 原 W=滤光转盘 1）
 
-    // 扩展轴（HC154 通道号，暂未启用）
-    const int EXPAND1_AXIS_CS = 11;  // HC154 Y11 EXPAND_NSCS1 占位
+    // squid++ 双相机扩展轴（HC154 通道号）
+    const int Z2_AXIS_CS = 6;   // HC154 Y6 = AXIS_Z2（双焦点 Z2）
+    const int F2_AXIS_CS = 5;   // HC154 Y5 = AXIS_F2（双滤光轮 F2）
+    const int R_AXIS_CS  = 3;   // HC154 Y3 = AXIS_R （物镜转换器 旋转）
+    const int T_AXIS_CS  = 4;   // HC154 Y4 = AXIS_T （物镜转换器 平移）
+
+    // 旧 EXPAND 别名（保留以防未启用代码引用，新代码直接用 Z2/F2/R/T_AXIS_CS）
+    const int EXPAND1_AXIS_CS = 11;
     const int EXPAND2_AXIS_CS = 11;
     const int EXPAND3_AXIS_CS = 11;
     const int EXPAND4_AXIS_CS = 11;
@@ -547,6 +553,25 @@ namespace AxisConfigs {
         .encoderLinesPerRev = 0,
         .invertEncoderDir = false
     };
+
+    // ============================================================================
+    // squid++ 双相机扩展轴配置（Z2/F2/R/T）
+    // 硬件参数采用安全默认：Z2 同 Z1（双焦点）、F2 同 F1（双滤光轮）、
+    // R/T 同 EXPAND1（物镜转换器，按现有 Objectives 默认）
+    // 实测后按需调整 motorCurrent / screwPitch / homing_direct 等参数
+    // ============================================================================
+
+    // Z2 轴配置 (双焦点 Z2，与 Z1 同款电机)
+    const Axis::AxisConfig Z2_AXIS = Z_AXIS;
+
+    // F2 轴配置 (双滤光轮 F2，与 F1 同款滤光转盘)
+    const Axis::AxisConfig F2_AXIS = W_AXIS;
+
+    // R 轴配置 (物镜转换器旋转，与 EXPAND1 物镜默认参数一致)
+    const Axis::AxisConfig R_AXIS = EXPAND1_AXIS;
+
+    // T 轴配置 (物镜转换器平移，与 EXPAND1 物镜默认参数一致)
+    const Axis::AxisConfig T_AXIS = EXPAND1_AXIS;
 
     // 扩展轴4配置 (filter wheel)
     const Axis::AxisConfig EXPAND4_AXIS = {

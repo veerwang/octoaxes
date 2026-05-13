@@ -50,17 +50,19 @@
 
 const TMC_IC_Config tmc_ic_configs[TMC4361A_IC_COUNT] = {
     // 注意: 顺序必须与 axisManager.addAxis() 调用顺序一致！
-    // 添加顺序: Y(0), X(1), Z(2), W(3), E1(4), E3(5), E4(6)
 #ifdef USE_HC154_CS
-    // squid++：csPin = HC154 通道号；E1/E3/E4 暂未启用，占空闲通道
-    { .csPin = (uint8_t)Pins::HC154_AXIS_Y,        .clockSource = CLOCK_STANDARD },
-    { .csPin = (uint8_t)Pins::HC154_AXIS_X,        .clockSource = CLOCK_STANDARD },
-    { .csPin = (uint8_t)Pins::HC154_AXIS_Z1,       .clockSource = CLOCK_STANDARD },
-    { .csPin = (uint8_t)Pins::HC154_AXIS_F1,       .clockSource = CLOCK_STANDARD },
-    { .csPin = (uint8_t)Pins::HC154_EXPAND_NSCS1,  .clockSource = CLOCK_EXPAND  },
-    { .csPin = (uint8_t)Pins::HC154_EXPAND_NSCS1,  .clockSource = CLOCK_EXPAND  },
-    { .csPin = (uint8_t)Pins::HC154_EXPAND_NSCS1,  .clockSource = CLOCK_EXPAND  },
+    // squid++ 双相机 8 轴：addAxis 顺序 Y(0), X(1), Z1(2), F1(3), Z2(4), F2(5), R(6), T(7)
+    // squid++ 单套时钟（取消 EXPAND_CLK，pin 28 让给 TTL5），全部走 CLOCK_STANDARD
+    { .csPin = (uint8_t)Pins::HC154_AXIS_Y,  .clockSource = CLOCK_STANDARD },
+    { .csPin = (uint8_t)Pins::HC154_AXIS_X,  .clockSource = CLOCK_STANDARD },
+    { .csPin = (uint8_t)Pins::HC154_AXIS_Z1, .clockSource = CLOCK_STANDARD },
+    { .csPin = (uint8_t)Pins::HC154_AXIS_F1, .clockSource = CLOCK_STANDARD },
+    { .csPin = (uint8_t)Pins::HC154_AXIS_Z2, .clockSource = CLOCK_STANDARD },
+    { .csPin = (uint8_t)Pins::HC154_AXIS_F2, .clockSource = CLOCK_STANDARD },
+    { .csPin = (uint8_t)Pins::HC154_AXIS_R,  .clockSource = CLOCK_STANDARD },
+    { .csPin = (uint8_t)Pins::HC154_AXIS_T,  .clockSource = CLOCK_STANDARD },
 #else
+    // octoaxes 7 轴：添加顺序 Y(0), X(1), Z(2), W(3), E1(4), E3(5), E4(6)
     { .csPin = PIN_CS_Y,  .clockSource = CLOCK_STANDARD },
     { .csPin = PIN_CS_X,  .clockSource = CLOCK_STANDARD },
     { .csPin = PIN_CS_Z,  .clockSource = CLOCK_STANDARD },

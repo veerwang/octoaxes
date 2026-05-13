@@ -57,10 +57,18 @@ bool AxisManager::beginAll() {
         success = axes[i]->begin(AxisConfigs::X_AXIS);
       } else if (axisName.equals("Y")) {
         success = axes[i]->begin(AxisConfigs::Y_AXIS);
-      } else if (axisName.equals("Z")) {
+      } else if (axisName.equals("Z") || axisName.equals("Z1")) {
         success = axes[i]->begin(AxisConfigs::Z_AXIS);
-      } else if (axisName.equals("W")) {
+      } else if (axisName.equals("W") || axisName.equals("F1")) {
         success = axes[i]->begin(AxisConfigs::W_AXIS);
+      } else if (axisName.equals("Z2")) {
+        success = axes[i]->begin(AxisConfigs::Z2_AXIS);
+      } else if (axisName.equals("F2")) {
+        success = axes[i]->begin(AxisConfigs::F2_AXIS);
+      } else if (axisName.equals("R")) {
+        success = axes[i]->begin(AxisConfigs::R_AXIS);
+      } else if (axisName.equals("T")) {
+        success = axes[i]->begin(AxisConfigs::T_AXIS);
       } else if (axisName.equals("E1")) {
         success = axes[i]->begin(AxisConfigs::EXPAND1_AXIS);
       } else if (axisName.equals("E3")) {

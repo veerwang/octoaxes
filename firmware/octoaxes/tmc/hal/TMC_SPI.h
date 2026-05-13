@@ -22,8 +22,15 @@ extern "C" {
 // IC Count Configuration
 // ============================================================================
 
-#define TMC4361A_IC_COUNT   7   // X, Y, Z, W, E1, E3, E4
-#define TMC2660_IC_COUNT    7   // Same as TMC4361A (paired)
+#ifdef USE_HC154_CS
+// squid++ 双相机 8 轴：Y, X, Z1, F1, Z2, F2, R, T
+#define TMC4361A_IC_COUNT   8
+#define TMC2660_IC_COUNT    8
+#else
+// octoaxes 7 轴：X, Y, Z, W, E1, E3, E4
+#define TMC4361A_IC_COUNT   7
+#define TMC2660_IC_COUNT    7
+#endif
 
 // ============================================================================
 // IC Identifier Enumeration
