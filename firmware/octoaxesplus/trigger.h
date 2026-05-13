@@ -30,6 +30,20 @@ const int camera_trigger_pins[NUM_TRIGGER_CHANNELS] = {
     Pins::CAMERA_TRIGGER_8   // pin 39
 };
 
+// 外部触发 IN/OUT（squid++ 双相机：与外部设备双向同步，pin 1-4）
+// 上位机协议接入待办（CAM_TRI_READY 握手 + handler 命令字 TBD）
+const int NUM_EXT_TRIGGERS = 2;
+
+const int ext_trigger_out_pins[NUM_EXT_TRIGGERS] = {
+    Pins::TRIGGER_OUT1,  // pin 1
+    Pins::TRIGGER_OUT2,  // pin 3
+};
+
+const int ext_trigger_in_pins[NUM_EXT_TRIGGERS] = {
+    Pins::TRIGGER_IN1,   // pin 2
+    Pins::TRIGGER_IN2,   // pin 4
+};
+
 // =============================================================================
 // 状态变量（extern 声明，定义在 trigger.cpp）
 // =============================================================================
@@ -59,5 +73,19 @@ void trigger_update();
 
 // 定时器中断回调：管理频闪照明时序
 void ISR_strobeTimer();
+
+// ── 外部触发 IN/OUT（squid++ 双相机）────────────────────────────────
+// channel: 0..NUM_EXT_TRIGGERS-1（对应 TRIGGER_OUT/IN 1..2）
+// 返回 false 表示 channel 越界
+
+// 向外部输出电平
+bool ext_trigger_set_out(uint8_t channel, bool level);
+
+// 在外部输出引脚发送一个固定宽度脉冲（high → wait → low）
+bool ext_trigger_pulse_out(uint8_t channel, uint32_t pulse_width_us = TRIGGER_PULSE_LENGTH_us);
+
+// 读取外部输入电平（INPUT_PULLUP，低电平 = 触发激活）
+// 返回 true 表示电平 HIGH，false 表示 LOW；channel 越界默认返回 true（去激活态）
+bool ext_trigger_read_in(uint8_t channel);
 
 #endif // TRIGGER_H

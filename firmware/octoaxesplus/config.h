@@ -129,6 +129,15 @@ namespace Pins {
     const int CAMERA_TRIGGER_7 = 40;
     const int CAMERA_TRIGGER_8 = 39;
 
+    // 外部触发 IN/OUT（squid++ 双相机：与外部设备双向同步，pin 1-4）
+    // OUT：固件主动输出脉冲/电平驱动外部设备（如另一台显微镜/光源/采集卡）
+    // IN：固件接收外部设备的触发输入（边沿/电平），按命令决定下一步动作
+    // 来源：documents/squid++（双相机）配置.md §1
+    const int TRIGGER_OUT1 = 1;
+    const int TRIGGER_IN1  = 2;
+    const int TRIGGER_OUT2 = 3;
+    const int TRIGGER_IN2  = 4;
+
     // 74HC154 4→16 译码器片选（squid++ 双相机）
     // A3:A2:A1:A0 二进制值 n → Yn 输出拉低，其余保持高；作为所有 SPI 设备的统一片选
     // 来源：documents/squid++（双相机）配置.md §2

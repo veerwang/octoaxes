@@ -47,10 +47,46 @@ void trigger_init()
 
     trigger_mode = TRIGGER_MODE_NORMAL;
 
+    // 外部触发 IN/OUT（squid++ 双相机）
+    // OUT：默认 LOW 空闲（外部设备约定按需求修改）
+    // IN：INPUT_PULLUP，悬空默认 HIGH 表示无触发
+    for (int i = 0; i < NUM_EXT_TRIGGERS; i++) {
+        pinMode(ext_trigger_out_pins[i], OUTPUT);
+        digitalWrite(ext_trigger_out_pins[i], LOW);
+        pinMode(ext_trigger_in_pins[i], INPUT_PULLUP);
+    }
+
     // 启动频闪定时器（100μs 间隔）
     strobeTimer.begin(ISR_strobeTimer, STROBE_TIMER_INTERVAL_us);
 
     DEBUG_PRINTLN("Trigger system initialized");
+}
+
+// =============================================================================
+// 外部触发 IN/OUT helpers（squid++ 双相机）
+// =============================================================================
+
+bool ext_trigger_set_out(uint8_t channel, bool level)
+{
+    if (channel >= NUM_EXT_TRIGGERS) return false;
+    digitalWrite(ext_trigger_out_pins[channel], level ? HIGH : LOW);
+    return true;
+}
+
+bool ext_trigger_pulse_out(uint8_t channel, uint32_t pulse_width_us)
+{
+    if (channel >= NUM_EXT_TRIGGERS) return false;
+    int pin = ext_trigger_out_pins[channel];
+    digitalWrite(pin, HIGH);
+    delayMicroseconds(pulse_width_us);
+    digitalWrite(pin, LOW);
+    return true;
+}
+
+bool ext_trigger_read_in(uint8_t channel)
+{
+    if (channel >= NUM_EXT_TRIGGERS) return true;  // 越界默认去激活态
+    return digitalRead(ext_trigger_in_pins[channel]) == HIGH;
 }
 
 // =============================================================================
