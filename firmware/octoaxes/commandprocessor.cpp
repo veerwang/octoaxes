@@ -102,7 +102,7 @@ void CommandProcessor::handleMoveW(const byte *data) {
 
 void CommandProcessor::handleHomeOrZero(const byte *data) {
   // data[2]: 协议轴值（0=X,1=Y,2=Z,4=XY,5=W,6=W2）
-  // data[3]: HOME_POSITIVE=0, HOME_NEGATIVE=1, HOME_OR_ZERO_ZERO=2
+  // data[3]: HOME_POSITIVE=0 (朝+方向), HOME_NEGATIVE=1 (朝-方向), HOME_OR_ZERO_ZERO=2 (仅清零)
   if (data[3] == HOME_OR_ZERO_ZERO) {
     // 归零模式：将当前位置设为 0，不移动
     if (data[2] == 4) {  // AXES_XY 联合
@@ -119,18 +119,38 @@ void CommandProcessor::handleHomeOrZero(const byte *data) {
     }
     return;
   }
-  // Homing 模式（HOME_POSITIVE / HOME_NEGATIVE）
-  // 方向由各轴 homing_direct 配置决定，忽略 data[3]
+  // Homing 模式（HOME_POSITIVE / HOME_NEGATIVE）：
+  // 2026-05-11：按协议 data[3] 解析方向，兼容老 Squid software
+  //   老 Squid microcontroller.py:88 按 stage_movement_sign_x 派生 data[3]，
+  //   老 Squid firmware (main_controller_teensy41.ino:1252) 读 data[3] 决定方向。
+  // 之前 octoaxes 忽略 data[3] 仅用 config.homing_direct，在 octoaxes GUI 下行为正确
+  // （constants.py 的 sign 与 config.homing_direct 配对一致），但老 Squid software
+  // 发的 data[3] 不被解读时 → 方向可能反（X home 朝物理 + 端撞限位）。
+  //
+  // 兼容策略：用 data[3] 覆盖 config.homing_direct：
+  //   HOME_POSITIVE (0) → homing_direct = +1（朝 + 方向）
+  //   HOME_NEGATIVE (1) → homing_direct = -1（朝 - 方向）
+  // 永久写入 _config，后续 startHoming() 即按新方向走。
+  int8_t new_direct = (data[3] == HOME_NEGATIVE) ? -1 : +1;
   if (data[2] == 4) {  // AXES_XY 联合归位
     Axis *axX = axisManager.findAxisByName("X");
     Axis *axY = axisManager.findAxisByName("Y");
-    if (axX) axX->startHoming();
-    if (axY) axY->startHoming();
+    if (axX) {
+      axX->getMutableConfig().homing_direct = new_direct;
+      axX->startHoming();
+    }
+    if (axY) {
+      axY->getMutableConfig().homing_direct = new_direct;
+      axY->startHoming();
+    }
   } else {
     const char *name = protocolAxisToName(data[2]);
     if (name) {
       Axis *axis = axisManager.findAxisByName(name);
-      if (axis) axis->startHoming();
+      if (axis) {
+        axis->getMutableConfig().homing_direct = new_direct;
+        axis->startHoming();
+      }
     }
   }
 }
@@ -189,7 +209,9 @@ void CommandProcessor::handleSetLim(const byte *data) {
 }
 
 void CommandProcessor::handleTurnOnIllumination(const byte *data) {
-  illumination_source = data[2];
+  // 与老 Squid main_controller_teensy41.ino:1529 对齐：不动 illumination_source。
+  // 老 Squid 上位机 turn_on_illumination() 命令包 cmd[2]=0；若此处读 data[2] 写 source，
+  // 会把 source 强制覆盖为 0 (LED_ARRAY_FULL = 明场)，导致切荧光通道后明场被点亮。
   turn_on_illumination();
 }
 
@@ -458,6 +480,9 @@ void CommandProcessor::handleSetAxisDisableEnable(const byte *data) {
 }
 
 void CommandProcessor::handleSetPinLevel(const byte *data) {
+  // 防御：若上位机请求的 pin 在 illumination_init 中未显式 OUTPUT，
+  // INPUT 模式下 digitalWrite 不改实际电平。第一次写入时强制配 OUTPUT。
+  pinMode(data[2], OUTPUT);
   digitalWrite(data[2], data[3]);
 }
 
@@ -480,11 +505,26 @@ void CommandProcessor::handleInitFilterWheelW2(const byte *data) {
 }
 
 void CommandProcessor::handleInitialize(const byte *data) {
-  // 重新初始化 DAC 和触发系统；TMC 轴已在 setup 中初始化，不重复
+  // 对齐老 Squid 行为：cmd 254 INITIALIZE = 等价于"断电再上电"。
+  // 老 Squid 在 tmc4361A_tmc2660_init 第一行写 RESET_REG=0x52535400 做 chip 软复位，
+  // 然后重写全部配置。这样上位机重启 GUI（chip 不断电）后 XACTUAL/EVENTS/RAMPMODE
+  // 等残留状态被清掉，cmd 9 SET_LIM 和 cmd 29 HOME 才能从干净状态开始。
+  //
+  // Axis::begin() 内 motor_initMotionController 第一行 SW_RESET = 0x52535400 等价。
+  // beginAll 后再调 handleReset 重置 C++ 软件状态机（_currentState/_isMoving 等）。
+  if (!axisManager.beginAll()) {
+    DEBUG_PRINTLN("INITIALIZE: beginAll FAILED");
+  }
+  uint8_t count = axisManager.getAxisCount();
+  for (uint8_t i = 0; i < count; i++) {
+    Axis *axis = axisManager.getAxis(i);
+    if (axis) axis->handleReset();
+  }
+  // DAC + trigger 重置
   set_DAC8050x_config();
   set_DAC8050x_default_gain();
   trigger_mode = TRIGGER_MODE_NORMAL;
-  DEBUG_PRINTLN("INITIALIZE: DAC + trigger_mode reset");
+  DEBUG_PRINTLN("INITIALIZE: chip SW_RESET + reconfig + state machine reset done");
 }
 
 void CommandProcessor::handleReset(const byte *data) {

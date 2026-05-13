@@ -82,18 +82,31 @@ bool initializeSystem() {
   motor_initSubsystem();
 
   // 创建轴对象并添加到管理器
-  // 轴配置: X(index=1), Y(index=0), Z(index=2), W(index=3)
-  Axis *yAxis = new StepAxis(Pins::Y_AXIS_CS, 0, "Y");
-  Axis *xAxis = new StepAxis(Pins::X_AXIS_CS, 1, "X");
+  //
+  // 重要 (2026-05-08 修正): axisName ↔ CS 引脚映射与旧 Squid 硬件接线对齐
+  //
+  // 旧 Squid firmware 内部 axis 索引 vs 协议轴号映射 (def_v1.h:11-21)：
+  //   Protocol: AXIS_X=0, AXIS_Y=1
+  //   Internal: x=1, y=0  (注释明确说"Internal indices match hardware wiring")
+  // → 旧 Squid 硬件实际接线：
+  //   pin_TMC4361_CS[0]=41 → 物理 Y 电机 (因为 internal y=0)
+  //   pin_TMC4361_CS[1]=36 → 物理 X 电机 (因为 internal x=1)
+  //
+  // 因此 axisName="X" 必须绑定到 CS=36 (Pins::Y_AXIS_CS) 才能正确驱动物理 X 电机。
+  // 之前用 axisName="X" + Pins::X_AXIS_CS=41 → 实际驱动物理 Y 电机，
+  // 引发旧 Squid 点动 X 卡死的现象（X 走到 79.9mm 触发的是 Y 物理限位）。
+  //
+  // axisIndex (icID) 只是内部数组索引，不影响 CS 物理对应。
+  Axis *xAxis = new StepAxis(Pins::Y_AXIS_CS, 0, "X");  // CS=36 = 物理 X 电机
+  Axis *yAxis = new StepAxis(Pins::X_AXIS_CS, 1, "Y");  // CS=41 = 物理 Y 电机
   Axis *zAxis = new StepAxis(Pins::Z_AXIS_CS, 2, "Z");
   Axis *wAxis = new FilterWheel(Pins::W_AXIS_CS, 3, "W");
   // Axis* expand1Axis = new Objectives(Pins::EXPAND1_AXIS_CS, 4, "E1");
   // Axis* expand3Axis = new StepAxis(Pins::EXPAND3_AXIS_CS, 6, "E3");
   // Axis* expand4Axis = new FilterWheel(Pins::EXPAND4_AXIS_CS, 7, "E4");
 
-  // 初始化顺序很重要，homing 的时候需要通过这个 index 获取句柄
-  // 按 index 顺序添加: Y(0), X(1), Z(2), W(3)
-  if (!axisManager.addAxis(yAxis) || !axisManager.addAxis(xAxis) ||
+  // 按 axisIndex 顺序添加: X(0), Y(1), Z(2), W(3)
+  if (!axisManager.addAxis(xAxis) || !axisManager.addAxis(yAxis) ||
       !axisManager.addAxis(zAxis) || !axisManager.addAxis(wAxis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");
     return false;
@@ -116,6 +129,11 @@ void setup() {
 
   // 初始化状态指示灯
   initializeStartupLED();
+
+  // 尽早把 APA102 矩阵清零，最小化"启动亮"窗口。
+  // 之后的 initializePowerManagement (等 PG) + delay + clock + SPI 初始化
+  // 累计可能数百 ms~5s，APA102 在此期间处于上电默认亮态。
+  illumination_init_matrix_early();
 
   DEBUG_PRINTLN("Initializing system...");
 

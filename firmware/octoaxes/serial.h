@@ -69,6 +69,9 @@ private:
     bool mcu_cmd_execution_in_progress;
     bool checksum_error;
     elapsedMicros _us_since_last_pos_update;
+    // 上一次 send_position_update 计算的 any_moving，用于检测下降沿（移动完成边缘）
+    // 下降沿时立即额外发一帧 COMPLETED，省 0-10ms 心跳等待
+    bool _last_any_moving = false;
     
     // 调试命令缓冲区
     String debugCommandBuffer;

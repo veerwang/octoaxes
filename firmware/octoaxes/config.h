@@ -63,6 +63,9 @@ namespace Pins {
     const int TMC4361_STANDARD_CLK = 37;
     const int TMC4361_EXPAND_CLK = 28;
 
+    // 注意：X_AXIS_CS / Y_AXIS_CS 常量名是按 PCB 引脚标号的历史遗留命名，
+    // 与物理 X/Y 电机的 chip 不直接对应（硬件接线由 octoaxes.ino 中
+    // axisName ↔ CS 引脚的映射决定，详见 octoaxes.ino:86-90 注释）。
     const int X_AXIS_CS = 41;
     const int Y_AXIS_CS = 36;
     const int Z_AXIS_CS = 35;
@@ -148,9 +151,14 @@ namespace AxisConstDefinition {
 		const int HOMING_MICROSTEPPING_FILTERWHEEL = 256;
 		const int HOMING_MICROSTEPPING_OBJECTIVES = 256;
 
-		const float MAX_VELOCITY_X_mm = 25;
-		const float MAX_VELOCITY_Y_mm = 25;
-		const float MAX_VELOCITY_Z_mm = 3;
+		// 2026-05-11 速度优化第一轮：对齐老 Squid HCS v2 配置
+		// 老 Squid configuration_HCS_v2.ini: max_velocity_x/y/z_mm = 30/30/3.8
+		// AMAX_Z 100 实测反而让 Z 1mm 时间从 697→1569ms（+125%），疑似
+		// motor_adjustBows 自动算出的 BOW 过大 + 电机扭矩不够导致 ramp 异常。
+		// 保留 vmax 提升，Z 加速度回退到原值 20 mm/s²。
+		const float MAX_VELOCITY_X_mm = 30;
+		const float MAX_VELOCITY_Y_mm = 30;
+		const float MAX_VELOCITY_Z_mm = 3.8;
 		const float MAX_VELOCITY_FILTERWHEEL_mm = 4.2 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float MAX_VELOCITY_OBJECTIVES_mm = 0.5 * SCREW_PITCH_OBJECTIVES_MM;
 
@@ -161,7 +169,7 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 200 * SCREW_PITCH_OBJECTIVES_MM;
 
 		const float HOMING_VELOCITY_X_MM = 10;
-		const float HOMING_VELOCITY_Y_MM = 10;
+		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 实测确定：256 微步 + 30 mm/s 最安静
 		const float HOMING_VELOCITY_Z_MM = 1;
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
@@ -266,6 +274,8 @@ namespace AxisConfigs {
         .holdCurrent = AxisConstDefinition::X_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::X_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::X_SAFEPOSITION,
+        // StallGuard 参数（仅 TMC2660 SG2 用，TMC2240 SG4 在 axis.cpp 启用处
+        // 暂跳过，参数保留待 SG4 调优后启用）
         .enableStallSensitivity = true,
         .stallSensitivity = 12,
         .useSShapedRamp = true,
@@ -304,6 +314,7 @@ namespace AxisConfigs {
         .holdCurrent = AxisConstDefinition::Y_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::Y_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::Y_SAFEPOSITION,
+        // 同 X 轴：StallGuard 参数仅 TMC2660 用，TMC2240 在启用处跳过
         .enableStallSensitivity = true,
         .stallSensitivity = 12,
         .useSShapedRamp = true,

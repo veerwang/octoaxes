@@ -69,7 +69,14 @@ static void onJoystickPacketReceived(const uint8_t *buffer, size_t size) {
     focusWheelPos = focusWheelNew;
     firstJoystickPacket = false;
   } else {
-    focusWheelDelta += (focusWheelNew - focusWheelPos) * JOYSTICK_SIGN_Z;
+    int32_t pkt_delta = (focusWheelNew - focusWheelPos) * JOYSTICK_SIGN_Z;
+    if (pkt_delta != 0) {
+      DEBUG_PRINT("[FOCUS] pkt_delta=");
+      DEBUG_PRINT(pkt_delta);
+      DEBUG_PRINT(" focusWheelNew=");
+      DEBUG_PRINTLN(focusWheelNew);
+    }
+    focusWheelDelta += pkt_delta;
     focusWheelPos = focusWheelNew;
   }
 
@@ -166,6 +173,14 @@ static void do_focus_control() {
     if (focusPosition > upperLimit)
       focusPosition = upperLimit;
   }
+
+  [[maybe_unused]] int32_t xactual_before = motor_getPositionMicrosteps(icID_Z);
+  DEBUG_PRINT("[FOCUS] do_focus delta=");
+  DEBUG_PRINT(delta);
+  DEBUG_PRINT(" target=");
+  DEBUG_PRINT(focusPosition);
+  DEBUG_PRINT(" xactual_before=");
+  DEBUG_PRINTLN(xactual_before);
 
   motor_moveToMicrosteps(icID_Z, focusPosition);
 }

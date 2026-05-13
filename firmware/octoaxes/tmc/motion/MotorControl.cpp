@@ -117,8 +117,15 @@ static void motor_adjustBows(uint8_t icID)
 // 芯片绝对上限: 4A 峰值 (2.8A RMS), CS 范围 0~31
 static uint8_t calculateCurrentScale(float currentMA, float rSense)
 {
-    // CS = (I_peak × R_sense × 32 / V_FS) - 1
-    float cs = (currentMA / 1000.0f) * rSense * 32.0f / 0.310f - 1.0f;
+    // 2026-05-11 修复：currentMA 按 RMS 解读（与老 Squid firmware 一致）
+    // 老 Squid software → octoaxes firmware 时若按 PEAK 解读会导致实际电流低 ~30%
+    // → Y 轴加速段失步异响（详见 SESSION.md 2026-05-11 #6）
+    //
+    // TMC2660 datasheet: I_peak = (CS+1)/32 × V_FS/R_sense
+    // 由 I_RMS = I_peak/√2 反推：CS = I_RMS × R_sense × 32 × √2 / V_FS - 1
+    // V_FS = 0.310 V (VSENSE=0, 高量程, 与 DRVCONF 设置一致)
+    static const float SQRT2 = 1.41421356f;
+    float cs = (currentMA / 1000.0f) * rSense * 32.0f * SQRT2 / 0.310f - 1.0f;
 
     if (cs < 0) cs = 0;
     if (cs > 31) cs = 31;
@@ -796,8 +803,15 @@ bool motor_isTargetReached(uint8_t icID)
     if (icID >= MOTOR_IC_COUNT)
         return true;
 
-    int32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
-    return (status & (1 << 0)) != 0;  // TARGET_REACHED bit
+    // 与旧 Squid tmc4361A_isRunning(取反) 等价：位置到达 AND 速度归零 AND ramp 不在变化
+    // - TARGET_REACHED_F (bit 0): XACTUAL == XTARGET
+    // - VEL_STATE_F (bits 3-4): 00 = velocity 已归零 (非 0 = +/- velocity)
+    // - RAMP_STATE_F (bits 5-6): 00 = ramp idle (非 0 = acc/dec/const)
+    // 单次 STATUS 读多 bit，SPI 成本不变；防 chip ramp 末尾「XACTUAL 短暂 == XTARGET
+    // 但速度未归零」的边缘 case 误判
+    uint32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
+    return (status & TMC4361A_TARGET_REACHED_F_MASK) &&
+           !(status & (TMC4361A_VEL_STATE_F_MASK | TMC4361A_RAMP_STATE_F_MASK));
 }
 
 bool motor_isRunning(uint8_t icID)

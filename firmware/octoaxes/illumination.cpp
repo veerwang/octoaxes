@@ -20,9 +20,31 @@ uint16_t illumination_port_intensity[IlluminationConfig::NUM_PORTS] = {0};
 // LED 矩阵像素数组（APA102，BGR 顺序）
 static CRGB led_matrix[IlluminationConfig::NUM_LEDS];
 
+// 矩阵 addLeds 是否已注册（防止重复注册）
+static bool s_matrix_inited = false;
+
 // =============================================================================
 // 初始化
 // =============================================================================
+
+void illumination_init_matrix_early()
+{
+    if (s_matrix_inited) return;
+    s_matrix_inited = true;
+
+    // FastLED addLeds：APA102 + BGR + 1 MHz SPI（与旧 Squid init.cpp:44 一致）
+    FastLED.addLeds<APA102, Pins::LED_MATRIX_DATA, Pins::LED_MATRIX_CLOCK, BGR, 1>(
+        led_matrix, IlluminationConfig::NUM_LEDS);
+
+    // APA102 上电默认输出未定义，许多批次默认全亮。多次推全 0 帧 + 短延迟，
+    // 强制 LED 锁存到关闭状态，对抗上电瞬态。
+    for (int i = 0; i < IlluminationConfig::NUM_LEDS; i++)
+        led_matrix[i].setRGB(0, 0, 0);
+    for (int k = 0; k < 4; k++) {
+        FastLED.show();
+        delay(2);
+    }
+}
 
 void illumination_init()
 {
@@ -36,15 +58,24 @@ void illumination_init()
     pinMode(Pins::ILLUMINATION_D4, OUTPUT); digitalWrite(Pins::ILLUMINATION_D4, LOW);
     pinMode(Pins::ILLUMINATION_D5, OUTPUT); digitalWrite(Pins::ILLUMINATION_D5, LOW);
 
+    // 通用数字输出引脚：与旧 Squid `init_io()` (init.cpp:74) 行为一致。
+    // 包含激光对焦 AF_LASER（pin 15，旧 Squid `MCU_PINS.AF_LASER`），
+    // 上位机通过 cmd 41 SET_PIN_LEVEL 控制。必须显式 OUTPUT，否则 pin 处于
+    // INPUT 高阻态时控制板内部上拉会让激光默认开启，且 digitalWrite 在
+    // INPUT 模式下不改变实际电平 → 关不掉。
+    static const int kDigitalOutputPins[] = {6, 9, 10, 15};
+    for (size_t i = 0; i < sizeof(kDigitalOutputPins)/sizeof(kDigitalOutputPins[0]); i++) {
+        pinMode(kDigitalOutputPins[i], OUTPUT);
+        digitalWrite(kDigitalOutputPins[i], LOW);
+    }
+
     // LED 驱动 SYNC：2 MHz PWM，50% 占空比
     pinMode(Pins::LED_DRIVER_SYNC, OUTPUT);
     analogWriteFrequency(Pins::LED_DRIVER_SYNC, 2000000);
     analogWrite(Pins::LED_DRIVER_SYNC, 128);
 
-    // LED 矩阵初始化（APA102，BGR 顺序）
-    FastLED.addLeds<APA102, Pins::LED_MATRIX_DATA, Pins::LED_MATRIX_CLOCK, BGR>(
-        led_matrix, IlluminationConfig::NUM_LEDS);
-    clear_matrix();
+    // LED 矩阵初始化（幂等：若已在 setup 早期调用过 early 版本则跳过）
+    illumination_init_matrix_early();
 
     // DAC 初始化
     set_DAC8050x_config();
@@ -395,13 +426,15 @@ void set_illumination(int source, uint16_t intensity)
 
 void set_illumination_led_matrix(int source, uint8_t r, uint8_t g, uint8_t b)
 {
+    // 与旧 Squid functions.cpp:359-368 一致：仅缓存参数，不立即点亮、不动
+    // illumination_is_on。上位机启动时常用此命令"预设"明场颜色/pattern，
+    // 立即点亮会导致后续切到 D 通道时矩阵仍亮（双开）。
     illumination_source = source;
     led_matrix_r = r;
     led_matrix_g = g;
     led_matrix_b = b;
-    // 直接驱动矩阵，不依赖 illumination_is_on（与旧 Squid 行为一致）
-    turn_on_LED_matrix_pattern(source, r, g, b);
-    illumination_is_on = true;
+    if (illumination_is_on)
+        turn_on_illumination();  // 当前已开灯时才把内容刷到当前 source
 }
 
 // =============================================================================
