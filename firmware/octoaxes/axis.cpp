@@ -49,8 +49,16 @@ bool Axis::begin(const AxisConfig &config) {
   _homing_timeout_ms = _config.homing_timeout_ms;
 
   // 配置CS引脚
+#ifndef USE_HC154_CS
+  // octoaxes 直接 GPIO CS：_csPin 是 Teensy 物理 pin 号，配置为 OUTPUT 默认 HIGH（不选中）
   pinMode(_csPin, OUTPUT);
   digitalWrite(_csPin, HIGH);
+#endif
+  // USE_HC154_CS (octoaxesplus): _csPin 是 HC154 通道号 (0-15)，不是 GPIO 引脚号。
+  // 物理片选由 tmc_spi_init() 初始化 + tmc4361A_readWriteSPI() 事务级
+  // 调 Pins::hc154_select() 切换。此处若 pinMode/digitalWrite(_csPin) 会
+  // 误操作 Teensy 物理 pin 8/9/10（squid++ 上分别是 CAMERA_TRIGGER_2 /
+  // CAMERA_TRIGGER_1 / ILLUMINATION_D8），导致初始化时误触发相机和激光。
 
   // ========== 新架构初始化 ==========
   // 设置驱动类型（DRIVER_AUTO 时由 motor_initMotionController 自动检测）
@@ -72,7 +80,14 @@ bool Axis::begin(const AxisConfig &config) {
       .bow2 = 0,
       .bow3 = 0,
       .bow4 = 0};
-  motor_initMotionController(_icID, &motionConfig);
+  // motor_initMotionController 在 TMC4361A SPI 通信失败（写 SW_RESET 后读
+  // VERSION_NO 返回 0 或 -1）时返回 false。检查返回值并向上传播失败，让
+  // beginAll() 能记录哪根轴 chip 没起来，避免后续操作一个未初始化的 chip。
+  if (!motor_initMotionController(_icID, &motionConfig)) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINTLN(":BEGIN_FAIL motor_initMotionController (TMC4361A SPI 无响应)");
+    return false;
+  }
 
   // 自动检测完成后，回写实际驱动类型
   if (_config.driverType == DRIVER_AUTO) {

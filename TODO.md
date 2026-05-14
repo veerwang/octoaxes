@@ -18,6 +18,51 @@
 
 ## 待办
 
+### 2026-05-13 octoaxesplus 真机调试 — 偏离 octoaxes 基线修改待审查
+
+> **前提**：firmware/octoaxes 长期硬件验证可行（XYZW + Y homing 256/30 +
+> TMC2660/TMC2240 互换均通过），是 squid++ bring-up 的"已知良好基线"。下列
+> 修改是 octoaxesplus 真机调试期间为绕过新硬件问题做的临时改动，部分改了
+> octoaxes 同段已验证代码，需逐条审查哪些是 squid++ 必需 / 哪些可能是误判
+> 异常的绕过。完整记录见 `SESSION.md` "2026-05-13 后续" 段。
+
+- [x] **Axis::begin 两个隐患修复**（2026-05-13，本会话 SPI bring-up 时新发现）
+  - **隐患 A — csPin 双义性误操作 Teensy 物理 pin**：`axis.cpp:52-53` 的
+    `pinMode/digitalWrite(_csPin)` 在 octoaxesplus (USE_HC154_CS) 模式下把
+    HC154 通道号 8/9/10 当 GPIO pin 号用，结果误操作 Teensy 物理 pin 8/9/10
+    （squid++ 上分别是 `CAMERA_TRIGGER_2` / `CAMERA_TRIGGER_1` /
+    `ILLUMINATION_D8`）。初始化时会误触发两路相机和一路激光 TTL。
+    修复：用 `#ifndef USE_HC154_CS` 保护这两行，HC154 模式下完全跳过。
+  - **隐患 B — motor_initMotionController 返回值未检查**：`axis.cpp:75` 调
+    `motor_initMotionController` 但不检查 bool 返回值。SPI 通信失败时（写
+    SW_RESET 后读 VERSION_NO 返回 0/0xFFFFFFFF）chip 实际未初始化但 begin
+    继续写 SPI_OUT_CONF/VMAX/限位等全部寄存器，最终 return true，上层完全
+    不知道 chip 掉线。修复：检查返回值，失败时 DEBUG_PRINT + return false。
+  - 同时同步到 firmware/octoaxes 和 firmware/octoaxesplus 两个 axis.cpp
+    （保持 A 类 byte-identical 同步约束）
+  - 两工程编译均 SUCCESS（octoaxes 80540 / octoaxesplus 81500 字节）
+
+- [ ] **B1 PWM 分辨率改动是否必需**（最可疑）— `octoaxesplus.ino::initializeClock`
+  改 `analogWriteResolution(4) + analogWrite(8)`，octoaxes 同样 8-bit + 16MHz
+  + duty=128 长期工作 → 理论矛盾。**验证步骤**：① 用 `firmware/clk_test/`
+  单独跑 octoaxes 基线写法测 squid++ 板 pin 37 实测波形/电压 ② 若可工作则
+  回滚 octoaxesplus 这次改动
+- [ ] **B2 POWER_GOOD 轮询 bypass 改 PCB 飞线** — `initializePowerManagement`
+  改 `delay(500)` 直接放行。原理图 +24V_XY 标签 bug 不是固件能根治，需要
+  PCB 改版/飞线让 IC6 LTC2903 真实监控电源。短期保留 bypass 也要把 500ms
+  可配置 + 加 WARN 打印
+- [ ] **A1 5 轴注释掉的根因** — commit `1ce942a` 注释 f1/z2/f2/r/t + addAxis。
+  应让 `axis.begin` 对未接 TMC4361A 优雅退出（SPI 读到 0xFF 时跳过），而非
+  注释源码
+- [ ] **A1 axisName "Z1" 为何 findAxisByName 命中失败** — `axesmrg.cpp::beginAll`
+  声称支持 "Z"/"Z1" 双名映射，重新阅 commandprocessor + axesmrg 路径确认
+  实际行为；如果双名 OK 应回退 zAxis 命名
+- [ ] **B3 serial.cpp 3 个调试命令归档** — `S:CLKMODE` / `S:CSHOLD` /
+  `S:SPITEST` bring-up 阶段保留；完成后剥到独立 debug 模块或 `#ifdef`
+  开关（FLASH +XXXB 不是大问题但要明确属于调试基础设施）
+- [ ] **未跟踪测试工程归宿** — `firmware/clk_test/` `hc154_test/` `pg_test/`
+  bring-up 工具：决定 `.gitignore` 还是归档到 `firmware/tests/` 复用
+
 ### 2026-05-10 今日完成 + 待跟踪
 - [x] **AF 激光启动常亮 + 关不掉** (2026-05-10) — `MCU_PINS.AF_LASER = pin 15`（旧 Squid `_def.py:158`），fw 缺旧 Squid `init_io()` 的 `digitial_output_pins[]={6,9,10,15}` 显式 OUTPUT+LOW 初始化 → pin 15 处于 INPUT 高阻 + 激光板上拉 → 常亮，且 cmd 41 `digitalWrite` 在 INPUT 模式下不改实际电平 → 关不掉。修复：① `illumination.cpp::illumination_init()` 增加 4 pin OUTPUT+LOW 初始化 ② `commandprocessor.cpp::handleSetPinLevel` 加 `pinMode(OUTPUT)` 防御。**硬件验证通过**。
 - [x] **LED 矩阵启动常亮（旧 Squid 也有）** (2026-05-10) — 两个原因叠加：① FastLED.addLeds 缺第 5 模板参数，SPI 默认 24MHz（旧 Squid 1MHz）clear_matrix 推 0 帧可能被 LED 错收；② `initializePowerManagement` 等 PG 信号 + 后续初始化累计数百 ms~5s，APA102 此期间处于上电默认亮态。修复：① FastLED.addLeds 加 `, 1` 设 1MHz 与旧 Squid 一致 ② 拆出 `illumination_init_matrix_early()`，在 `setup()` 最早期（serialProtocol.begin 后）调，多次 show 锁存全 0 帧。
