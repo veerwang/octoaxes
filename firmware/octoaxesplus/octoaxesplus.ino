@@ -118,8 +118,14 @@ bool initializeSystem() {
   }
 
   // 初始化所有轴
+  // 注意：beginAll() 返回 false 表示**至少一根轴 begin 失败**（典型场景：
+  // TMC4361A SPI 无响应导致 motor_initMotionController 写 SW_RESET 后读
+  // VERSION_NO 返回 0/-1）。**不再视为致命错误** —— 串口通信和调试命令
+  // (S:VERSION / S:HWINFO / S:SPITEST / S:DUMPREGS) 必须保持可用，否则
+  // bring-up 期间无法定位 SPI 失败的根因。失败轴的标识已由 axis.cpp 中的
+  // DEBUG_PRINT(_axisName + ":BEGIN_FAIL ...") 打印到串口。
   if (!axisManager.beginAll()) {
-    return false;
+    DEBUG_PRINTLN("WARNING: beginAll() reported partial axis failure (see :BEGIN_FAIL above). Continuing so serial diagnostics remain available.");
   }
 
   // 初始化手控盒（Serial5 + PacketSerial）
