@@ -6,6 +6,100 @@
 
 ## 最新会话
 
+**日期**: 2026-05-14
+**分支**: maxpro
+**位置**: octoaxesplus 真机 bring-up — IC4 虚焊根因定位 + SPI 通信恢复 + XY 轴运动验证成功
+
+### 本次完成
+
+#### 1. Axis::begin 两个隐患修复（commit b7331fb）
+- **隐患 A**：octoaxesplus 上 `_csPin` 字段实际是 HC154 通道号 (0-15) 而非 Teensy
+  物理 pin 号，但 axis.cpp:52-53 仍按物理 pin 处理 → 误操作 Teensy 物理 pin
+  8/9/10 = `CAMERA_TRIGGER_2` / `CAMERA_TRIGGER_1` / `ILLUMINATION_D8`，初始化
+  时误触发两路相机和一路激光 TTL。修复：`#ifndef USE_HC154_CS` 保护这两行。
+- **隐患 B**：`motor_initMotionController` 已返回 bool（SPI 通信失败时 return
+  false），但 axis.cpp:75 直接调用不检查，导致 chip 没初始化但 begin 仍报成功，
+  上层 beginAll 完全不知道。修复：检查返回值，失败时 DEBUG_PRINT + return false。
+- 两 axis.cpp byte-identical 同步到 octoaxes + octoaxesplus。
+
+#### 2. beginAll 失败不再卡死 firmware（commit 28e8eee）
+b7331fb 引入的回归：Axis::begin 如实返回 false → beginAll 失败 →
+initializeSystem 失败 → setup() 进 `while(1) delay(1000)` 卡死。bring-up
+期间 SPI 必然不通，结果连 S:VERSION 都不响应。修复：把
+`if (!beginAll()) return false` 改为日志警告 + 继续，serial 通信和调试命令
+全部保持可用。同步两工程。
+
+#### 3. SPI 不通根因诊断历程（典型反面教材，3 个错误假设 → 真凶 IC4 虚焊）
+
+**症状**：所有 TMC4361A 的 SPI 读返回全 0x00，S:HWINFO 驱动型号 UNKNOWN。
+
+**错误假设链**（逐个被实验否定）：
+
+a. **PWM 4-bit 必需**（B1，2026-05-13 提出）— 起初观察 octoaxes 默认 8-bit
+   + duty 128 在 16MHz 下"理论上违反 PJRC 限制"，改为 4-bit + duty 8。后续
+   pin 37 实测 1.6V DC 一度认为佐证 B1 必需，最终发现 IC4 才是根因，**B1 改动
+   既非问题也非解药**，已撤销恢复 octoaxes 基线。
+
+b. **LTC2903 RST# 锁住 TMC4361A**（2026-05-14 提出）— 注意到原理图标错的
+   IC6 LTC2903 +24V_XY net 浮空，怀疑其 RST# 同时拉低所有 TMC4361A NRSTN。
+   用户核对原理图：**LTC2903 RST# 完全悬空，不连任何东西**，假设作废。
+
+c. **squid++ 主板 SCK 走线 / Teensy pin 13 被短到 3V**（2026-05-14 提出）—
+   连续测量 Teensy pin 13 强拉 LOW 仍读 3V，得出"主板硬件短路"结论。烧最简
+   1Hz 闪烁固件确认时，用户发现 **"搞错了 Teensy 板子"** —— 之前测的电压不
+   在被 USB 控制的那块上。换正确的 Teensy 后 LED 1Hz 正常闪烁，pin 13 翻转
+   正常。**整段诊断作废**。
+
+**真正根因（IC4 虚焊）** — 用户手动检查 PCB 焊点发现 IC4 的引脚虚焊。补焊后：
+- `S:HWINFO` 三轴全部正确识别 `TMC4361A+TMC2240`（之前是 UNKNOWN）
+- `S:SPITEST` STATUS 寄存器返回真实非零值（0x80000003 / 0x88000003）
+- 修复 S:SPITEST 命令中 `VERSION_NO` 寄存器地址笔误（0x09 → 0x7F，原写法
+  读到的是 `ENC_OUT_DATA`）后，VERSION_NO 返回 `0x00000002`（TMC4361A 硅版本号）
+- 上位机 PyQt 测试 **XY 轴运动正常**
+
+**经验教训**：
+1. 多块同型号硬件并存时，bring-up 测量必须**反复确认"测的是哪一块"**
+2. PCB 焊点先用 放大镜/X-ray 巡查再做软件诊断会节省大量时间
+3. 不同假设要逐个用实验否定，不要并列多个假设一起改
+
+#### 4. PWM 4-bit 改动撤销（工作树未提交）
+`octoaxesplus.ino::initializeClock` 撤销 `analogWriteResolution(4) + duty 8`
+回到 octoaxes 主线 `default 8-bit + duty 128`。注释保留撤销原因供后续参考。
+
+#### 5. S:SPITEST 寄存器地址笔误修复（工作树未提交）
+`serial.cpp:495` `tmc4361A_readRegister(i, 0x09)` 注释虽然写 "VERSION_NO"，
+但实际 0x09 是 `ENC_OUT_DATA`。`VERSION_NO` 真实地址是 `0x7F`。修正后能正确
+读出 chip 硅版本。
+
+### 关键决策记录
+
+1. **诊断历程优先保留**：尽管错误假设被推翻，仍详细记录在 SESSION.md 作为
+   反面教材，避免下次遇到 octoaxesplus 系列 bring-up 重复相同弯路。
+2. **POWER_GOOD bypass 保留不提交**：仍是 IC6 LTC2903 +24V_XY 标签 schematic
+   bug 的临时绕过。待 PCB 飞线或改版后恢复轮询。
+3. **PWM 8-bit 默认 + duty 128**：与 octoaxes 主线对齐，IC4 修好后验证可行。
+
+### 当前状态
+
+- ✅ X 轴 / Y 轴 上位机 PyQt 运动验证通过
+- ⏳ Z 轴运动尚未验证（用户下一步）
+- ⏳ 5 轴扩展（F1/Z2/F2/R/T）仍被 commit 1ce942a 注释，等需要时打开
+- ⏳ S:SPITEST 寄存器修复 / PWM revert / docs 改动尚未 commit
+- ⏳ bring-up 工具（`firmware/clk_test/` `hc154_test/` `pg_test/` `pin13_blink/`）
+  归宿待定（`.gitignore` 还是归档到 `firmware/tests/`）
+
+### 下次继续
+
+1. Z 轴运动验证
+2. 提交：PWM revert + S:SPITEST 0x7F 修复 + SESSION/TODO doc 更新
+3. 决定 bring-up 工具归宿
+4. （可选）打开 5 轴扩展模式
+5. POWER_GOOD bypass 待 PCB 飞线后恢复轮询
+
+---
+
+## 上一会话
+
 **日期**: 2026-05-13
 **分支**: maxpro
 **位置**: develop → maxpro 大合并 + octoaxesplus 同步主线 + 8 轴扩展 + 上位机 constants.py Phase 3.1
@@ -134,6 +228,81 @@ squid++ 双相机外部触发 IN/OUT 接入基础设施（pin 1-4）：
 - pin 5 标 RESERVED 但描述"相机2_等待触发"，与 pin 6 CAM_TRI_READY2 重叠
 - pin 6/7 CAM_TRI_READY1/2 名称与文档描述（"相机1_触发"/"相机1_等待触发"）不一致
 - 均待核实原始 xlsx 是否笔误
+
+### 2026-05-13 后续：octoaxesplus 真机调试 — 偏离 octoaxes 基线的修改清单（待审查）
+
+**前提**：`firmware/octoaxes/` 在真实硬件上**长期验证可行**（XYZW 4 轴 / Y homing
+256/30 / TMC2660 + TMC2240 互换均通过）。`firmware/octoaxesplus/` 真机 bring-up
+中累计若干"为绕开新硬件问题"而做的临时修改，其中部分**改了 octoaxes 同一段
+已验证代码**，需要逐条复核哪些是 squid++ 必需、哪些可能是误判异常的绕过。
+
+#### A. 已 commit 但本质是"绕过"，不是 squid++ 硬件需求
+
+##### A1. commit `1ce942a` "切到 XYZ 三轴调试模式"
+- `z1Axis` 重命名为 `zAxis`、axisName `"Z1" → "Z"`
+  - **理由**：`commandprocessor.cpp` 硬编码 `findAxisByName("Z")`，上位机
+    MOVE_Z/MOVETO_Z/HOME_Z 必须找到 "Z" 轴。但 `axesmrg.cpp::beginAll` 已支持
+    `"Z"/"Z1"` 双名映射，理论上 axisName="Z1" 也能工作 —— **需要重新验证**
+    为什么 "Z1" 不行（是 findAxisByName 真的查不到？还是 begin 路径有别的依赖？）
+- 5 个未接硬件轴注释掉（f1/z2/f2/r/t + addAxis）
+  - **理由**：硬件未接，避免 `beginAll()` 对不存在的 TMC4361A SPI 初始化 →
+    未定义行为
+  - **隐含异常**：如果 SPI 通路本身可靠，对没接的 chip 做读会拿到 0xFF 但
+    `axis.begin` 不应该崩。注释掉是症状压制，**根本问题（SPI 可靠性 / chip
+    存在检测）未根治**
+
+#### B. 未 commit 的工作区改动（`git diff` 可见）
+
+##### B1. `octoaxesplus.ino::initializeClock` —— PWM 占空比/分辨率改动
+- octoaxes 基线：默认 8-bit 分辨率 + `analogWrite(clk_pin, 128)` 跑 16 MHz
+  PWM，**长期硬件验证可行**
+- octoaxesplus 改为 `analogWriteResolution(4)` + `analogWrite(clk_pin, 8)`
+  - **声称理由**：PJRC 表 8-bit 分辨率上限 1 MHz，16 MHz 超限 → pin 卡 HIGH
+  - **矛盾**：octoaxes 同样写 8-bit + 16 MHz 长期工作，理论上应该一起失败
+  - **可能解释**：① PJRC 自动降分辨率到能匹配频率的位数 ② octoaxes 真正的
+    时钟通路是 TMC4361_EXPAND_CLK pin 28（被 octoaxesplus 删除），pin 37
+    STANDARD_CLK 是否真在工作 octoaxes 也没严格验证过
+  - **推荐**：**回滚到 octoaxes 写法**（`analogWrite(clk_pin, 128)` 不调
+    `analogWriteResolution`），用 `firmware/clk_test/` 工程在 squid++ 板上
+    单独验证 pin 37 实测波形/电平。若失败再针对性修；若成功则证明这次
+    "改 PWM 分辨率"是误判，应撤销
+
+##### B2. `octoaxesplus.ino::initializePowerManagement` —— POWER_GOOD 轮询绕过
+- octoaxes 基线：`while(!digitalRead(POWER_GOOD))` 等 LTC2903 RST# 拉高，
+  超时 5s
+- octoaxesplus 改为 `pinMode INPUT_PULLUP` + `delay(500)` 直接放行
+  - **声称理由**：原理图 +24V_XY 标签错误（IC6 LTC2903 V3/V4 输入悬空），
+    pin 0 永远 LOW → 永远 5s 超时返回 false
+  - **影响**：bypass 后**失去** "电源未就绪时不初始化 TMC chip" 的硬件保护，
+    LM2576/LDO 真正稳定的时间没有任何监测
+  - **推荐**：① 用 `firmware/pg_test/` 验证 pin 0 实际电平 ② 如确认是 schematic
+    bug，**改 PCB 飞线** 而不是删轮询 ③ 短期保留 bypass 也要把 500ms 改成可
+    配置 + 加 DEBUG_PRINTLN 警告
+
+##### B3. `serial.cpp` 新增 3 个调试命令（130 行）
+- `S:CLKMODE <off|high|low|slow|16m>` — 切换 pin 37 PWM 状态，万用表 DC 档
+  实测平均电压（slow 100Hz 与 16m PWM 都应 ≈1.65V）
+- `S:CSHOLD <channel>` — 持续选通 HC154 某通道不归零，万用表实测各 CS 电平
+- `S:SPITEST [icID]` — 绕过 axis.begin 直接 SPI 读 TMC4361A `VERSION_NO`/
+  `STATUS`，用于排查 SPI 不通根因（配合 S:CSHOLD 锁定问题在 HC154 / CLK /
+  5V_AXIS 哪一层）
+- **评价**：是真有用的诊断工具，bring-up 完成后**保留或剥离到独立 debug 模块**
+
+#### C. 未跟踪测试工程（`firmware/clk_test/` `hc154_test/` `pg_test/`）
+- 用于 isolate 排查 B1/B2/B3 的硬件可靠性
+- **决定后是否纳入 git** —— 若属一次性 bring-up 工具，加 `.gitignore`；若可复用
+  到下一块 PCB bring-up，归档到 `firmware/tests/` 或类似目录
+
+#### 待审查异常清单（按优先级）
+
+1. **PWM 分辨率改动是否必需** — B1 回滚验证（最可疑，octoaxes 是反例）
+2. **POWER_GOOD bypass 改 PCB 飞线** — B2 不是固件能根治的
+3. **5 轴注释掉的根本原因** — A1，应该让 `axis.begin` 对未接 chip 优雅退出而
+   非注释源码
+4. **axisName "Z1" 为什么不被 findAxisByName 命中** — A1，重新阅 axesmrg.cpp
+   双名映射代码确认是否真有 bug
+5. **下一步要做但被 bring-up 阻断的任务**：Phase 3.2-3.4 上位机 8 轴支持 /
+   双相机握手 / TRIGGER_IN/OUT 联动 等等
 
 ### 关键决策记录
 

@@ -2,6 +2,7 @@
 #include "axesmrg.h"
 #include "build_opt.h"
 #include "commandprocessor.h"
+#include "config.h"   // squid++：HC154 调试命令需要 hc154_select 与 HC154_Channel
 #include "illumination.h"
 #include "trigger.h"
 #include "tmc/motion/MotorControl.h"
@@ -387,6 +388,119 @@ void SerialProtocolHandler::processSerialDebugCommands() {
         SerialUSB.println(buf);
       }
       SerialUSB.println("S:DUMPREGS:END");
+      return;
+    }
+
+    // S:CLKMODE <off|high|low|slow|16m>
+    // squid++ 调试用：切换 pin 37 (TMC4361_STANDARD_CLK) 输出状态，
+    // 用万用表 DC 档静态读电压验证 PWM 是否真的在工作。
+    //   off  : digitalWrite LOW   万用表应读 0V
+    //   high : digitalWrite HIGH  万用表应读 ~3.3V
+    //   low  : 同 off
+    //   slow : 100Hz 50% PWM      万用表应读 ~1.65V（万用表能跟上低频）
+    //   16m  : 恢复 16MHz 50% PWM 万用表应读 ~1.65V（DC 档低通后的平均值）
+    //
+    // 比较点：slow 和 16m 万用表读数应该几乎一样（都是 50% PWM 平均）。
+    // 如果 16m 模式读到 0V 或 3.3V 不变 → analogWriteFrequency 16M 失败。
+    if (command.startsWith("S:CLKMODE")) {
+      String rest = command.substring(9);
+      rest.trim();
+      rest.toLowerCase();
+      char buf[80];
+      if (rest == "off" || rest == "low") {
+        pinMode(Pins::TMC4361_STANDARD_CLK, OUTPUT);
+        digitalWrite(Pins::TMC4361_STANDARD_CLK, LOW);
+        snprintf(buf, sizeof(buf), "S:CLKMODE:OK:pin%d=LOW(0V)",
+                 Pins::TMC4361_STANDARD_CLK);
+      } else if (rest == "high") {
+        pinMode(Pins::TMC4361_STANDARD_CLK, OUTPUT);
+        digitalWrite(Pins::TMC4361_STANDARD_CLK, HIGH);
+        snprintf(buf, sizeof(buf), "S:CLKMODE:OK:pin%d=HIGH(3.3V)",
+                 Pins::TMC4361_STANDARD_CLK);
+      } else if (rest == "slow") {
+        pinMode(Pins::TMC4361_STANDARD_CLK, OUTPUT);
+        analogWriteResolution(4);  // 与 initializeClock 一致，4-bit 50% = 8/16
+        analogWriteFrequency(Pins::TMC4361_STANDARD_CLK, 100);
+        analogWrite(Pins::TMC4361_STANDARD_CLK, 8);
+        snprintf(buf, sizeof(buf),
+                 "S:CLKMODE:OK:pin%d=100Hz_50%%PWM(avg~1.65V)",
+                 Pins::TMC4361_STANDARD_CLK);
+      } else if (rest == "16m" || rest.length() == 0) {
+        pinMode(Pins::TMC4361_STANDARD_CLK, OUTPUT);
+        analogWriteResolution(4);  // 4-bit 才能跑 16MHz（默认 8-bit 上限 1MHz）
+        analogWriteFrequency(Pins::TMC4361_STANDARD_CLK, 16000000);
+        analogWrite(Pins::TMC4361_STANDARD_CLK, 8);
+        snprintf(buf, sizeof(buf),
+                 "S:CLKMODE:OK:pin%d=16MHz_50%%PWM(avg~1.65V)",
+                 Pins::TMC4361_STANDARD_CLK);
+      } else {
+        snprintf(buf, sizeof(buf),
+                 "S:CLKMODE:ERR:unknown_mode:%s (use off|high|low|slow|16m)",
+                 rest.c_str());
+      }
+      SerialUSB.println(buf);
+      return;
+    }
+
+    // S:CSHOLD <channel>
+    // squid++ 调试用：持续选通 HC154 某通道（不归零）方便万用表实测对应
+    // CS 引脚电平。channel 0-15。无 channel 参数 → 归零到 EXPAND_NSCS1。
+    // 例：S:CSHOLD 10 → 选通 X 轴 CS（HC154_AXIS_X），其他 15 路应 HIGH
+    //     S:CSHOLD     → 归零（恢复 SPI 事务前默认状态）
+    if (command.startsWith("S:CSHOLD")) {
+      String rest = command.substring(8);
+      rest.trim();
+      char buf[64];
+      if (rest.length() == 0) {
+        Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
+        snprintf(buf, sizeof(buf), "S:CSHOLD:OK:released_to_ch=%d",
+                 (int)Pins::HC154_EXPAND_NSCS1);
+        SerialUSB.println(buf);
+      } else {
+        int ch = rest.toInt();
+        if (ch < 0 || ch > 15) {
+          SerialUSB.println("S:CSHOLD:ERR:channel_out_of_range_0_15");
+          return;
+        }
+        Pins::hc154_select((uint8_t)ch);
+        snprintf(buf, sizeof(buf),
+                 "S:CSHOLD:OK:ch=%d A3:A2:A1:A0=%d%d%d%d",
+                 ch, (ch >> 3) & 1, (ch >> 2) & 1,
+                 (ch >> 1) & 1, ch & 1);
+        SerialUSB.println(buf);
+      }
+      return;
+    }
+
+    // S:SPITEST [icID]
+    // squid++ 调试用：主动对指定 icID 跑 TMC4361A SPI 读循环，打印 VERSION_NO
+    // 和 STATUS。不带参数 → 测全部 icID。用于排查 SPI 不通根因。
+    // 与 S:DUMPREGS 区别：DUMPREGS 假设 axis 已正常 begin；SPITEST 绕过
+    // axis 直接走 hal 接口，配合 S:CSHOLD 排查 HC154 / CLK / 5V_AXIS 问题。
+    if (command.startsWith("S:SPITEST")) {
+      String rest = command.substring(9);
+      rest.trim();
+      char buf[96];
+      int start = 0, end = MOTOR_IC_COUNT;
+      if (rest.length() > 0) {
+        int id = rest.toInt();
+        if (id < 0 || id >= MOTOR_IC_COUNT) {
+          SerialUSB.println("S:SPITEST:ERR:icID_out_of_range");
+          return;
+        }
+        start = id;
+        end = id + 1;
+      }
+      for (int i = start; i < end; i++) {
+        // 注意：VERSION_NO 在 TMC4361A 是 0x7F 不是 0x09（0x09 是 ENC_OUT_DATA）
+        uint32_t v = tmc4361A_readRegister(i, 0x7F);  // VERSION_NO
+        uint32_t s = tmc4361A_readRegister(i, 0x0F);  // STATUS
+        snprintf(buf, sizeof(buf),
+                 "S:SPITEST:ic=%d VERSION_NO=0x%08lX STATUS=0x%08lX",
+                 i, (unsigned long)v, (unsigned long)s);
+        SerialUSB.println(buf);
+      }
+      SerialUSB.println("S:SPITEST:END");
       return;
     }
 

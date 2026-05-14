@@ -26,6 +26,18 @@
 > octoaxes 同段已验证代码，需逐条审查哪些是 squid++ 必需 / 哪些可能是误判
 > 异常的绕过。完整记录见 `SESSION.md` "2026-05-13 后续" 段。
 
+- [x] **IC4 虚焊根因定位 + SPI 通信恢复 + XY 轴运动验证**（2026-05-14）— bring-up
+  期间所有 TMC4361A SPI 读返回 0x00，经历 3 个错误假设（PWM 4-bit / LTC2903 RST# /
+  Teensy pin 13 短路）逐一否定，用户手动检查 PCB 发现 IC4 引脚虚焊。补焊后
+  `S:HWINFO` 识别三轴 TMC4361A+TMC2240，`S:SPITEST` VERSION_NO=0x00000002 稳定
+  返回，上位机 PyQt 测试 XY 轴运动通过。详细诊断历程见 SESSION.md "2026-05-14"。
+  - [x] B1 PWM 4-bit 撤销（恢复 octoaxes 主线 8-bit + duty 128 基线）
+  - [x] S:SPITEST 寄存器笔误修复（0x09 ENC_OUT_DATA → 0x7F VERSION_NO）
+  - [ ] Z 轴运动验证（下次会话）
+  - [ ] POWER_GOOD bypass 待 PCB 飞线修原理图 +24V_XY net 错误后撤销
+  - [ ] bring-up 工具归宿（`firmware/clk_test/` `hc154_test/` `pg_test/`
+    `pin13_blink/`）：`.gitignore` 还是归档到 `firmware/tests/`
+
 - [x] **Axis::begin 两个隐患修复**（2026-05-13，本会话 SPI bring-up 时新发现）
   - **隐患 A — csPin 双义性误操作 Teensy 物理 pin**：`axis.cpp:52-53` 的
     `pinMode/digitalWrite(_csPin)` 在 octoaxesplus (USE_HC154_CS) 模式下把
