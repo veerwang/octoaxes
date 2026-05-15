@@ -556,8 +556,10 @@ class ControlPanel(QGroupBox):
 
         try:
             # 根据轴类型判断显示哪个控制页面
-            if axis in ["E4", "W", "E1"]:
-                # FilterWheel轴 - 显示第1页
+            # 用 AXIS_CONFIG[axis]["type"] 动态判断，跟随 profile（octoaxes/octoaxesplus）
+            axis_type = AXIS_CONFIG.get(axis, {}).get("type", "step_motor")
+            if axis_type in ("filter_wheel", "objective"):
+                # FilterWheel / Objectives 轴 - 显示第1页（滤光转盘 / 物镜控制）
                 target_index = 1
             else:
                 # 普通步进电机轴 - 显示第0页
