@@ -173,6 +173,42 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
   SerialUSB.write(buffer_tx, MSG_LENGTH);
 }
 
+void SerialProtocolHandler::sendExtendedResponse(byte status,
+                                                 const int32_t positions[8],
+                                                 bool joystick_button_pressed) {
+  // octoaxesplus 扩展位置广播包（40 字节）
+  // 协议详见 documents/octoaxesplus_protocol_v2_40byte.md
+  byte buffer_tx[EXTENDED_MSG_LENGTH];
+  memset(buffer_tx, 0, EXTENDED_MSG_LENGTH);
+
+  buffer_tx[0] = EXTENDED_POS_CMD_ID;   // 0xFD 标识 40 字节扩展位置包
+  buffer_tx[1] = status;
+
+  // 8 个轴位置（按 firmware icID 索引）：bytes[2..33]
+  for (int i = 0; i < 8; i++) {
+    int32_t p = positions[i];
+    buffer_tx[2 + i * 4]     = byte(p >> 24);
+    buffer_tx[2 + i * 4 + 1] = byte((p >> 16) & 0xFF);
+    buffer_tx[2 + i * 4 + 2] = byte((p >> 8) & 0xFF);
+    buffer_tx[2 + i * 4 + 3] = byte(p & 0xFF);
+  }
+
+  // 状态位 byte[34]：bit0 = 摇杆按钮
+  static const int BIT_POS_JOYSTICK_BUTTON = 0;
+  buffer_tx[34] = (joystick_button_pressed ? (1 << BIT_POS_JOYSTICK_BUTTON) : 0);
+
+  // bytes[35-37]: 保留
+
+  // 固件版本 byte[38]：高半字节=主版本，低半字节=次版本
+  buffer_tx[38] = (FIRMWARE_VERSION_MAJOR << 4) | (FIRMWARE_VERSION_MINOR & 0x0F);
+
+  // CRC-8-CCITT 校验（对 byte[0..38] 计算）
+  uint8_t checksum = crc8ccitt(buffer_tx, EXTENDED_MSG_LENGTH - 1);
+  buffer_tx[EXTENDED_MSG_LENGTH - 1] = checksum;
+
+  SerialUSB.write(buffer_tx, EXTENDED_MSG_LENGTH);
+}
+
 void SerialProtocolHandler::send_position_update() {
 #ifdef DISABLE_BINARY_POS_UPDATE
   // build_opt.h 中临时定义的开关：跳过 24 字节二进制位置上报，
@@ -200,16 +236,14 @@ void SerialProtocolHandler::send_position_update() {
     return;
   _us_since_last_pos_update = 0;
 
-  // 读取各轴位置（微步，与旧 Squid tmc4361A_currentPosition 一致）
-  Axis *xAxis = axisManager.findAxisByName("X");
-  Axis *yAxis = axisManager.findAxisByName("Y");
-  Axis *zAxis = axisManager.findAxisByName("Z");
-  Axis *wAxis = axisManager.findAxisByName("W");
-
-  int32_t x_pos = xAxis ? xAxis->getCurrentPositionMicrosteps() : 0;
-  int32_t y_pos = yAxis ? yAxis->getCurrentPositionMicrosteps() : 0;
-  int32_t z_pos = zAxis ? zAxis->getCurrentPositionMicrosteps() : 0;
-  int32_t w_pos = wAxis ? wAxis->getCurrentPositionMicrosteps() : 0;
+  // 读取所有 axis 位置（按 firmware icID 索引，0..7）
+  // octoaxesplus XYZW1W2 五轴：icID 0=Y, 1=X, 2=Z, 3=W1, 4=W2；icID 5-7 占位填 0
+  // count 已在上面 any_moving 检测时拿过，直接复用
+  int32_t positions[8] = {0};
+  for (uint8_t i = 0; i < count && i < 8; i++) {
+    Axis *axis = axisManager.getAxis(i);
+    if (axis) positions[i] = axis->getCurrentPositionMicrosteps();
+  }
 
   // 摇杆按钮失效安全：超过 1000ms 未 ACK 则自动清除
   if (joystick_button_pressed &&
@@ -223,8 +257,9 @@ void SerialProtocolHandler::send_position_update() {
   else
     status = any_moving ? STATUS_IN_PROGRESS : STATUS_COMPLETED;
 
-  sendResponse(cmd_id, status, x_pos, y_pos, z_pos, w_pos,
-               joystick_button_pressed);
+  // octoaxesplus 周期性广播用 40 字节扩展包（含全部 8 轴位置 + 摇杆 + 版本）
+  // 命令响应（sendResponse）仍是 24 字节，由各 handler 在收到命令时发出
+  sendExtendedResponse(status, positions, joystick_button_pressed);
 }
 
 void SerialProtocolHandler::processSerialCommands() {

@@ -25,11 +25,17 @@ public:
     // 获取接收到的命令数据
     const byte* getCommandData() const { return buffer_rx; }
     
-    // 发送响应消息
+    // 发送响应消息（24 字节，命令响应用，保持旧 Squid 兼容）
     void sendResponse(byte cmd_id, byte status,
                       int32_t x_pos, int32_t y_pos, int32_t z_pos,
                       int32_t w_pos = 0,
                       bool joystick_button_pressed = false);
+
+    // 发送扩展位置广播（40 字节，octoaxesplus 周期性上报用）
+    // positions[] 必须包含 8 个 int32（按 firmware icID 索引）
+    // cmd_id 固定使用 EXTENDED_POS_CMD_ID = 0xFD
+    void sendExtendedResponse(byte status, const int32_t positions[8],
+                              bool joystick_button_pressed = false);
 
     // 10ms 周期位置上报（在 loop() 中调用）
     void send_position_update();
@@ -57,11 +63,13 @@ public:
 
 private:
     static const int CMD_LENGTH = 8;
-    static const int MSG_LENGTH = 24;
-    
+    static const int MSG_LENGTH = 24;            // 命令响应包长度（兼容旧 Squid）
+    static const int EXTENDED_MSG_LENGTH = 40;   // 扩展位置广播包长度（octoaxesplus 8 轴）
+
     // 协议标识符
     static const byte DEBUG_PROTOCOL_HEADER_1 = 0x55;
     static const byte DEBUG_PROTOCOL_HEADER_2 = 0xAA;
+    static const byte EXTENDED_POS_CMD_ID    = 0xFD;  // 扩展位置广播包 cmd_id
     
     byte buffer_rx[512];
     volatile int buffer_rx_ptr;

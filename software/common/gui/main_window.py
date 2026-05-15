@@ -831,30 +831,37 @@ class TeensyControlGUI(QMainWindow):
         self.log(data)
 
     def handle_binary_response(self, data: bytes):
-        """处理固件 24 字节二进制位置上报包（不写入日志，10ms 周期调用）。
+        """处理固件二进制位置上报包（不写入日志，10ms 周期调用）。
 
-        响应包格式：
-          byte[0]     : cmd_id
-          byte[1]     : 状态 (0=完成, 1=运动中, 2=CRC错误)
-          byte[2-5]   : X 轴位置（int32 大端序；编码器使能时为 ENC_POS，否则为 XACTUAL）
-          byte[6-9]   : Y 轴位置
-          byte[10-13] : Z 轴位置
-          byte[14-17] : W 轴位置
-          byte[18]    : 状态位（bit0=摇杆按钮）
-          byte[19-21] : 保留
-          byte[22]    : 固件版本（高半字节=主版本，低半字节=次版本）
-          byte[23]    : CRC-8-CCITT
+        支持两种长度：
+        - 24 字节（octoaxes 主线 / octoaxesplus 命令响应）：X/Y/Z/W 4 个 slot
+        - 40 字节（octoaxesplus 扩展位置广播，cmd_id=0xFD）：8 个 icID slot
+          详见 documents/octoaxesplus_protocol_v2_40byte.md
         """
         if len(data) < 24:
             return
 
         import struct
-        steps = {
-            "X": struct.unpack('>i', data[2:6])[0],
-            "Y": struct.unpack('>i', data[6:10])[0],
-            "Z": struct.unpack('>i', data[10:14])[0],
-            "W": struct.unpack('>i', data[14:18])[0],
-        }
+        EXTENDED_POS_CMD_ID = 0xFD
+
+        # 根据包长度 + cmd_id 选择解析方式
+        if len(data) == 40 and data[0] == EXTENDED_POS_CMD_ID:
+            # 40 字节扩展位置包：按 firmware icID 索引提取 8 个 int32
+            positions_by_icid = struct.unpack('>8i', data[2:34])
+            # 通过 AXIS_CONFIG[axis]["index"] 反查 icID → 上位机 axis 名
+            steps = {}
+            for axis_name, cfg in AXIS_CONFIG.items():
+                ic = cfg.get("index", -1)
+                if 0 <= ic < 8:
+                    steps[axis_name] = positions_by_icid[ic]
+        else:
+            # 24 字节包：按硬编码 slot 顺序
+            steps = {
+                "X": struct.unpack('>i', data[2:6])[0],
+                "Y": struct.unpack('>i', data[6:10])[0],
+                "Z": struct.unpack('>i', data[10:14])[0],
+                "W": struct.unpack('>i', data[14:18])[0],
+            }
         fw_status = data[1]   # 0=COMPLETED, 1=IN_PROGRESS, 2=CRC_ERROR
         moving_str = "YES" if fw_status == 1 else "NO"
         state_str  = "MOVING" if fw_status == 1 else "IDLE"

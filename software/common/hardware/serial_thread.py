@@ -30,7 +30,9 @@ class SerialThread(QThread):
     start_timer_signal = pyqtSignal()
 
     # 固件响应包长度（与固件 MSG_LENGTH 一致）
-    RESPONSE_LENGTH = 24
+    RESPONSE_LENGTH = 24                  # 命令响应 / octoaxes 主线广播长度
+    EXTENDED_RESPONSE_LENGTH = 40         # octoaxesplus 扩展位置广播长度
+    EXTENDED_POS_CMD_ID = 0xFD            # 扩展位置广播 cmd_id 标识
 
     def __init__(self, port, baudrate=115200):
         super().__init__()
@@ -182,13 +184,25 @@ class SerialThread(QThread):
     def _parse_incoming(self, buf: bytearray) -> bytearray:
         """从字节缓冲区中识别并消费二进制响应包和 ASCII 文本行。
 
-        二进制响应包：RESPONSE_LENGTH(24) 字节，最后一字节是 CRC-8-CCITT。
-        ASCII 调试行：以可打印字符开头，\n 结尾。
-        两者交织出现（固件调试构建），逐字节判断。
+        二进制响应包：
+          - 24 字节标准包（旧 Squid / octoaxes 主线 / octoaxesplus 命令响应）
+          - 40 字节扩展位置广播（octoaxesplus 周期性上报，首字节 cmd_id=0xFD）
+        ASCII 调试行：以可打印字符开头，\\n 结尾。
+        三者交织出现，逐字节判断。优先级：40 字节 (cmd_id=0xFD) > 24 字节 > ASCII。
         """
         RL = self.RESPONSE_LENGTH
+        ERL = self.EXTENDED_RESPONSE_LENGTH
+        EXT_CMD = self.EXTENDED_POS_CMD_ID
         while len(buf) > 0:
-            # ── 优先尝试匹配二进制响应包 ──────────────────────────────────
+            # ── 先尝试匹配 40 字节扩展位置包（首字节 cmd_id=0xFD） ─────────
+            if len(buf) >= ERL and buf[0] == EXT_CMD:
+                candidate = bytes(buf[:ERL])
+                if self._validate_response_crc(candidate):
+                    self.binary_response.emit(candidate)
+                    del buf[:ERL]
+                    continue
+
+            # ── 然后尝试匹配 24 字节包 ────────────────────────────────────
             if len(buf) >= RL:
                 candidate = bytes(buf[:RL])
                 if self._validate_response_crc(candidate):
@@ -218,8 +232,13 @@ class SerialThread(QThread):
         return buf
 
     def _validate_response_crc(self, data: bytes) -> bool:
-        """验证 RESPONSE_LENGTH(24) 字节响应包的 CRC-8-CCITT（对 byte[0..22] 计算，byte[23] 是校验）"""
-        if len(data) != self.RESPONSE_LENGTH:
+        """验证响应包 CRC-8-CCITT（最后一字节是校验，对前面所有字节计算）。
+
+        支持两种长度：
+          - 24 字节（标准）
+          - 40 字节（octoaxesplus 扩展位置广播）
+        """
+        if len(data) not in (self.RESPONSE_LENGTH, self.EXTENDED_RESPONSE_LENGTH):
             return False
         expected = self.crc_calculator.calculate_checksum(data[:-1])
         return data[-1] == expected
