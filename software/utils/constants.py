@@ -15,9 +15,10 @@
 # 查询的固件型号筛选实际渲染的轴控件（Phase 3.2 待落地，当前所有条目都会
 # 被 GUI 遍历显示）。
 #
-# Z1/F1 与 Z/W 共享同一个固件 axisIndex（运行时只能加载其中一组，由
-# enabled_for 互斥）。axesmrg.cpp::beginAll 同时接受 "Z"/"Z1"、"W"/"F1"
-# 两种 axisName 别名映射到同一 AxisConfig。
+# octoaxes 主线（7 轴）和 octoaxesplus 双相机（5 轴 XYZW1W2）共享 firmware
+# axisIndex 空间。X / Y / Z 在两者间 byte-identical；W / W1 / W2 在 firmware
+# 是 FilterWheel 类（W_AXIS 模板），不同 axisName 由 axesmrg.cpp::beginAll 派发到
+# 同/不同的 AxisConfig 模板。
 #
 # actuator_* 字段对应 firmware/config.h AxisConstDefinition 默认值，
 # 上位机启动时通过 SET_LEAD_SCREW_PITCH / CONFIGURE_STEPPER_DRIVER 下发覆盖
@@ -84,7 +85,7 @@ AXIS_CONFIG = {
         "actuator_microstepping": 256,
         "actuator_motor_current_ma": 500,
         "actuator_motor_hold_ratio": 0.5,
-        "enabled_for": ["octoaxes"],
+        "enabled_for": ["octoaxes", "octoaxesplus"],
     },
     "W": {
         "display_name": "Filter Wheel 1 - w_axis",
@@ -135,35 +136,17 @@ AXIS_CONFIG = {
     },
 
     # ────────────────────────────────────────────────────────────────────────
-    # octoaxesplus 双相机轴（squid++ 8 轴扩展）
-    # 复用同类硬件参数：Z1/Z2 同 Z、F1/F2 同 W、R/T 同 E1
-    # 实测后按需单独调整
+    # octoaxesplus 双相机轴（squid++ XYZW1W2 五轴方案，2026-05-15 起）
+    # W1 / W2 = 滤光转盘，firmware 用 FilterWheel 类
+    # W1 占用原 8 轴方案 Z2 的 HC154 CS（通道 6），W2 占用原 T 的 CS（通道 4）
     # ────────────────────────────────────────────────────────────────────────
-    "Z1": {
-        "display_name": "Step Motor - z1_axis (Focus 1)",
-        "type": "step_motor",
-        "has_limits": True,
-        "limits": (-6000, 6000),
-        "movement_sign": -1,
-        "index": 2,  # 与 octoaxes 的 Z 共用 firmware icID=2（互斥 enabled_for 保证只激活一个）
-        "default_velocity": 3.0,
-        "default_acceleration": 20.0,
-        "has_encoder": False,
-        "encoder_transitions_per_rev": 3000,
-        "encoder_flip_direction": True,
-        "actuator_screw_pitch_mm": 0.3,
-        "actuator_microstepping": 256,
-        "actuator_motor_current_ma": 500,
-        "actuator_motor_hold_ratio": 0.5,
-        "enabled_for": ["octoaxesplus"],
-    },
-    "F1": {
-        "display_name": "Filter Wheel 1 - f1_axis",
+    "W1": {
+        "display_name": "Filter Wheel 1 - w1_axis",
         "type": "filter_wheel",
         "has_limits": False,
         "limits": (0, 7),
         "movement_sign": 1,
-        "index": 3,  # 与 octoaxes 的 W 共用 firmware icID=3
+        "index": 3,  # firmware icID=3
         "has_encoder": False,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
@@ -171,58 +154,18 @@ AXIS_CONFIG = {
         "actuator_microstepping": 8,
         "enabled_for": ["octoaxesplus"],
     },
-    "Z2": {
-        "display_name": "Step Motor - z2_axis (Focus 2)",
-        "type": "step_motor",
-        "has_limits": True,
-        "limits": (-6000, 6000),
-        "movement_sign": -1,
-        "index": 4,
-        "default_velocity": 3.0,
-        "default_acceleration": 20.0,
-        "has_encoder": False,
-        "encoder_transitions_per_rev": 3000,
-        "encoder_flip_direction": True,
-        "actuator_screw_pitch_mm": 0.3,
-        "actuator_microstepping": 256,
-        "actuator_motor_current_ma": 500,
-        "actuator_motor_hold_ratio": 0.5,
-        "enabled_for": ["octoaxesplus"],
-    },
-    "F2": {
-        "display_name": "Filter Wheel 2 - f2_axis",
+    "W2": {
+        "display_name": "Filter Wheel 2 - w2_axis",
         "type": "filter_wheel",
         "has_limits": False,
         "limits": (0, 7),
         "movement_sign": 1,
-        "index": 5,
+        "index": 4,  # firmware icID=4
         "has_encoder": False,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 100.0,
         "actuator_microstepping": 8,
-        "enabled_for": ["octoaxesplus"],
-    },
-    "R": {
-        "display_name": "Objective Changer - r_axis (Rotation)",
-        "type": "objective",
-        "has_limits": False,
-        "limits": (0, 4),
-        "movement_sign": 1,
-        "index": 6,
-        "actuator_screw_pitch_mm": 1.0,
-        "actuator_microstepping": 64,
-        "enabled_for": ["octoaxesplus"],
-    },
-    "T": {
-        "display_name": "Objective Changer - t_axis (Translation)",
-        "type": "objective",
-        "has_limits": False,
-        "limits": (0, 4),
-        "movement_sign": 1,
-        "index": 7,
-        "actuator_screw_pitch_mm": 1.0,
-        "actuator_microstepping": 64,
         "enabled_for": ["octoaxesplus"],
     },
 }
@@ -264,7 +207,7 @@ def axes_for_model(model: str) -> dict:
 
     用法：
         from utils.constants import AXIS_CONFIG, axes_for_model
-        active = axes_for_model("octoaxesplus")  # 返回 {"X","Y","Z1","F1","Z2","F2","R","T"}
+        active = axes_for_model("octoaxesplus")  # 返回 {"X","Y","Z","W1","W2"}
 
     GUI 启动时根据 S:HWINFO 查询的固件型号筛选实际渲染的轴。
     若 model 不在 FIRMWARE_MODELS 内，回退到 DEFAULT_FIRMWARE_MODEL。

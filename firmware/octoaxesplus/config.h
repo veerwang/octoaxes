@@ -67,16 +67,18 @@ namespace Pins {
     // 单套时钟已够）。CLOCK_EXPAND 仅作为 tmc_ic_configs 的运行时标识保留
 
     // 轴 SPI 片选（HC154 通道号，非 GPIO）
-    const int X_AXIS_CS = 10;  // HC154 Y10 = AXIS_X
-    const int Y_AXIS_CS = 9;   // HC154 Y9  = AXIS_Y
-    const int Z_AXIS_CS = 8;   // HC154 Y8  = AXIS_Z1（Z 主轴）
-    const int W_AXIS_CS = 7;   // HC154 Y7  = AXIS_F1（占位：squid++ 原 W=滤光转盘 1）
+    const int X_AXIS_CS  = 10;  // HC154 Y10 = AXIS_X
+    const int Y_AXIS_CS  = 9;   // HC154 Y9  = AXIS_Y
+    const int Z_AXIS_CS  = 8;   // HC154 Y8  = AXIS_Z（主焦点 Z）
+    const int W1_AXIS_CS = 6;   // HC154 Y6  = AXIS_W1（滤光转盘 1，占用原 Z2 CS）
+    const int W2_AXIS_CS = 4;   // HC154 Y4  = AXIS_W2（滤光转盘 2，占用原 T  CS）
 
-    // squid++ 双相机扩展轴（HC154 通道号）
-    const int Z2_AXIS_CS = 6;   // HC154 Y6 = AXIS_Z2（双焦点 Z2）
-    const int F2_AXIS_CS = 5;   // HC154 Y5 = AXIS_F2（双滤光轮 F2）
-    const int R_AXIS_CS  = 3;   // HC154 Y3 = AXIS_R （物镜转换器 旋转）
-    const int T_AXIS_CS  = 4;   // HC154 Y4 = AXIS_T （物镜转换器 平移）
+    // 历史别名（保留方便未来恢复 squid++ 8 轴方案，当前未被代码引用）
+    const int W_AXIS_CS  = 7;   // HC154 Y7  = 原 AXIS_F1（octoaxes 主线 W 滤光转盘）
+    const int Z2_AXIS_CS = 6;   // [deprecated] 现由 W1_AXIS_CS=6 取代
+    const int F2_AXIS_CS = 5;   // HC154 Y5  = 原 AXIS_F2（未使用，预留）
+    const int R_AXIS_CS  = 3;   // HC154 Y3  = 原 AXIS_R （未使用，预留）
+    const int T_AXIS_CS  = 4;   // [deprecated] 现由 W2_AXIS_CS=4 取代
 
     // EXPAND1-4_AXIS_CS 旧别名已于 2026-05-13 删除（审计发现完全无引用）
     // squid++ 用 Z2_AXIS_CS=6 / F2_AXIS_CS=5 / R_AXIS_CS=3 / T_AXIS_CS=4 取代
@@ -156,12 +158,14 @@ namespace Pins {
         HC154_MCP23S17_1   = 0,   // 扩展 IO #1（8 轴 INTR/TARGET）
         HC154_DAC80508_2   = 1,
         HC154_DAC80508_1   = 2,   // 8LED 模拟信号输出
-        HC154_AXIS_R       = 3,
-        HC154_AXIS_T       = 4,
-        HC154_AXIS_F2      = 5,   // 滤光转盘 F2
-        HC154_AXIS_Z2      = 6,
-        HC154_AXIS_F1      = 7,   // 滤光转盘 F1
-        HC154_AXIS_Z1      = 8,
+        HC154_AXIS_R       = 3,   // [unused] 物镜旋转 R
+        HC154_AXIS_T       = 4,   // [unused, alias of W2] 物镜平移 T
+        HC154_AXIS_W2      = 4,   // 滤光转盘 W2（当前用途，与 T 同通道）
+        HC154_AXIS_F2      = 5,   // [unused] 滤光转盘 F2
+        HC154_AXIS_Z2      = 6,   // [unused, alias of W1] 双焦点 Z2
+        HC154_AXIS_W1      = 6,   // 滤光转盘 W1（当前用途，与 Z2 同通道）
+        HC154_AXIS_F1      = 7,   // [unused] 滤光转盘 F1
+        HC154_AXIS_Z1      = 8,   // 主焦点 Z（firmware 用名 "Z"，上位机 index=2）
         HC154_AXIS_Y       = 9,
         HC154_AXIS_X       = 10,
         HC154_EXPAND_NSCS1 = 11,
@@ -570,23 +574,23 @@ namespace AxisConfigs {
     };
 
     // ============================================================================
-    // squid++ 双相机扩展轴配置（Z2/F2/R/T）
-    // 硬件参数采用安全默认：Z2 同 Z1（双焦点）、F2 同 F1（双滤光轮）、
-    // R/T 同 EXPAND1（物镜转换器，按现有 Objectives 默认）
-    // 实测后按需调整 motorCurrent / screwPitch / homing_direct 等参数
+    // squid++ 双相机扩展轴配置
+    // 当前 XYZW1W2 五轴方案：W1 / W2 = 滤光转盘（W_AXIS 模板 const struct copy）
+    // 预留 Z2/F2/R/T 别名供未来 8 轴扩展（暂未实例化，无副作用）
+    // 实测后按需把 `=` 改成完整初始化器单独调参数
     // ============================================================================
 
-    // Z2 轴配置 (双焦点 Z2，与 Z1 同款电机)
-    const Axis::AxisConfig Z2_AXIS = Z_AXIS;
+    // W1 轴配置 (滤光转盘 1，CS=HC154 通道 6，与 W_AXIS 滤光转盘默认参数一致)
+    const Axis::AxisConfig W1_AXIS = W_AXIS;
 
-    // F2 轴配置 (双滤光轮 F2，与 F1 同款滤光转盘)
-    const Axis::AxisConfig F2_AXIS = W_AXIS;
+    // W2 轴配置 (滤光转盘 2，CS=HC154 通道 4，与 W_AXIS 滤光转盘默认参数一致)
+    const Axis::AxisConfig W2_AXIS = W_AXIS;
 
-    // R 轴配置 (物镜转换器旋转，与 EXPAND1 物镜默认参数一致)
-    const Axis::AxisConfig R_AXIS = EXPAND1_AXIS;
-
-    // T 轴配置 (物镜转换器平移，与 EXPAND1 物镜默认参数一致)
-    const Axis::AxisConfig T_AXIS = EXPAND1_AXIS;
+    // ── 预留扩展配置（未实例化，保留 const struct copy 模板） ──────────────────
+    const Axis::AxisConfig Z2_AXIS = Z_AXIS;       // 双焦点 Z2，与 Z1 同款电机
+    const Axis::AxisConfig F2_AXIS = W_AXIS;       // 双滤光轮 F2，与 F1 同款
+    const Axis::AxisConfig R_AXIS  = EXPAND1_AXIS; // 物镜转换器旋转
+    const Axis::AxisConfig T_AXIS  = EXPAND1_AXIS; // 物镜转换器平移
 
     // 扩展轴4配置 (filter wheel)
     const Axis::AxisConfig EXPAND4_AXIS = {

@@ -61,6 +61,10 @@ bool AxisManager::beginAll() {
         success = axes[i]->begin(AxisConfigs::Z_AXIS);
       } else if (axisName.equals("W") || axisName.equals("F1")) {
         success = axes[i]->begin(AxisConfigs::W_AXIS);
+      } else if (axisName.equals("W1")) {
+        success = axes[i]->begin(AxisConfigs::W1_AXIS);
+      } else if (axisName.equals("W2")) {
+        success = axes[i]->begin(AxisConfigs::W2_AXIS);
       } else if (axisName.equals("Z2")) {
         success = axes[i]->begin(AxisConfigs::Z2_AXIS);
       } else if (axisName.equals("F2")) {

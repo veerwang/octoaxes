@@ -84,35 +84,25 @@ bool initializeSystem() {
   // (octoaxes 主线的 swap 是为了兼容老 Squid PCB 的反向接线，详见 octoaxes/octoaxes.ino)
   //
   // ──────────────────────────────────────────────────────────────────────
-  // 当前模式：XYZ 三轴调试（2026-05-13 起）
+  // 当前模式：XYZW1W2 五轴（2026-05-15 起）
   // ──────────────────────────────────────────────────────────────────────
-  // 仅启用 X / Y / Z 三轴。Z 轴 axisName 用 "Z" 而非 "Z1"（以兼容
-  // commandprocessor.cpp 硬编码的 findAxisByName("Z")）。
-  // axesmrg.cpp::beginAll 已支持 "Z"/"Z1" 双名映射到 AxisConfigs::Z_AXIS。
-  //
-  // 恢复完整 8 轴只需：
-  //   1) 取消下面 5 个 Axis* 的注释 + 取消 addAxis 中对应行的注释
-  //   2) Z 轴 axisName 按需改回 "Z1"（届时上位机命令派发也要适配 Z1/F1 等名称）
+  // 启用 X / Y / Z / W1 / W2 五轴：
+  //   W1 / W2 为滤光转盘（FilterWheel），CS 占用原 squid++ 8 轴方案的 Z2/T 通道：
+  //     W1: HC154 通道 6（原 AXIS_Z2 资源）
+  //     W2: HC154 通道 4（原 AXIS_T  资源）
+  // Z 轴 axisName 用 "Z"（与上位机一致；axesmrg.cpp::beginAll 同时支持 "Z"/"Z1"）。
   // ──────────────────────────────────────────────────────────────────────
-  Axis *yAxis  = new StepAxis   (Pins::Y_AXIS_CS,  0, "Y");   // HC154 通道 9 = 物理 Y 电机
-  Axis *xAxis  = new StepAxis   (Pins::X_AXIS_CS,  1, "X");   // HC154 通道 10 = 物理 X 电机
-  Axis *zAxis  = new StepAxis   (Pins::Z_AXIS_CS,  2, "Z");   // HC154 通道 8 = Z1（主焦点，调试期 axisName 用 "Z"）
-  // squid++ 双相机扩展 5 轴 —— XYZ 调试期暂禁用 ─────────────────────
-  // Axis *f1Axis = new FilterWheel(Pins::W_AXIS_CS,  3, "F1");  // HC154 通道 7 = F1（滤光转盘 1）
-  // Axis *z2Axis = new StepAxis   (Pins::Z2_AXIS_CS, 4, "Z2");  // HC154 通道 6 = Z2（双焦点）
-  // Axis *f2Axis = new FilterWheel(Pins::F2_AXIS_CS, 5, "F2");  // HC154 通道 5 = F2（滤光转盘 2）
-  // Axis *rAxis  = new Objectives (Pins::R_AXIS_CS,  6, "R");   // HC154 通道 3 = R（物镜转换器旋转）
-  // Axis *tAxis  = new Objectives (Pins::T_AXIS_CS,  7, "T");   // HC154 通道 4 = T（物镜转换器平移）
+  Axis *yAxis  = new StepAxis    (Pins::Y_AXIS_CS,  0, "Y");    // icID=0, HC154 ch9  = 物理 Y 电机
+  Axis *xAxis  = new StepAxis    (Pins::X_AXIS_CS,  1, "X");    // icID=1, HC154 ch10 = 物理 X 电机
+  Axis *zAxis  = new StepAxis    (Pins::Z_AXIS_CS,  2, "Z");    // icID=2, HC154 ch8  = 主焦点 Z
+  Axis *w1Axis = new FilterWheel (Pins::W1_AXIS_CS, 3, "W1");   // icID=3, HC154 ch6  = 滤光转盘 1
+  Axis *w2Axis = new FilterWheel (Pins::W2_AXIS_CS, 4, "W2");   // icID=4, HC154 ch4  = 滤光转盘 2
 
-  // 按 axisIndex 顺序添加: Y(0), X(1), Z(2)  [F1(3)/Z2(4)/F2(5)/R(6)/T(7) 调试期暂禁用]
-  // 顺序必须与 tmc/hal/TMC_SPI.cpp 的 tmc_ic_configs[] HC154 分支一致
-  // tmc_ic_configs[] 数组保持 8 项（icID 3-7 槽位空置但不被访问，无副作用）
+  // 按 axisIndex 顺序添加；顺序必须与 tmc/hal/TMC_SPI.cpp 的 tmc_ic_configs[] HC154 分支一致
+  // tmc_ic_configs[] 数组保持 8 项（icID 5-7 槽位空置但不被访问，无副作用）
   if (!axisManager.addAxis(yAxis)  || !axisManager.addAxis(xAxis)  ||
-      !axisManager.addAxis(zAxis)
-      // || !axisManager.addAxis(f1Axis)
-      // || !axisManager.addAxis(z2Axis) || !axisManager.addAxis(f2Axis)
-      // || !axisManager.addAxis(rAxis)  || !axisManager.addAxis(tAxis)
-      ) {
+      !axisManager.addAxis(zAxis)  || !axisManager.addAxis(w1Axis) ||
+      !axisManager.addAxis(w2Axis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");
     return false;
   }
