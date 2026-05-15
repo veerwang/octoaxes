@@ -55,22 +55,25 @@ documents/              文档资料：
 
 ## 当前状态
 
-**最后更新**: 2026-05-15
-**当前硬件**: octoaxesplus 在用 TMC2240 驱动板（XYZ 三轴已实测 bring-up 通过），W1/W2 滤光转盘硬件待接入
+**最后更新**: 2026-05-15（下半场收官）
+**当前硬件**: octoaxesplus TMC2240 驱动板；XYZ 三轴 + **W2 滤光转盘已实测端到端通过**；W1 PCB CLK 走线缺失（硬件 bug）
 **当前进度（octoaxes 主线，来自 develop）**: Z 编码器启用 + XYZ 速度基线 + Homing 调试打印清理 + `Axis::moveRelativeMicrosteps` 静默 reject 修复 + 旧 Squid X 卡死 root cause + 协议层下降沿立即发包优化 + Y homing 异响方案（256 微步 + 30 mm/s）；响应包保持 24 字节与旧 Squid 兼容
 **当前进度（octoaxesplus 双相机变体，来自 maxpro）**:
 - **2026-05-14 IC4 虚焊 root cause 修好**：SPI 通信端到端打通，X/Y 轴 PyQt 运动验证通过
-- **2026-05-15 启用 XYZW1W2 五轴方案**：W1/W2 是滤光转盘，CS 占用原 Z2/T 通道
-  - W1 = HC154 通道 6（FilterWheel，icID=3）
-  - W2 = HC154 通道 4（FilterWheel，icID=4）
-- **2026-05-15 软件目录拆分**：software 拆成 common/ + octoaxes/ + octoaxesplus/，profile constants.py 各自独立
-- 修复 `Axis::begin` csPin 双义性 + `motor_initMotionController` 返回值未检查两个隐患
-- `S:SPITEST` 寄存器地址笔误修复（0x09 → 0x7F）
+- **2026-05-15 上半场**：启用 XYZW1W2 五轴 firmware + 软件目录拆分 octoaxes/octoaxesplus/common + axis.cpp 两隐患修复 + S:SPITEST 寄存器笔误修复
+- **2026-05-15 下半场（端到端打通 W2）**：
+  - **协议 v2 实施**：octoaxesplus 24→40 字节扩展位置广播（cmd_id=0xFD，按 icID 索引 8 位置），octoaxes 24 字节不变，GUI 自动识别
+  - **W1/W2 firmware handler**：handleMoveW2 / handleMoveToW2 实施 + MOVETO_W2=43 cmd code + handleHomeOrZero 加 W→W1 兜底
+  - **GUI 修复**：W1/W2 用 AXIS_CONFIG["type"] 动态判断滤光轮菜单；send_homing/previous/next 支持 W1/W2；AxisManager 不再硬编码 7 轴
+  - **profile 隔离工程化**：verify_profiles.py 自动验证两 profile + CLAUDE.md common/ 修改原则
+  - **W2 用户实测确认**：GUI 上 W2 滤光转盘 Previous/Next/Homing 按钮均正常控制电机转动
+  - **W1 PCB 根因定位**：W1 连接器 pin 16 (CLK) = 0V（拔板/插板都 0V），主板走线未连，PCB 硬件 bug
 **下一步**:
-- Z 轴运动 PyQt 验证
-- W1/W2 滤光转盘硬件接入 + 转动校准（轴默认电流 / 微步参数复用 W_AXIS 模板，实测后可单独调）
-- POWER_GOOD bypass 工作树改动 → 待 PCB 飞线核查后撤销
-- bring-up 工具（clk_test/hc154_test/pg_test/pin13_blink）归宿决定
+- W1 PCB CLK 走线飞线（firmware/software 都已就位，CLK 一通即用）
+- Z 轴 PyQt 运动单独验证（X/Y/W2 已通）
+- bring-up 工具（clk_test/hc154_test/pg_test/pin13_blink）归宿决定（.gitignore 或归档）
+- C 维度 HOME 复杂场景（AXES_XY 联合归位 + W1/W2 homing 实测）
+- 后续 8 轴扩展（F1/Z2/F2/R/T）— 协议层已铺好
 
 ### octoaxesplus 工程（squid++ 双相机变体）
 

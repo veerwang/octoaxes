@@ -18,6 +18,22 @@
 
 ## 待办
 
+### 2026-05-15 octoaxesplus W2 端到端打通 + 协议 v2 + GUI 修复全套
+
+- [x] **W2 端到端运动验证通过**（2026-05-15 用户实测确认）
+- [x] **协议 v2 (24→40 字节)**：firmware sendExtendedResponse + GUI 双长度解析（commit 2c59071）
+- [x] **W1/W2 firmware MOVE/MOVETO handler 实施**（commit 408a8e0）
+- [x] **W1/W2 滤光转盘 GUI 菜单**：用 AXIS_CONFIG["type"] 动态判断（commit ba77b20）
+- [x] **W1/W2 GUI 按钮（Homing/Previous/Next）响应修复**（commit 3f3de06）
+- [x] **profile 隔离工程化**：verify_profiles.py 自动验证 + CLAUDE.md common/ 修改原则（21ac3ca / c905168）
+- [x] **AxisManager 不再硬编码 7 轴**（commit 7517f7a）
+- [x] **constants.py 去油**：octoaxesplus profile 只 5 轴纯净（commit 120972f）
+- [x] **POWER_GOOD bypass 撤销**：电源线飞线修好后 firmware 恢复原 LTC2903 轮询逻辑
+- [ ] **W1 PCB CLK 走线缺失**：万用表确诊 W1 连接器 pin 16 = 0V，主板未连。**PCB 硬件问题**，firmware/software 已就位，等飞线（CLK 一通 W1 自动可用）
+- [ ] **Z 轴 PyQt 运动单独验证**（X/Y 已通，Z 待确认）
+- [ ] **bring-up 工具归宿决策**：clk_test/hc154_test/pg_test/pin13_blink 4 个工程 → `.gitignore` 还是归档到 `firmware/tests/`
+- [ ] **C 维度 HOME 复杂场景**：handleHomeOrZero AXES_XY 联合归位等扩展
+
 ### 2026-05-13 octoaxesplus 真机调试 — 偏离 octoaxes 基线修改待审查
 
 > **前提**：firmware/octoaxes 长期硬件验证可行（XYZW + Y homing 256/30 +

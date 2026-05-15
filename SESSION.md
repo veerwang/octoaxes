@@ -6,7 +6,87 @@
 
 ## 最新会话
 
-**日期**: 2026-05-15
+**日期**: 2026-05-15（下半场）
+**分支**: maxpro
+**位置**: W2 端到端打通 + 协议 v2 实施 + GUI 滤光转盘 UI 修复 + profile 隔离工具化
+
+### 本次完成（接续上半场之后又 9 个 commits，今日累计 14 个）
+
+#### 下半场 9 个 commits（按时序）
+
+```
+3f3de06 fix: W1/W2 GUI 按钮（Homing/Previous/Next）不响应       ← 收官
+ba77b20 fix: W1/W2 滤光转盘菜单 — 用 AXIS_CONFIG["type"] 动态判断
+2c59071 feat(protocol v2): octoaxesplus 24→40 字节扩展位置广播
+408a8e0 feat(octoaxesplus): W1/W2 MOVE/MOVETO firmware handler
+21ac3ca test(software/common): verify_profiles.py 自动验证 profile 隔离
+c905168 fix(software/common): define.py 补 W1/W2 命令映射 + CLAUDE.md common/ 原则
+ff308ca docs(octoaxesplus): 协议 v2 设计文档
+120972f fix(software/octoaxesplus): constants.py 去油 5 轴
+7517f7a fix(software/common): AxisManager / axis_enabled_states 不硬编码 7 轴
+```
+
+#### 关键技术里程碑
+
+1. **W2 端到端运动打通** ✅（用户实测确认）
+   - firmware handleMoveW2 / handleMoveToW2 实施
+   - firmware handleHomeOrZero 加 W→W1 兜底
+   - GUI Previous/Next/Homing 按钮通
+
+2. **24→40 字节位置广播协议 v2 实施**
+   - cmd_id=0xFD 标识扩展包；按 firmware icID 索引 8 个 int32 位置
+   - firmware sendExtendedResponse 新增；send_position_update 改用扩展包
+   - serial_thread.py 双长度解析；handle_binary_response 用 AXIS_CONFIG[axis]["index"] 反查
+   - octoaxes 24 字节包不动；octoaxesplus W1/W2 State/Position 现在能实时更新
+
+3. **profile 隔离工程化**
+   - software/common/ 修改原则写入 CLAUDE.md
+   - verify_profiles.py 自动验证两 profile 隔离（AXIS_CONFIG/AxisManager/命令映射）
+   - 修复 AxisManager 硬编码 7 轴；W1/W2 状态更新通；GUI 滤光转盘菜单按 type 判断
+
+4. **W1 PCB 根因定位**
+   - 万用表测：W1 连接器 pin 16 (CLK) = 0V（拔板 0V，插板 1V）— TMC4361_CLK 走线在主板上**未连接到 W1 槽位**
+   - PCB 硬件 bug，firmware 不能修复，记录待后续 PCB 改版/飞线
+
+### 关键决策记录（下半场）
+
+1. **协议 v2 实施而非延后**：W1/W2 GUI 状态显示需要 40 字节包；用户选择"现在做"
+2. **octoaxes 主线保持 24 字节**：兼容旧 Squid GUI
+3. **40 字节包按 icID 索引**：协议与轴命名解耦，便于未来扩展
+4. **W2 Homing 协议码复用 AXIS.W=5**：firmware 端 W→W1 兜底（findAxisByNameWithFallback）
+5. **GUI 类型判断改用 AXIS_CONFIG[axis]["type"]**：filter_wheel / objective / step_motor 三种类型动态分发
+
+### 当前状态
+
+- ✅ X / Y / Z PyQt 运动验证通过（XY 昨日，Z 今日上半场未单独验证但等同）
+- ✅ W2 全链路（firmware 协议、SPI 通信、GUI 菜单、GUI 按钮）打通，电机实际转动确认
+- ❌ W1 PCB CLK 走线未接（硬件 bug，firmware/software 已就位，等飞线）
+- ✅ 24/40 字节协议双轨在 GUI 自动识别（octoaxes 24 / octoaxesplus 40）
+- ✅ verify_profiles.py 工具化 common/ 修改的 profile 隔离验证
+- ⏳ 未跟踪：firmware/clk_test/ hc154_test/ pg_test/ pin13_blink/ 4 个 bring-up 工具（待 .gitignore 或归档决策）
+- ⏳ 未跟踪：documents/squid++（双相机）原理图.pdf
+
+### 下次继续
+
+1. **W1 PCB CLK 飞线**（你已知 PCB 缺陷，需手工飞线后 W1 自动可用）
+2. **Z 轴 PyQt 运动单独验证**（X/Y 已通，Z 待确认）
+3. **C 维度 HOME 复杂场景**：handleHomeOrZero 的 AXES_XY 联合归位等扩展
+4. **bring-up 工具归宿**：clk_test/hc154_test/pg_test/pin13_blink → `.gitignore` 还是归档到 `firmware/tests/`
+5. **8 轴扩展**（Z2/F2/R/T）— 协议层、commandprocessor 已铺好，需要时实例化即可
+6. **TMC2240 StallGuard4 调优** + **W 轴 60ms 优化**（octoaxes 主线遗留）
+
+### 备注
+
+- 今日单日 14 个 commits 接近极限节奏；workflow: 设计文档先行 → 实施 → 测试 → 提交 多次循环
+- 协议 v2 实施验证了"先文档后代码"流程，避免实施时反复推翻
+- profile 拆分后 common/ 隔离原则非常重要，违反一次（241399d → 后续 120972f / 7517f7a 等多次补救）
+- bring-up 反面教材：今日中段出现"在错的 cwd 烧 octoaxes 当 octoaxesplus"事件（pio 上传卡 USB 异常后状态混乱），通过 firmware.hex 时间戳定位
+
+---
+
+## 上一会话
+
+**日期**: 2026-05-15（上半场）
 **分支**: maxpro
 **位置**: octoaxesplus XYZW1W2 五轴方案落地 + software 目录拆分 + 文档体系完善
 
