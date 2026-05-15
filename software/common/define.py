@@ -46,6 +46,7 @@ class CMD_SET:
     MOVE_Z = 2
     MOVE_THETA = 3
     MOVE_W = 4
+    MOVE_W2 = 19   # octoaxesplus 新增（firmware config.h:MOVE_W2 已定义，handler 待实施）
 
     # 绝对移动命令
     MOVETO_X = 6
@@ -105,9 +106,10 @@ class CMD_SET:
     RESET = 255
 
 
-# 轴名称到相对移动命令的映射
+# 轴名称到相对移动命令的映射（两 profile 共享：octoaxes 7 轴 + octoaxesplus 5 轴的并集）
 # 注意：命令码与轴索引不是简单的加法关系
 AXIS_MOVE_CMD_MAP = {
+    # octoaxes 主线（7 轴）
     "X": CMD_SET.MOVE_X,      # 0
     "Y": CMD_SET.MOVE_Y,      # 1
     "Z": CMD_SET.MOVE_Z,      # 2
@@ -115,9 +117,12 @@ AXIS_MOVE_CMD_MAP = {
     "E1": CMD_SET.MOVE_W,     # 4 (E1 使用与 W 相同的命令，通过轴索引区分)
     "E3": CMD_SET.MOVE_Z,     # 2 (E3 使用与 Z 相同的命令，通过轴索引区分)
     "E4": CMD_SET.MOVE_W,     # 4 (E4 使用与 W 相同的命令，通过轴索引区分)
+    # octoaxesplus 双相机（W1/W2 = 滤光转盘）
+    "W1": CMD_SET.MOVE_W,     # 4 (复用 W 命令；firmware handleMoveW 待加 W→W1 兜底)
+    "W2": CMD_SET.MOVE_W2,    # 19 (专属命令；firmware handleMoveW2 当前 NOT_IMPLEMENTED 待实施)
 }
 
-# 轴名称到绝对移动命令的映射
+# 轴名称到绝对移动命令的映射（两 profile 共享）
 AXIS_MOVETO_CMD_MAP = {
     "X": CMD_SET.MOVETO_X,    # 6
     "Y": CMD_SET.MOVETO_Y,    # 7
@@ -126,4 +131,7 @@ AXIS_MOVETO_CMD_MAP = {
     "E1": CMD_SET.MOVETO_W,   # 18
     "E3": CMD_SET.MOVETO_Z,   # 8
     "E4": CMD_SET.MOVETO_W,   # 18
+    # octoaxesplus（W1/W2 暂复用 W 命令，待 firmware 提供 MOVETO_W2 独立 cmd 后改）
+    "W1": CMD_SET.MOVETO_W,   # 18 (复用 W 命令)
+    "W2": CMD_SET.MOVETO_W,   # 18 (复用 W 命令；将来 firmware 加 MOVETO_W2 时改这里)
 }
