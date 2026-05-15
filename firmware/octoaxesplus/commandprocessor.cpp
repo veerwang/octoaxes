@@ -93,7 +93,10 @@ void CommandProcessor::handleMoveW(const byte *data) {
   int32_t relative_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
+  // octoaxes 主线轴名 "W"；octoaxesplus 双相机轴名 "W1"（占用同 firmware icID=3）
+  // 兼容两种命名（参考 axesmrg.cpp::beginAll 的 "W"/"F1" 双名映射）
   Axis *axis = axisManager.findAxisByName("W");
+  if (!axis) axis = axisManager.findAxisByName("W1");
   if (axis)
     axis->moveAxis(relative_position);
 
@@ -289,7 +292,14 @@ void CommandProcessor::handleHeartbeat(const byte *data) {
 }
 
 void CommandProcessor::handleMoveW2(const byte *data) {
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: MOVE_W2");
+  int32_t relative_position =
+      int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
+              (uint32_t(data[4]) << 8) + uint32_t(data[5]));
+  Axis *axis = axisManager.findAxisByName("W2");
+  if (axis)
+    axis->moveAxis(relative_position);
+
+  DEBUG_PRINTLN("Get MoveW2 Command");
 }
 
 void CommandProcessor::handleSetTriggerMode(const byte *data) {
@@ -301,11 +311,24 @@ void CommandProcessor::handleMoveToW(const byte *data) {
   int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
+  // 同 handleMoveW：兼容 W (octoaxes) / W1 (octoaxesplus) 双命名
   Axis *axis = axisManager.findAxisByName("W");
+  if (!axis) axis = axisManager.findAxisByName("W1");
   if (axis)
     axis->moveToPositionMicrosteps(absolute_position);
 
   DEBUG_PRINTLN("Get MoveToW Command");
+}
+
+void CommandProcessor::handleMoveToW2(const byte *data) {
+  int32_t absolute_position =
+      int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
+              (uint32_t(data[4]) << 8) + uint32_t(data[5]));
+  Axis *axis = axisManager.findAxisByName("W2");
+  if (axis)
+    axis->moveToPositionMicrosteps(absolute_position);
+
+  DEBUG_PRINTLN("Get MoveToW2 Command");
 }
 
 void CommandProcessor::handleSetLimSwitchPolarity(const byte *data) {

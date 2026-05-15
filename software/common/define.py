@@ -53,6 +53,7 @@ class CMD_SET:
     MOVETO_Y = 7
     MOVETO_Z = 8
     MOVETO_W = 18
+    MOVETO_W2 = 43   # octoaxesplus W2 绝对运动（firmware config.h:MOVETO_W2 已加）
 
     # 归位命令
     HOME_OR_ZERO = 5
@@ -132,6 +133,6 @@ AXIS_MOVETO_CMD_MAP = {
     "E3": CMD_SET.MOVETO_Z,   # 8
     "E4": CMD_SET.MOVETO_W,   # 18
     # octoaxesplus（W1/W2 暂复用 W 命令，待 firmware 提供 MOVETO_W2 独立 cmd 后改）
-    "W1": CMD_SET.MOVETO_W,   # 18 (复用 W 命令)
-    "W2": CMD_SET.MOVETO_W,   # 18 (复用 W 命令；将来 firmware 加 MOVETO_W2 时改这里)
+    "W1": CMD_SET.MOVETO_W,   # 18 (复用 W 命令；firmware handleMoveToW 已加 W→W1 兜底)
+    "W2": CMD_SET.MOVETO_W2,  # 43 (专属 cmd；firmware handleMoveToW2 已实施)
 }

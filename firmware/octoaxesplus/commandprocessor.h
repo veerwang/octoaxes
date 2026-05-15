@@ -36,6 +36,7 @@ public:
     void handleMoveW2(const byte* data);
     void handleSetTriggerMode(const byte* data);
     void handleMoveToW(const byte* data);
+    void handleMoveToW2(const byte* data);
     void handleSetLimSwitchPolarity(const byte* data);
     void handleConfigureStepperDriver(const byte* data);
     void handleSetMaxVelocityAcceleration(const byte* data);

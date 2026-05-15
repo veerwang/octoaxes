@@ -676,6 +676,10 @@ void SerialProtocolHandler::processSerialStandardCommands() {
       commandProcessor.handleMoveToW(data);
       break;
 
+    case Commands::MOVETO_W2:
+      commandProcessor.handleMoveToW2(data);
+      break;
+
     case Commands::SET_LIM_SWITCH_POLARITY:
       commandProcessor.handleSetLimSwitchPolarity(data);
       break;

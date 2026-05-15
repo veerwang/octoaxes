@@ -50,6 +50,7 @@ namespace Commands {
     const int SET_WATCHDOG_TIMEOUT = 40;  // 设置串口看门狗超时（ms），使能后通信中断自动关灯
     const int SET_PIN_LEVEL = 41;
     const int HEARTBEAT = 42;             // 空操作心跳（看门狗靠收包重置，不靠此命令）
+    const int MOVETO_W2 = 43;             // octoaxesplus W2 绝对运动命令（MOVE_W2=19 的配套）
     const int INITFILTERWHEEL_W2 = 252;
     const int INITFILTERWHEEL = 253;
     const int INITIALIZE = 254;
