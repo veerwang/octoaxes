@@ -1,4 +1,5 @@
 #include "commandprocessor.h"
+#include <string.h>  // strcmp
 #include "axesmrg.h"
 #include "build_opt.h"
 #include "illumination.h"
@@ -29,6 +30,7 @@ float offset_velocity_x = 0;
 float offset_velocity_y = 0;
 
 // 协议轴值 → 轴名称（nullptr = 无效轴）
+// octoaxesplus: 协议 5 对应 W（octoaxes）/ W1（octoaxesplus）；调用方需要做双名兜底
 static const char* protocolAxisToName(uint8_t protocolAxis) {
   switch (protocolAxis) {
     case 0: return "X";
@@ -38,6 +40,17 @@ static const char* protocolAxisToName(uint8_t protocolAxis) {
     case 6: return "W2";
     default: return nullptr;
   }
+}
+
+// 找轴：先按字面 name 找，若找不到 + name="W"，再 fallback 找 "W1"
+// （octoaxes 用 "W"，octoaxesplus 用 "W1"，协议轴码=5 兼容两种命名）
+static Axis* findAxisByNameWithFallback(const char* name) {
+  if (!name) return nullptr;
+  Axis* axis = axisManager.findAxisByName(name);
+  if (axis) return axis;
+  // W → W1 兜底
+  if (strcmp(name, "W") == 0) return axisManager.findAxisByName("W1");
+  return nullptr;
 }
 
 CommandProcessor commandProcessor;
@@ -116,7 +129,7 @@ void CommandProcessor::handleHomeOrZero(const byte *data) {
     } else {
       const char *name = protocolAxisToName(data[2]);
       if (name) {
-        Axis *axis = axisManager.findAxisByName(name);
+        Axis *axis = findAxisByNameWithFallback(name);
         if (axis) axis->setCurrentPosition(0.0f);
       }
     }
@@ -149,7 +162,7 @@ void CommandProcessor::handleHomeOrZero(const byte *data) {
   } else {
     const char *name = protocolAxisToName(data[2]);
     if (name) {
-      Axis *axis = axisManager.findAxisByName(name);
+      Axis *axis = findAxisByNameWithFallback(name);
       if (axis) {
         axis->getMutableConfig().homing_direct = new_direct;
         axis->startHoming();

@@ -672,7 +672,13 @@ class TeensyControlGUI(QMainWindow):
         axis = self.get_current_axis()
 
         # 使用协议轴值（与旧 Squid AXIS 类一致），不是固件内部数组索引
-        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W}
+        # octoaxesplus W1/W2 复用 W/W2 协议轴码（firmware 端做 W→W1 兜底）
+        _AXIS_PROTOCOL = {
+            "X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z,
+            "W": AXIS.W,
+            "W1": AXIS.W,    # octoaxesplus 滤光转盘 1 — 协议码 = 5（同 W）
+            "W2": AXIS.W2,   # octoaxesplus 滤光转盘 2 — 协议码 = 6
+        }
         protocol_axis = _AXIS_PROTOCOL.get(axis)
         if protocol_axis is None:
             self.log(f"Axis {axis} does not support homing")
@@ -717,17 +723,20 @@ class TeensyControlGUI(QMainWindow):
     def previous_position(self):
         """移动到上一个位置（滤光轮/物镜）"""
         axis = self.get_current_axis()
-        if axis in ("W", "E4"):  # W 和 E4 都是滤光轮
+        # 用 AXIS_CONFIG[axis]["type"] 动态判断（profile-safe）
+        axis_type = AXIS_CONFIG.get(axis, {}).get("type")
+        if axis_type == "filter_wheel":
             self.move_filterwheel(False)
-        elif axis == "E1":
+        elif axis_type == "objective":
             self.move_objective(False)
 
     def next_position(self):
         """移动到下一个位置（滤光轮/物镜）"""
         axis = self.get_current_axis()
-        if axis in ("W", "E4"):  # W 和 E4 都是滤光轮
+        axis_type = AXIS_CONFIG.get(axis, {}).get("type")
+        if axis_type == "filter_wheel":
             self.move_filterwheel(True)
-        elif axis == "E1":
+        elif axis_type == "objective":
             self.move_objective(True)
 
     def run_w_test(self):
