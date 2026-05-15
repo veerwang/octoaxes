@@ -50,16 +50,8 @@ class TeensyControlGUI(QMainWindow):
         self.log_file = None
         self.log_file_path = os.getcwd()  # 默认当前路径
 
-        # 添加轴使能状态字典
-        self.axis_enabled_states = {
-            "X": True,
-            "Y": True,
-            "Z": True,
-            "W": True,
-            "E1": True,
-            "E3": True,
-            "E4": True,
-        }
+        # 添加轴使能状态字典（从 AXIS_CONFIG 动态生成，跟随 profile）
+        self.axis_enabled_states = {axis: True for axis in AXIS_CONFIG.keys()}
 
         self.init_ui()
         self.setup_timers()

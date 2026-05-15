@@ -9,7 +9,10 @@ class AxisManager:
         self.init_axes()
 
     def init_axes(self):
-        axes = ["X", "Y", "Z", "W", "E1", "E3", "E4"]
+        # 轴列表从 AXIS_CONFIG 动态读取，与上位机 profile 一致
+        # （octoaxes: X/Y/Z/W/E1/E3/E4 七轴；octoaxesplus: X/Y/Z/W1/W2 五轴）
+        # 避免硬编码导致 octoaxesplus 的 W1/W2 收到 HWINFO/位置上报时被静默丢弃
+        from utils.constants import AXIS_CONFIG  # profile main.py 已注入 sys.modules
         default_status = {
             "state": "Unknown",
             "position_mm": 0.0,
@@ -19,7 +22,7 @@ class AxisManager:
             "limits": "0x0",
         }
 
-        for axis in axes:
+        for axis in AXIS_CONFIG.keys():
             self.axis_status[axis] = default_status.copy()
 
     def parse_axis_data(self, data):
