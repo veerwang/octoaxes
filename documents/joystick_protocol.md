@@ -116,10 +116,19 @@ static uint8_t crc8_ccitt(const uint8_t *data, uint8_t n) {
 
 | joystick 侧代码 | firmware 侧代码 | 行为 |
 |---|---|---|
-| 老 (`byte[9] = 0`) | 老（fa625d1 之前） | byte[9] 完全不被读取 |
+| 老 (`byte[9] = 0`) | 老（fa625d1 之前 / 旧 Squid） | byte[9] 完全不被读取 [^1] |
 | 老 (`byte[9] = 0`) | 新（fa625d1 及之后） | 命中 legacy 分支，跳过 CRC，照常解析；`legacy_count++` |
-| 新 (`byte[9] = CRC≠0`) | 老 | 老 fw 不看 byte[9]，**零影响**（新 joystick 完全可接入老 fw） |
+| 新 (`byte[9] = CRC≠0`) | 老（旧 Squid） | 老 fw 不看 byte[9]，**零影响**（新 joystick 完全可接入老 fw）[^1] |
 | 新 | 新 | 校验 CRC：通过 → `crc_ok++`；失败 → `crc_fail++` 丢包 |
+
+[^1]: **源码已核实**：旧 Squid firmware 的 joystick 接收函数
+`onJoystickPacketReceived` 位于
+`/home/hds/github.com/veerwang/lihongquan/Squid/firmware/controller/src/functions.cpp:509-546`，
+函数体只读 `buffer[0..3]`（焦点编码器）、`buffer[4..5]`（X 摇杆）、
+`buffer[6..7]`（Y 摇杆）、`buffer[8]`（按钮）四段，**`buffer[9]` 一字节都未引用**。
+该函数与 `firmware/octoaxes/joystick.cpp` 的接收逻辑结构同构（同源遗产），
+因此新 joystick (`byte[9]=CRC≠0`) 接入旧 Squid fw 在源码层面**确定无副作用**，
+无需硬件验证即可放心混用。
 
 > **一致性约束**：byte[9] 的"0 = legacy"约定一旦确立，**永久保留，不可改用作别的语义**。
 > 任何未来扩展（如增加状态位、加握手帧）都必须避开 byte[9] = 0 这个特殊值。
