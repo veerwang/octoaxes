@@ -257,6 +257,10 @@ class TeensyControlGUI(QMainWindow):
         self.illumination_panel.turn_off_all.connect(self._send_illu_turn_off_all)
         self.illumination_panel.led_matrix_cmd.connect(self._send_illu_led_matrix)
         self.illumination_panel.intensity_factor_cmd.connect(self._send_illu_intensity_factor)
+        # DAC 直控信号（仅 squid++ profile 会发，octoaxes 信号永远不触发）
+        self.illumination_panel.dac_channel_cmd.connect(self._send_dac_set)
+        self.illumination_panel.dac_gain_cmd.connect(self._send_dac_gain)
+        self.illumination_panel.dac_readback_cmd.connect(self._send_dac_read_all)
         layout.addWidget(self.illumination_panel)
 
         return tab
@@ -808,6 +812,12 @@ class TeensyControlGUI(QMainWindow):
                     axis, self.axis_manager.get_axis_status(axis))
             return
 
+        # DAC 调试响应（S:DAC_SET / S:DAC_GAIN / S:DAC_READ:*）
+        # 全部直接打到 Log，方便 bring-up 时阅读
+        if data.startswith("S:DAC_"):
+            self.log(f"← {data}")
+            return
+
         # 处理轴数据（parse_axis_data 只调用一次，用 parsed 缓存结果）
         parsed = self.axis_manager.parse_axis_data(data)
         if parsed:
@@ -1258,6 +1268,20 @@ class TeensyControlGUI(QMainWindow):
         cmd[2] = pct
         self.serial_thread.send_binary_command(cmd)
         self.log(f"Illumination intensity factor: {pct}%")
+
+    # ── DAC 直控（squid++ bring-up，走 ASCII 调试通道） ────────────
+
+    def _send_dac_set(self, ch: int, raw: int):
+        """ASCII S:DAC_SET <ch> <raw> — 直控写 DAC raw（绕过 firmware factor）"""
+        self.send_command(f"S:DAC_SET {ch} {raw}", "DAC")
+
+    def _send_dac_gain(self, gain_hex: int):
+        """ASCII S:DAC_GAIN <hex> — 切 D8 5V↔2.5V GAIN"""
+        self.send_command(f"S:DAC_GAIN {gain_hex:02X}", "DAC")
+
+    def _send_dac_read_all(self):
+        """ASCII S:DAC_READ_ALL — 触发 CONFIG/GAIN/8 通道读回（回包打到 Log）"""
+        self.send_command("S:DAC_READ_ALL", "DAC")
 
     def clear_sent_commands(self):
         self.sent_display.clear()

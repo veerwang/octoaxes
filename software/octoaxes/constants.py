@@ -125,3 +125,27 @@ COMMAND_PREFIXES = list(AXIS_CONFIG.keys())
 DEFAULT_LOW_LIMIT = -6000  # μm
 DEFAULT_HIGH_LIMIT = 6000  # μm
 DEFAULT_MOVE_DISTANCE = 500  # μm
+
+# ─── 照明端口配置（按 profile 动态，common/gui 据此渲染） ──────────────────
+#
+# ILLUMINATION_PORTS:
+#   每行 (port_index, display_name, pin_number)。port_index 与 firmware
+#   port_index_to_pin / port_index_to_dac_channel 严格对齐。
+#
+# ILLUMINATION_DAC_CHANNELS:
+#   每行 (dac_ch, full_scale_volt)。空列表 = 该 profile 无 DAC 直控滑条。
+#   octoaxes 旧硬件无独立 DAC 直控（DAC 强度通过 SET_PORT_ILLUMINATION 耦合），
+#   bring-up 工具仅 octoaxesplus 需要。
+#
+# ILLUMINATION_HAS_GAIN_SWITCH / ILLUMINATION_HAS_DAC_READBACK:
+#   控制 D8 5V↔2.5V 切换按钮和 Read DAC Regs 按钮是否渲染。
+ILLUMINATION_PORTS = [
+    (0, "D1 (pin 5)",   5),
+    (1, "D2 (pin 4)",   4),
+    (2, "D3 (pin 22)", 22),
+    (3, "D4 (pin 3)",   3),
+    (4, "D5 (pin 23)", 23),
+]
+ILLUMINATION_DAC_CHANNELS = []          # 旧硬件不暴露 DAC 直控
+ILLUMINATION_HAS_GAIN_SWITCH  = False
+ILLUMINATION_HAS_DAC_READBACK = False

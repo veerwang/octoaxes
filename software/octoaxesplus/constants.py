@@ -108,3 +108,43 @@ COMMAND_PREFIXES = list(AXIS_CONFIG.keys())
 DEFAULT_LOW_LIMIT = -6000  # μm
 DEFAULT_HIGH_LIMIT = 6000  # μm
 DEFAULT_MOVE_DISTANCE = 500  # μm
+
+# ─── 照明端口配置（squid++ 双相机：8 路 TTL + 8 通道 DAC 直控） ────────
+#
+# ILLUMINATION_PORTS:
+#   每行 (port_index, display_name, pin_number)。port_index 与 firmware
+#   octoaxesplus/illumination.cpp::port_index_to_pin 严格对齐。
+#   TTL 引脚由 SET_PORT_ILLUMINATION (cmd 37) 二进制协议驱动。
+#
+# ILLUMINATION_DAC_CHANNELS:
+#   每行 (dac_ch, full_scale_volt)。ch7 (D8) 默认 gain=2 → 满量程 5V，
+#   其余 gain=1 → 2.5V。可通过 GAIN 切换按钮在 5V / 2.5V 间切换 D8。
+#   DAC 滑条走 ASCII 命令 S:DAC_SET，直控写 raw 值（绕过 illumination_intensity_factor），
+#   bring-up 时所见即所得；不影响生产 TTL 按钮路径。
+#
+# ILLUMINATION_HAS_GAIN_SWITCH:
+#   True → 渲染 "D8 max: 5V↔2.5V" 切换按钮（发 S:DAC_GAIN）。
+# ILLUMINATION_HAS_DAC_READBACK:
+#   True → 渲染 "Read DAC Regs" 按钮（发 S:DAC_READ_ALL）。
+ILLUMINATION_PORTS = [
+    (0, "D1 (pin 32)", 32),
+    (1, "D2 (pin 31)", 31),
+    (2, "D3 (pin 30)", 30),
+    (3, "D4 (pin 29)", 29),
+    (4, "D5 (pin 28)", 28),
+    (5, "D6 (pin 25)", 25),
+    (6, "D7 (pin 24)", 24),
+    (7, "D8 (pin 10)", 10),
+]
+ILLUMINATION_DAC_CHANNELS = [
+    (0, 2.5),  # D1 ch0  gain=1
+    (1, 2.5),  # D2 ch1  gain=1
+    (2, 2.5),  # D3 ch2  gain=1
+    (3, 2.5),  # D4 ch3  gain=1
+    (4, 2.5),  # D5 ch4  gain=1
+    (5, 2.5),  # D6 ch5  gain=1
+    (6, 2.5),  # D7 ch6  gain=1
+    (7, 5.0),  # D8 ch7  gain=2（GAIN 切换后可降到 2.5V）
+]
+ILLUMINATION_HAS_GAIN_SWITCH  = True
+ILLUMINATION_HAS_DAC_READBACK = True
