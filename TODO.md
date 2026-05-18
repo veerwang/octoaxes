@@ -18,6 +18,28 @@
 
 ## 待办
 
+### 2026-05-18 joystick ↔ firmware 10 字节协议加 CRC-8-CCITT 校验
+
+- [x] **joystick 固件目录分离**：`firmware/joystick/{octoaxes,octoaxesplus}/`
+  对称主 firmware 目录；`TM1650.h` 用相对符号链接共享（commit fa625d1）
+- [x] **CRC-8-CCITT 校验实施**：byte[9] 兼容性闸门（== 0 → legacy 直通，
+  ≠ 0 → CRC 校验失败丢包），CRC=0x00 强制映射为 0x01 避免 sentinel 冲突。
+  复用 firmware ↔ 上位机协议同款 CRC 算法（poly 0x07 / init 0x00）。
+  四工程编译 SUCCESS（commit fa625d1）
+- [x] **`S:JOYSTICK_STATS` 调试命令**：firmware 侧输出 `legacy=N crc_ok=N crc_fail=N`
+  三个计数器，现场诊断 5 种指纹场景（commit fa625d1）
+- [x] **协议落地文档**：`documents/joystick_protocol.md`（218 行 / 9 章节），
+  含物理层 / 字段表 / byte[9] 双语义 / CRC 算法 / 兼容性矩阵 / 诊断速查 /
+  升级路径约束（commit 8824204）
+- [x] **兼容性矩阵补脚注**：核实旧 Squid `functions.cpp:509-546`
+  `onJoystickPacketReceived` 函数体不读 `buffer[9]`，"新 joy → 老 fw"
+  从"95% 推测"升级为"100% 源码已核实"（commit c5e3867）
+- [ ] **硬件烧录验证（用户实测）**：
+  - [ ] 回归：新 fw + 老 joystick → `S:JOYSTICK_STATS legacy=N crc_ok=0 crc_fail=0`
+  - [ ] 正向：新 fw + 新 joystick → `crc_ok` 持续增长，`crc_fail=0`
+  - [ ] 反向：新 joystick + 老 fw（含旧 Squid） → 摇杆/焦点/按钮行为不变
+  - [ ] 干扰：长时间运行 `crc_fail` 应 ≈ 0
+
 ### 2026-05-15 octoaxesplus W2 端到端打通 + 协议 v2 + GUI 修复全套
 
 - [x] **W2 端到端运动验证通过**（2026-05-15 用户实测确认）

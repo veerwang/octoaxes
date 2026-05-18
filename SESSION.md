@@ -6,6 +6,127 @@
 
 ## 最新会话
 
+**日期**: 2026-05-18
+**分支**: develop
+**位置**: joystick ↔ firmware 10 字节协议加 CRC-8-CCITT 校验 + 目录分离 + 落地文档
+
+### 本次完成（3 个 commits）
+
+```
+c5e3867 docs(joystick): 兼容性矩阵补脚注 — 旧 Squid fw 源码已核实不读 byte[9]
+8824204 docs(joystick): 10 字节协议落地文档 + byte[9] 兼容性闸门约定
+fa625d1 feat(joystick): CRC-8-CCITT 协议 + 目录分离到 {octoaxes,octoaxesplus}
+```
+
+### 关键设计：byte[9] 兼容性闸门
+
+老 joystick 历史上 `packet[9] = 0`（注释 `// CRC to be added` 留位等实现）。
+本次实施在 byte[9] 引入**双语义**：
+
+- `byte[9] == 0` → legacy 包（老 joystick，跳过 CRC 校验，照常解析）
+- `byte[9] != 0` → 新 joystick，byte[9] 即 CRC-8-CCITT(buffer[0..8])，校验失败丢包
+
+新 joystick 算出 CRC=0x00 时强制改为 0x01（约 1/256 概率），避免与 legacy
+sentinel 撞车。
+
+**兼容性矩阵 4 种组合全通**（已核实，含外部代码引用）：
+- 老 joy ↔ 老 fw（旧 Squid / fa625d1 前 octoaxes）：完全不读 byte[9]，不变
+- 老 joy → 新 fw：legacy 直通；`legacy_count++`
+- 新 joy → 老 fw：源码已核实 — 旧 Squid `functions.cpp:509-546` 不读 byte[9]
+- 新 joy → 新 fw：CRC 校验，失败丢包
+
+### 目录分离
+
+```
+firmware/joystick/                          (旧位置)
+  → firmware/joystick/octoaxes/             (git mv 保留历史，rename 76-100%)
+  + firmware/joystick/octoaxesplus/         (新建，byte-identical 副本)
+                                              TM1650.h → ../octoaxes/TM1650.h symlink
+```
+
+与 firmware/{octoaxes,octoaxesplus}/ 结构对称，方便后续按 profile 独立演进。
+
+### 代码改动
+
+**joystick 侧** (`firmware/joystick/{octoaxes,octoaxesplus}/control_panel_teensyLC.ino`)：
+- 内嵌 CRC_TABLE（与 `firmware/octoaxes/serial.cpp:23` 同款 poly 0x07 / init 0x00）
+- `crc8_ccitt()` helper
+- 主循环替换 `packet[9] = 0` → CRC 计算 + 0→1 映射
+
+**firmware 侧** (`firmware/{octoaxes,octoaxesplus}/joystick.{cpp,h}`)：
+- `onJoystickPacketReceived` 加 CRC 兼容性闸门
+- 3 个 uint32 计数器：`legacy_count` / `crc_ok` / `crc_fail`
+- 新增 `joystick_print_stats()` 公开 API，复用 `serialProtocol.crc8ccitt`
+- byte-identical 同步两 profile
+
+**调试命令** (`firmware/{octoaxes,octoaxesplus}/serial.cpp`)：
+- 新增 `S:JOYSTICK_STATS` 分发到 `joystick_print_stats()`
+- 输出格式：`JOYSTICK_STATS legacy=N crc_ok=N crc_fail=N`
+- 现场诊断 5 种指纹场景（见 documents/joystick_protocol.md §6）
+
+### 落地文档
+
+新建 `documents/joystick_protocol.md`（218 行 / 9 章节）：
+1. 物理层（Serial1/Serial5 @ 115200，PacketSerial/COBS）
+2. 10 字节字段表
+3. byte[9] 双语义详解
+4. CRC-8-CCITT 算法定义
+5. 兼容性矩阵 + 旧 Squid 源码引用脚注
+6. S:JOYSTICK_STATS 诊断速查
+7. 已知限制 + 升级路径约束
+8. 文件清单
+9. 变更历史
+
+### 编译验证
+
+四工程全部 SUCCESS：
+
+| 工程 | FLASH code | 增量 |
+|---|---|---|
+| firmware/octoaxes | 80732 B | +192 B（80540 baseline） |
+| firmware/octoaxesplus | 82908 B | — |
+| firmware/joystick/octoaxes/ (teensyLC) | 26620 B | 41.9% / 63488 |
+| firmware/joystick/octoaxesplus/ (teensyLC) | 26620 B | — |
+
+### 关键决策记录
+
+1. **兼容性闸门用 byte[9] sentinel 而非长度变更**：老 joystick `packet[9]=0`
+   已是事实标识，复用比扩 11 字节包代价低（扩包会让新 joy 无法回退老 fw）
+2. **CRC=0 映射到 1**：损失 1/256 错误检出率以闭合 sentinel 冲突，可接受
+3. **复用 firmware ↔ 上位机的 CRC-8-CCITT**：减一份算法负担；CRC_TABLE 直接拷贝
+4. **目录分离到 firmware/joystick/{octoaxes,octoaxesplus}/**：与主 firmware 目录
+   结构对称；当前两 profile 包内容相同（byte-identical），但**预留未来按硬件
+   profile 独立演进**的工程化路径
+5. **TM1650.h 用相对符号链接共享**：与 octoaxes/tmc ↔ octoaxesplus/tmc symlink
+   同款模式，避免代码重复
+
+### 当前状态
+
+- ✅ joystick 协议 CRC 实施完成，4 工程编译通过
+- ✅ 协议落地文档（含外部源码引用脚注）
+- ⏳ **硬件烧录验证**（用户实测）：
+  1. 回归：只烧新 firmware + 老 joystick → `S:JOYSTICK_STATS` 应见 `legacy=N crc_ok=0 crc_fail=0`
+  2. 正向：新 firmware + 新 joystick → `crc_ok` 持续增长，`crc_fail=0`
+  3. 反向：新 joystick + 老 firmware（含旧 Squid） → 摇杆/焦点/按钮行为不变
+  4. 干扰：长时间运行 `crc_fail` 应 ≈ 0
+
+### 下次继续
+
+- 等用户烧录后回报 4 项验证结果，若失败按 `S:JOYSTICK_STATS` 计数器现场诊断
+- octoaxesplus 待办：W1 PCB CLK 飞线 / Z 轴 PyQt 验证 / bring-up 工具归宿
+- octoaxes 主线：W 轴 60ms 优化 / TMC2240 StallGuard4 调优（stash@{0}）
+- 协议层潜在扩展：TMC4361A Target Pipeline / 多轴并行 home / MOVETO_BATCH
+
+### 备注
+
+- 三段式 commit 历经"实现 → 文档 → 脚注核实"逐步加固，体现"先落地后写文档"的反例修正：协议设计这类约定就该一开始就同步成文，避免依赖 commit 消息埋藏
+- byte[9] sentinel 这种"已有字节复用新语义"模式很省，但**约定一旦发布永不可改**，文档第 7 章已显式登记不可改动项防止后人误踩
+- 旧 Squid 源码引用脚注是回应"95% 推测→100% 核实"的升级，验证了"能查源码就别概率论"的取舍
+
+---
+
+## 上一会话
+
 **日期**: 2026-05-15（下半场）
 **分支**: maxpro
 **位置**: W2 端到端打通 + 协议 v2 实施 + GUI 滤光转盘 UI 修复 + profile 隔离工具化
