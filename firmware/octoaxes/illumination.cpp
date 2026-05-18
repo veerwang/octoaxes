@@ -240,6 +240,20 @@ void clear_matrix()
     FastLED.show();
 }
 
+// LED 矩阵 R/G 通道字节映射：
+//   默认（无 LED_MATRIX_SWAP_RG 宏）：按字面顺序 (r, g) 调用 led_set_*，
+//   配合 FastLED BGR 模板 + 标准 APA102 灯珠（字节排列 B/G/R）颜色正确。
+//   定义 -D LED_MATRIX_SWAP_RG：r/g 实参对调，兼容旧硬件批次（字节排列
+//   B/R/G）。等价于 2026-05-15 前历史行为，与旧 Squid functions.cpp 一致。
+//
+// 历史：旧 Squid + 旧硬件灯珠时代代码用 (g, r) 对调补偿硬件 BRG 排列；
+// 新批次灯珠改回标准 BGR 后，对调反而让用户输入 R/G 颠倒显示。详见 SESSION.md。
+#ifdef LED_MATRIX_SWAP_RG
+  #define LED_RG_ARGS(r_val, g_val) (g_val), (r_val)
+#else
+  #define LED_RG_ARGS(r_val, g_val) (r_val), (g_val)
+#endif
+
 void turn_on_LED_matrix_pattern(int pattern, uint8_t r, uint8_t g, uint8_t b)
 {
     // 强度缩放（0-255 → 0-LED_MAX_INTENSITY），注意：APA102 BGR 顺序
@@ -252,25 +266,25 @@ void turn_on_LED_matrix_pattern(int pattern, uint8_t r, uint8_t g, uint8_t b)
     switch (pattern)
     {
         case IlluminationConfig::LED_ARRAY_FULL:
-            led_set_all(scaled_g, scaled_r, scaled_b); break;
+            led_set_all(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_LEFT_HALF:
-            led_set_left(scaled_g, scaled_r, scaled_b); break;
+            led_set_left(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_RIGHT_HALF:
-            led_set_right(scaled_g, scaled_r, scaled_b); break;
+            led_set_right(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_LEFTB_RIGHTR:
             led_set_left(0, 0, scaled_b);
-            led_set_right(0, scaled_r, 0);
+            led_set_right(LED_RG_ARGS(scaled_r, 0), 0);
             break;
         case IlluminationConfig::LED_ARRAY_LOW_NA:
-            led_set_low_na(scaled_g, scaled_r, scaled_b); break;
+            led_set_low_na(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_LEFT_DOT:
-            led_set_left_dot(scaled_g, scaled_r, scaled_b); break;
+            led_set_left_dot(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_RIGHT_DOT:
-            led_set_right_dot(scaled_g, scaled_r, scaled_b); break;
+            led_set_right_dot(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_TOP_HALF:
-            led_set_top(scaled_g, scaled_r, scaled_b); break;
+            led_set_top(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_BOTTOM_HALF:
-            led_set_bottom(scaled_g, scaled_r, scaled_b); break;
+            led_set_bottom(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         default: break;
     }
     FastLED.show();
