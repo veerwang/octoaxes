@@ -20,6 +20,27 @@ from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QColor
 
 from utils.constants import AXIS_CONFIG
 
+# 照明端口元数据（profile 决定路数/DAC/GAIN 等）。profile 未定义时给安全默认值
+# 以保留向后兼容（旧 octoaxes constants.py 升级前）
+try:
+    from utils.constants import (
+        ILLUMINATION_PORTS,
+        ILLUMINATION_DAC_CHANNELS,
+        ILLUMINATION_HAS_GAIN_SWITCH,
+        ILLUMINATION_HAS_DAC_READBACK,
+    )
+except ImportError:
+    ILLUMINATION_PORTS = [
+        (0, "D1 (pin 5)",   5),
+        (1, "D2 (pin 4)",   4),
+        (2, "D3 (pin 22)", 22),
+        (3, "D4 (pin 3)",   3),
+        (4, "D5 (pin 23)", 23),
+    ]
+    ILLUMINATION_DAC_CHANNELS = []
+    ILLUMINATION_HAS_GAIN_SWITCH  = False
+    ILLUMINATION_HAS_DAC_READBACK = False
+
 
 class AxisStatusDisplay(QGroupBox):
     """所有轴状态显示组件"""
@@ -674,28 +695,47 @@ class ControlPanel(QGroupBox):
 
 
 class IlluminationPanel(QGroupBox):
-    """照明控制面板
+    """照明控制面板（数据驱动 — 按 constants.ILLUMINATION_PORTS 等元数据动态渲染）
+
+    profile 差异：
+      * octoaxes：5 路 TTL (D1-D5) + 无 DAC 直控 + 无 GAIN 切换 + 无 read-back
+      * octoaxesplus (squid++)：8 路 TTL (D1-D8) + 8 通道 DAC 直控 + D8 5V↔2.5V GAIN
+        切换 + DAC 寄存器读回
+
+    协议拆分：
+      * TTL 按钮 → port_cmd 二进制 (SET_PORT_ILLUMINATION, cmd 37)，走 firmware
+        intensity_intensity_factor 缩放路径
+      * DAC 滑条 → dac_channel_cmd 走 ASCII (S:DAC_SET <ch> <raw>)，直控 raw，
+        bring-up 时所见即所得（与 ttl_test 工具一致）
+      * GAIN 切换 / Read 按钮 → ASCII (S:DAC_GAIN, S:DAC_READ_ALL)
 
     Signals:
         port_cmd(port_index, intensity_0_65535, on_off)
-            → SET_PORT_ILLUMINATION
+            → SET_PORT_ILLUMINATION (二进制)
         turn_off_all()
             → TURN_OFF_ALL_PORTS
         led_matrix_cmd(pattern, r, g, b)
-            → SET_ILLUMINATION_LED_MATRIX
+            → SET_ILLUMINATION_LED_MATRIX (cmd 13 缓存) + TURN_ON_ILLUMINATION (cmd 10 点亮)
+        led_matrix_off_cmd()
+            → TURN_OFF_ILLUMINATION (cmd 11)
         intensity_factor_cmd(pct_0_100)
             → SET_ILLUMINATION_INTENSITY_FACTOR
+        dac_channel_cmd(channel, raw_0_65535)
+            → ASCII "S:DAC_SET <ch> <raw>" — 直控 DAC raw（绕过 factor）
+        dac_gain_cmd(gain_hex)
+            → ASCII "S:DAC_GAIN <hex>" — 切 D8 满量程
+        dac_readback_cmd()
+            → ASCII "S:DAC_READ_ALL" — 触发寄存器读回（回包打到 Log）
     """
 
     port_cmd            = pyqtSignal(int, int, bool)   # port, intensity, on
     turn_off_all        = pyqtSignal()
     led_matrix_cmd      = pyqtSignal(int, int, int, int)  # pattern, r, g, b
+    led_matrix_off_cmd  = pyqtSignal()                  # Clear → 真熄灭矩阵
     intensity_factor_cmd = pyqtSignal(int)             # 0-100
-
-    # D3/D4 源码非连续（历史遗留）：port_index → old source code
-    PORT_SOURCES = [11, 12, 14, 13, 15]   # D1-D5
-    PORT_PINS    = [5,  4,  22, 3,  23]   # 对应引脚
-    PORT_NAMES   = ["D1 (pin 5)", "D2 (pin 4)", "D3 (pin 22)", "D4 (pin 3)", "D5 (pin 23)"]
+    dac_channel_cmd     = pyqtSignal(int, int)         # ch, raw 0-65535
+    dac_gain_cmd        = pyqtSignal(int)              # gain hex 0x00..0xFF
+    dac_readback_cmd    = pyqtSignal()
 
     LED_PATTERNS = [
         (0, "Full — 全亮"),
@@ -715,8 +755,18 @@ class IlluminationPanel(QGroupBox):
         self.setStyleSheet(
             "QGroupBox::title { font-weight: bold; font-size: 13px; }"
         )
-        self._port_intensity_pct = [50] * 5
-        self._port_on = [False] * 5
+        # profile 元数据快照
+        self._ports         = list(ILLUMINATION_PORTS)
+        self._dac_channels  = list(ILLUMINATION_DAC_CHANNELS)
+        self._has_gain      = bool(ILLUMINATION_HAS_GAIN_SWITCH)
+        self._has_readback  = bool(ILLUMINATION_HAS_DAC_READBACK)
+        n_ports = len(self._ports)
+        self._port_intensity_pct = [50] * n_ports
+        self._port_on            = [False] * n_ports
+        # DAC raw 状态镜像（仅 squid++ 用）
+        self._dac_raw            = [0] * len(self._dac_channels)
+        # D8 (ch7) gain 状态：True=2 (满 5V), False=1 (满 2.5V)，初值与 firmware 默认 0x0080 一致
+        self._d8_gain2 = True
         self._init_ui()
 
     def _init_ui(self):
@@ -760,7 +810,7 @@ class IlluminationPanel(QGroupBox):
         root.addLayout(global_layout)
         root.addWidget(self._make_divider())
 
-        # ── 五个 TTL 端口行 ────────────────────────────────────
+        # ── TTL 端口行（按 ILLUMINATION_PORTS 动态生成） ─────────
         self._port_btns = []
         self._port_sliders = []
         self._port_pct_labels = []
@@ -770,9 +820,9 @@ class IlluminationPanel(QGroupBox):
         ports_grid.setHorizontalSpacing(4)
         ports_grid.setColumnStretch(1, 1)   # 滑条列自动拉伸
 
-        for i, name in enumerate(self.PORT_NAMES):
+        for i, (port_idx, name, _pin) in enumerate(self._ports):
             lbl = QLabel(name)
-            lbl.setMinimumWidth(85)
+            lbl.setMinimumWidth(95)
             ports_grid.addWidget(lbl, i, 0)
 
             slider = QSlider(Qt.Horizontal)
@@ -801,6 +851,70 @@ class IlluminationPanel(QGroupBox):
 
         root.addLayout(ports_grid)
         root.addWidget(self._make_divider())
+
+        # ── DAC 直控区（仅 squid++ 有 ILLUMINATION_DAC_CHANNELS） ──
+        # 滑条走 ASCII S:DAC_SET 直控 raw（绕过 firmware intensity_factor），
+        # bring-up 时所见即所得；与 TTL 按钮独立
+        self._dac_sliders   = []
+        self._dac_val_labels = []
+        self._d8_gain_btn   = None
+        if self._dac_channels:
+            dac_title = QLabel("DAC raw direct (bring-up，绕过 factor)")
+            dac_title.setStyleSheet("color: #555; font-style: italic;")
+            root.addWidget(dac_title)
+
+            dac_grid = QGridLayout()
+            dac_grid.setVerticalSpacing(3)
+            dac_grid.setHorizontalSpacing(4)
+            dac_grid.setColumnStretch(1, 1)
+            for row, (ch, full_v) in enumerate(self._dac_channels):
+                lbl = QLabel(f"DAC{ch} → D{ch+1}")
+                lbl.setMinimumWidth(95)
+                dac_grid.addWidget(lbl, row, 0)
+
+                sl = QSlider(Qt.Horizontal)
+                sl.setRange(0, 100)
+                sl.setValue(0)
+                sl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                sl.setMinimumWidth(60)
+                sl.valueChanged.connect(
+                    lambda pct, c=ch, idx=row: self._on_dac_slider(c, idx, pct)
+                )
+                dac_grid.addWidget(sl, row, 1)
+                self._dac_sliders.append(sl)
+
+                v_lbl = QLabel(f"0% (0.00V / {full_v:.1f}V)")
+                v_lbl.setFixedWidth(120)
+                v_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                dac_grid.addWidget(v_lbl, row, 2)
+                self._dac_val_labels.append(v_lbl)
+            root.addLayout(dac_grid)
+
+            # GAIN + Read 操作行
+            dac_ops = QHBoxLayout()
+            dac_ops.setSpacing(4)
+            if self._has_gain:
+                self._d8_gain_btn = QPushButton("D8 max: 5V")
+                self._d8_gain_btn.setStyleSheet(
+                    "background-color: #2c3e50; color: white; font-weight: bold;"
+                )
+                self._d8_gain_btn.setToolTip(
+                    "点击切换 D8 满量程：5V (gain=2) ↔ 2.5V (gain=1)\n"
+                    "发 S:DAC_GAIN 0x80 / 0x00"
+                )
+                self._d8_gain_btn.clicked.connect(self._on_d8_gain_toggle)
+                dac_ops.addWidget(self._d8_gain_btn)
+            if self._has_readback:
+                read_btn = QPushButton("Read DAC Regs")
+                read_btn.setStyleSheet(
+                    "background-color: #8e44ad; color: white; font-weight: bold;"
+                )
+                read_btn.setToolTip("发 S:DAC_READ_ALL，回包打到 Log 区")
+                read_btn.clicked.connect(self.dac_readback_cmd.emit)
+                dac_ops.addWidget(read_btn)
+            dac_ops.addStretch()
+            root.addLayout(dac_ops)
+            root.addWidget(self._make_divider())
 
         # ── LED 矩阵控制 ──────────────────────────────────────
         matrix_layout = QVBoxLayout()
@@ -907,20 +1021,58 @@ class IlluminationPanel(QGroupBox):
             btn.blockSignals(False)
         self.turn_off_all.emit()
 
-    def _on_port_slider(self, port_idx, value):
-        self._port_intensity_pct[port_idx] = value
-        self._port_pct_labels[port_idx].setText(f"{value}%")
+    def _on_port_slider(self, ui_row, value):
+        self._port_intensity_pct[ui_row] = value
+        self._port_pct_labels[ui_row].setText(f"{value}%")
         # 如果端口当前开启，实时更新强度
-        if self._port_on[port_idx]:
+        if self._port_on[ui_row]:
             intensity = int(value / 100.0 * 65535)
+            port_idx = self._ports[ui_row][0]
             self.port_cmd.emit(port_idx, intensity, True)
 
-    def _on_port_toggle(self, port_idx, checked):
-        self._port_on[port_idx] = checked
-        self._set_port_btn_style(self._port_btns[port_idx], checked)
-        pct = self._port_intensity_pct[port_idx]
+    def _on_port_toggle(self, ui_row, checked):
+        self._port_on[ui_row] = checked
+        self._set_port_btn_style(self._port_btns[ui_row], checked)
+        pct = self._port_intensity_pct[ui_row]
         intensity = int(pct / 100.0 * 65535)
+        port_idx = self._ports[ui_row][0]
         self.port_cmd.emit(port_idx, intensity, checked)
+
+    # ── DAC 直控（仅 squid++） ────────────────────────────────────
+
+    def _on_dac_slider(self, dac_ch, ui_row, pct):
+        # 当前满量程电压（GAIN 切换可改 D8/ch7）
+        full_v = self._dac_channels[ui_row][1]
+        raw = int(round(pct * 65535 / 100))
+        if raw > 65535:
+            raw = 65535
+        self._dac_raw[ui_row] = raw
+        voltage = pct / 100.0 * full_v
+        self._dac_val_labels[ui_row].setText(
+            f"{pct}% ({voltage:.2f}V / {full_v:.1f}V)"
+        )
+        self.dac_channel_cmd.emit(dac_ch, raw)
+
+    def _on_d8_gain_toggle(self):
+        # 切换 D8 (ch7) gain：True=gain2/5V, False=gain1/2.5V
+        self._d8_gain2 = not self._d8_gain2
+        gain_hex = 0x80 if self._d8_gain2 else 0x00
+        self.dac_gain_cmd.emit(gain_hex)
+        # 同步本地满量程镜像（仅 ch7）+ 刷新显示
+        for i, (ch, full_v) in enumerate(self._dac_channels):
+            if ch == 7:
+                new_v = 5.0 if self._d8_gain2 else 2.5
+                self._dac_channels[i] = (ch, new_v)
+                pct = self._dac_sliders[i].value()
+                voltage = pct / 100.0 * new_v
+                self._dac_val_labels[i].setText(
+                    f"{pct}% ({voltage:.2f}V / {new_v:.1f}V)"
+                )
+                break
+        if self._d8_gain_btn:
+            self._d8_gain_btn.setText(
+                f"D8 max: {'5V' if self._d8_gain2 else '2.5V'}"
+            )
 
     def _update_color_preview(self):
         r = self._rgb_sliders[0].value()
@@ -938,8 +1090,9 @@ class IlluminationPanel(QGroupBox):
         self.led_matrix_cmd.emit(pattern, r, g, b)
 
     def _clear_led_matrix(self):
-        # 发送 pattern=FULL, RGB=0,0,0 相当于熄灭
-        self.led_matrix_cmd.emit(0, 0, 0, 0)
+        # firmware cmd 13 只缓存参数不熄灭（2026-05-10 行为变更）；
+        # 必须发 cmd 11 TURN_OFF_ILLUMINATION 才能真熄灭矩阵
+        self.led_matrix_off_cmd.emit()
 
 
 class LogDisplay(QGroupBox):

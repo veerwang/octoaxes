@@ -127,6 +127,136 @@ firmware/joystick/                          (旧位置)
 
 ## 上一会话
 
+**日期**: 2026-05-18
+**分支**: develop（已合并 origin/develop 把 maxpro 全部进展拉入主线）
+**位置**: 融合 test 分支 ttl_test 到生产 illumination + LED 矩阵两条历史 bug 修复
+
+### 本次完成（4 个 commits，全部已推 origin/develop）
+
+```
+fec1526 fix(firmware): LED 矩阵默认按字面 R/G/B 顺序，加 LED_MATRIX_SWAP_RG 兼容旧灯珠
+75de141 fix(common GUI): LED 矩阵 Set/Clear 按钮按两步流程发命令，让明场光源能开关
+020c5e2 feat(common GUI): IlluminationPanel 数据驱动化 + 融合 ttl_test_gui DAC 直控
+8b5d400 feat(octoaxesplus firmware): 吸收 ttl_test DAC 鲁棒性补丁 + 4 个 ASCII 调试命令
+```
+
+### 1. develop 合并 origin/develop 现状梳理
+
+`pull origin develop` 把 maxpro 25 个 commits（5-13 ~ 5-15）fast-forward 拉入 develop：
+8 轴 AxisConfig 扩展、IC4 虚焊定位、software profile 拆分、协议 v2、W1/W2 firmware
+handler、W2 端到端打通、profile 隔离工程化等全部进入主线。
+
+master 仍领先 develop 12 个 commit（FilterWheel homing 两阶段 / handleMoveW 等旧 Squid
+工作），暂未决定是否 cherry-pick。
+
+### 2. 同步 test 分支 ttl_test bring-up 工具到生产（融合而非独立）
+
+来源：`test` 分支 `3e41832` "保留测试LED光强的代码" 中 `firmware/ttl_test/` +
+`software/ttl_test_gui.py`（独立 PIO 工程 + 独立 PyQt5 小窗，680 行）。
+
+**决策**：不创建独立的 ttl_test_gui.py，把 ttl_test 验证过的全部能力融合进生产
+illumination 标签页：
+
+**firmware 端（commit 8b5d400，octoaxesplus 专属）**：
+- `set_DAC8050x_default_gain()` 双写 + 2ms 间隔（规避 SPI 首事务被丢）
+- `illumination_init()` 末尾加 `dac_zero_all()` 开机零位
+- 新增 `read_DAC8050x_reg(addr)` 两帧 SPI 协议读
+- 新增 `illumination_update()` 主循环钩子，做一次性 fallback 同步
+- 4 个 ASCII 调试命令：`S:DAC_SET <ch> <raw>` / `S:DAC_GAIN <hex>` /
+  `S:DAC_READ_ALL` / `S:DAC_READ <reg>`
+
+**software 端（commit 020c5e2，profile-safe）**：
+- `constants.py` 加 4 项 illumination 元数据（ILLUMINATION_PORTS /
+  ILLUMINATION_DAC_CHANNELS / HAS_GAIN_SWITCH / HAS_DAC_READBACK）
+- `IlluminationPanel` 数据驱动化：TTL 行按 ILLUMINATION_PORTS 动态生成（解决原
+  5 路硬编码），新增 DAC 直控滑条区 / GAIN 切换按钮 / Read DAC 按钮
+- 新 3 信号：dac_channel_cmd / dac_gain_cmd / dac_readback_cmd
+- main_window 连接 + handle_received_data 识别 S:DAC_* 回包
+
+协议拆分：TTL 按钮走二进制 cmd 37（生产路径，受 factor 缩放）；DAC 滑条走 ASCII
+S:DAC_SET（bring-up 路径，绕过 factor 所见即所得）。
+
+octoaxes profile 验证 12 项兼容性全通过（端口名/控件齐全/协议字节一致）。
+
+### 3. LED 矩阵明场光源两条历史 bug 修复
+
+#### Bug A：Set Matrix / Clear 按钮按下后矩阵不亮不熄（commit 75de141）
+
+**根因**：2026-05-10 firmware 把 `set_illumination_led_matrix (cmd 13)` 改成"仅
+缓存参数不点亮"（与旧 Squid functions.cpp:359-368 对齐，解决"开 D 通道时矩阵也亮"
+双开 bug）。但 GUI 端没同步更新，"Set Matrix" 按钮只发 cmd 13 → 矩阵不亮；
+"Clear" 按钮发 cmd 13 RGB=0,0,0 → 仅清缓存矩阵不熄。
+
+**修复（common/gui，两 profile 同时受益）**：
+- IlluminationPanel 新增 `led_matrix_off_cmd` 信号，Clear 按钮触发
+- Set Matrix 工作流改为 cmd 13（缓存）+ cmd 10 TURN_ON_ILLUMINATION（真点亮）
+- Clear 工作流改为 cmd 11 TURN_OFF_ILLUMINATION（真熄灭）
+
+旧 Squid software 一直走 cmd 12 + cmd 10 / cmd 11 两步流程，颜色控制正常。
+
+#### Bug B：R=255 显示绿色 / G=255 显示红色 / B=255 正常（commit fec1526）
+
+**根因深挖**：旧 Squid + 当前 octoaxes/octoaxesplus 三方代码全部有
+`led_set_*(scaled_g, scaled_r, scaled_b)` 强制把 R/G 实参对调。这是为补偿
+"FastLED BGR 模板 vs 旧硬件 APA102 灯珠 BRG 字节排列"的不一致，双错位抵消后旧
+Squid 颜色才正确。但新批次灯珠回归标准 BGR 排列，单错位变成 R/G 颠倒。
+
+**修复（profile-safe，octoaxes + octoaxesplus 两端等价处理）**：
+- 引入 `LED_RG_ARGS(r, g)` 宏，默认展开为 `(r, g)` 字面顺序
+- 定义 `-D LED_MATRIX_SWAP_RG` 后展开为 `(g, r)` 对调，等价历史行为
+- 所有 9 个 LED matrix pattern case（FULL/LEFT_HALF/RIGHT_HALF/LEFTB_RIGHTR/
+  LOW_NA/LEFT_DOT/RIGHT_DOT/TOP_HALF/BOTTOM_HALF）统一用 `LED_RG_ARGS()` 包装
+- LEFTB_RIGHTR 特殊 case 一并对齐宏控制
+
+**新增 4 个 platformio env**（octoaxes + octoaxesplus 各 2 个）：
+- `teensy41_legacyled` — 旧灯珠 + 联锁启用
+- `teensy41_nointerlock_legacyled` — 旧灯珠 + 联锁禁用
+- 默认 `teensy41` / `teensy41_nointerlock` 保持新行为（字面顺序），与当前硬件匹配
+
+### 4. 实地验证（用户硬件）
+
+- ✅ **octoaxes profile D1-D5 控制正常**：根因是之前烧的是默认 safe 版固件
+  （`pio run -t upload` 不带 `-e`），换 `./download.sh nointerlock` 后立即可控
+- ✅ **明场光源 Set/Clear 按钮工作正常**（commit 75de141 烧入后）
+- ⏳ **LED 矩阵 R/G/B 颜色映射**：commit fec1526 烧入后待用户实测确认
+
+### 关键决策记录
+
+1. **ttl_test 融合而非独立**：把 bring-up 工具能力沉淀到生产 panel，避免维护
+   两套 UI；DAC 直控滑条单独走 ASCII 协议保持"所见即所得"
+2. **R/G 修复用编译宏 + 默认新行为**：避免老硬件机器烧新固件颜色反转，向后兼容
+3. **不动 octoaxes 端 R/G 历史代码风险评估**：完成后两 profile 烧默认 env 颜色
+   正确，烧 legacyled env 与旧 Squid byte-identical
+4. **IlluminationPanel 改造按 profile-safe 原则**：用 constants 元数据动态渲染，
+   octoaxes 5 路保留，octoaxesplus 自动扩 8 路 + DAC + GAIN + Read
+
+### 下次继续
+
+1. **LED 矩阵 R/G/B 颜色映射用户实测确认**（commit fec1526 烧入后）
+2. **DAC 直控滑条 + GAIN 切换 + Read 按钮硬件实测**（commit 020c5e2 + 8b5d400 烧入后）
+3. W1 PCB CLK 走线飞线（硬件 bug 待修）
+4. Z 轴 PyQt 运动单独验证（X/Y/W2 已通）
+5. bring-up 工具归宿决策（clk_test/hc154_test/pg_test/pin13_blink）
+6. master 12 个 commit 是否 cherry-pick 评估
+7. TMC2240 StallGuard4 调优（stash@{0} 待恢复，6 步流程已规划）
+8. C 维度 HOME 复杂场景（AXES_XY 联合归位 + W1/W2 homing 实测）
+
+### 备注
+
+- 本次会话节奏：分析 → 协商方案 → 实施 → 编译验证 → 提交 → 实测排查（D1-D5
+  烧录版本误判）→ 再迭代（Set/Clear / R/G 颜色）
+- "为什么 octoaxes 不能控制 LED" 排查走了完整因果链：先排除 GUI 协议 →
+  排除 firmware 联锁 → 用户确认 nointerlock 已烧 → 发现 cmd 13 仅缓存的
+  历史行为变更 → 修复 → 再发现 R/G 颠倒 → 历史代码 hack 反向解读 → 编译宏修复
+- 反面教材：第一次分析"旧 Squid 颜色对所以双错位抵消"基于未验证假设，被用户
+  反问后修正为"旧 Squid 颜色对不对取决于硬件灯珠批次，需要实测"，避免了误诊
+- ttl_test 融合给后续传感器 bring-up 工具入产树提供了模式：constants 元数据
+  驱动 + GUI 按 flag 渲染，避免 profile-specific 独立窗口扩散
+
+---
+
+## 上一会话
+
 **日期**: 2026-05-15（下半场）
 **分支**: maxpro
 **位置**: W2 端到端打通 + 协议 v2 实施 + GUI 滤光转盘 UI 修复 + profile 隔离工具化

@@ -583,6 +583,114 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
+    // ── DAC80508 直控 / 读回 / GAIN 切换（ttl_test bring-up 验证） ─────
+    //
+    // S:DAC_SET <ch> <raw>
+    //   直接写 DAC 通道 raw 值（0..65535），绕过 illumination_intensity_factor 缩放，
+    //   bring-up 时所见即所得；不影响 illumination_port_intensity[] 状态镜像。
+    //   ch 范围 0-7；raw 超 65535 截断。
+    //   例：S:DAC_SET 0 32768  → D1 通道输出 ≈ 半量程 (1.25V @ gain=1)
+    if (command.startsWith("S:DAC_SET")) {
+      String rest = command.substring(9);
+      rest.trim();
+      int sp = rest.indexOf(' ');
+      if (sp < 0) {
+        SerialUSB.println("S:DAC_SET:ERR:missing_args");
+        return;
+      }
+      int ch = rest.substring(0, sp).toInt();
+      long raw = rest.substring(sp + 1).toInt();
+      if (ch < 0 || ch > 7) {
+        SerialUSB.println("S:DAC_SET:ERR:ch_out_of_range_0_7");
+        return;
+      }
+      if (raw < 0) raw = 0;
+      if (raw > 65535) raw = 65535;
+      set_DAC8050x_output(ch, (uint16_t)raw);
+      char buf[64];
+      snprintf(buf, sizeof(buf), "S:DAC_SET:OK:ch=%d raw=%u", ch, (unsigned)raw);
+      SerialUSB.println(buf);
+      return;
+    }
+
+    // S:DAC_GAIN <hex>
+    //   直写 DAC80508 GAIN 寄存器（addr 0x04），运行时切换通道 gain。
+    //   ttl_test 默认 0x0080：ch0-6 gain=1（满量程 2.5V），ch7 gain=2（D8 满量程 5V）
+    //   GAIN 0  → 0x0000: 全部 gain=1 (D8 max 2.5V)
+    //   GAIN 80 → 0x0080: 默认，D8 max 5V
+    if (command.startsWith("S:DAC_GAIN")) {
+      String arg = command.substring(10);
+      arg.trim();
+      arg.toUpperCase();
+      if (arg.startsWith("0X")) arg = arg.substring(2);
+      if (arg.length() == 0) {
+        SerialUSB.println("S:DAC_GAIN:ERR:missing_hex_value");
+        return;
+      }
+      uint32_t val = strtoul(arg.c_str(), NULL, 16);
+      if (val > 0xFFFF) val = 0xFFFF;
+      uint8_t div   = (val >> 8) & 0x01;
+      uint8_t gains = val & 0xFF;
+      set_DAC8050x_gain(div, gains);
+      char buf[64];
+      snprintf(buf, sizeof(buf), "S:DAC_GAIN:OK:value=0x%04lX div=%u gains=0x%02X",
+               (unsigned long)val, div, gains);
+      SerialUSB.println(buf);
+      return;
+    }
+
+    // S:DAC_READ_ALL — 回读 CONFIG / GAIN / DAC0..7 寄存器并打印（带解码）
+    if (command == "S:DAC_READ_ALL") {
+      uint16_t cfg  = read_DAC8050x_reg(IlluminationConfig::DAC_CONFIG_ADDR);
+      uint16_t gain = read_DAC8050x_reg(IlluminationConfig::DAC_GAIN_ADDR);
+      char buf[96];
+      snprintf(buf, sizeof(buf), "S:DAC_READ:CONFIG=0x%04X", cfg);
+      SerialUSB.println(buf);
+      snprintf(buf, sizeof(buf), "S:DAC_READ:GAIN=0x%04X REFDIV=%u GAINS=%c%c%c%c%c%c%c%c",
+               gain,
+               (gain >> 8) & 0x01,
+               (gain >> 0) & 0x01 ? '2' : '1',
+               (gain >> 1) & 0x01 ? '2' : '1',
+               (gain >> 2) & 0x01 ? '2' : '1',
+               (gain >> 3) & 0x01 ? '2' : '1',
+               (gain >> 4) & 0x01 ? '2' : '1',
+               (gain >> 5) & 0x01 ? '2' : '1',
+               (gain >> 6) & 0x01 ? '2' : '1',
+               (gain >> 7) & 0x01 ? '2' : '1');
+      SerialUSB.println(buf);
+      for (int i = 0; i < 8; i++) {
+        uint16_t dv = read_DAC8050x_reg(IlluminationConfig::DAC_DAC_ADDR + i);
+        snprintf(buf, sizeof(buf), "S:DAC_READ:DAC%d=0x%04X", i, dv);
+        SerialUSB.println(buf);
+      }
+      SerialUSB.println("S:DAC_READ:END");
+      return;
+    }
+
+    // S:DAC_READ <reg_hex> — 回读单个寄存器
+    //   例：S:DAC_READ 04  → 读 GAIN
+    if (command.startsWith("S:DAC_READ")) {
+      String arg = command.substring(10);
+      arg.trim();
+      arg.toUpperCase();
+      if (arg.startsWith("0X")) arg = arg.substring(2);
+      if (arg.length() == 0) {
+        SerialUSB.println("S:DAC_READ:ERR:missing_reg_hex");
+        return;
+      }
+      uint32_t addr = strtoul(arg.c_str(), NULL, 16);
+      if (addr > 0x1F) {
+        SerialUSB.println("S:DAC_READ:ERR:reg_out_of_range");
+        return;
+      }
+      uint16_t v = read_DAC8050x_reg((uint8_t)addr);
+      char buf[64];
+      snprintf(buf, sizeof(buf), "S:DAC_READ:reg=0x%02lX value=0x%04X",
+               (unsigned long)addr, v);
+      SerialUSB.println(buf);
+      return;
+    }
+
     // 处理其他调试命令
     DEBUG_PRINT("Serial:TO_AXISMGR:");
     DEBUG_PRINTLN(command);  // 调试点 - 发往AxisManager

@@ -46,6 +46,16 @@ void set_DAC8050x_gain(uint8_t div, uint8_t gains);
 void set_DAC8050x_config();
 void set_DAC8050x_default_gain();
 
+// 全部 8 通道 DAC 输出归零（ttl_test bring-up 验证）
+void dac_zero_all();
+
+// 两帧 SPI 协议读 DAC80508 寄存器（addr 范围 0x00..0x18）
+uint16_t read_DAC8050x_reg(uint8_t addr);
+
+// 主循环钩子：进 loop 后一次性补做 CONFIG/GAIN/zero 同步，
+// 规避 setup-time SPI 首事务偶发被丢的硬件 bug（ttl_test bring-up 验证）
+void illumination_update();
+
 // =============================================================================
 // LED 矩阵（APA102，128 像素）
 // =============================================================================

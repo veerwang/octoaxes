@@ -175,6 +175,9 @@ void loop() {
   // 更新触发脉冲恢复
   trigger_update();
 
+  // 主循环钩子：DAC 一次性 fallback 同步（ttl_test bring-up 验证）
+  illumination_update();
+
   // 处理串口调试命令
   serialProtocol.processSerialCommands();
 

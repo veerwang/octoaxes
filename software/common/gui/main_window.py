@@ -256,7 +256,12 @@ class TeensyControlGUI(QMainWindow):
         self.illumination_panel.port_cmd.connect(self._send_illu_port)
         self.illumination_panel.turn_off_all.connect(self._send_illu_turn_off_all)
         self.illumination_panel.led_matrix_cmd.connect(self._send_illu_led_matrix)
+        self.illumination_panel.led_matrix_off_cmd.connect(self._send_illu_led_matrix_off)
         self.illumination_panel.intensity_factor_cmd.connect(self._send_illu_intensity_factor)
+        # DAC 直控信号（仅 squid++ profile 会发，octoaxes 信号永远不触发）
+        self.illumination_panel.dac_channel_cmd.connect(self._send_dac_set)
+        self.illumination_panel.dac_gain_cmd.connect(self._send_dac_gain)
+        self.illumination_panel.dac_readback_cmd.connect(self._send_dac_read_all)
         layout.addWidget(self.illumination_panel)
 
         return tab
@@ -808,6 +813,12 @@ class TeensyControlGUI(QMainWindow):
                     axis, self.axis_manager.get_axis_status(axis))
             return
 
+        # DAC 调试响应（S:DAC_SET / S:DAC_GAIN / S:DAC_READ:*）
+        # 全部直接打到 Log，方便 bring-up 时阅读
+        if data.startswith("S:DAC_"):
+            self.log(f"← {data}")
+            return
+
         # 处理轴数据（parse_axis_data 只调用一次，用 parsed 缓存结果）
         parsed = self.axis_manager.parse_axis_data(data)
         if parsed:
@@ -1237,17 +1248,36 @@ class TeensyControlGUI(QMainWindow):
         self.log("Illumination: Turn Off All Ports")
 
     def _send_illu_led_matrix(self, pattern: int, r: int, g: int, b: int):
-        """SET_ILLUMINATION_LED_MATRIX (cmd 13)"""
+        """Set Matrix 按钮：cmd 13 缓存参数 + cmd 10 真点亮（两步流程，与旧 Squid 对齐）
+
+        firmware 2026-05-10 起 SET_ILLUMINATION_LED_MATRIX 改为仅缓存，
+        必须再发 TURN_ON_ILLUMINATION 才能真正点亮 LED 矩阵。
+        """
+        if self.serial_thread is None:
+            return
+        # ① 缓存 pattern + RGB
+        cmd13 = bytearray(8)
+        cmd13[1] = CMDS.SET_ILLUMINATION_LED_MATRIX
+        cmd13[2] = pattern
+        cmd13[3] = r
+        cmd13[4] = g
+        cmd13[5] = b
+        self.serial_thread.send_binary_command(cmd13)
+        # ② 真点亮（source 与 pattern code 一致：LED_ARRAY_FULL=0..LED_ARRAY_BOTTOM_HALF=8）
+        cmd10 = bytearray(8)
+        cmd10[1] = CMDS.TURN_ON_ILLUMINATION
+        cmd10[2] = pattern
+        self.serial_thread.send_binary_command(cmd10)
+        self.log(f"Illumination LED matrix ON: pattern={pattern} R={r} G={g} B={b}")
+
+    def _send_illu_led_matrix_off(self):
+        """Clear 按钮：cmd 11 TURN_OFF_ILLUMINATION 真熄灭矩阵"""
         if self.serial_thread is None:
             return
         cmd = bytearray(8)
-        cmd[1] = CMDS.SET_ILLUMINATION_LED_MATRIX
-        cmd[2] = pattern
-        cmd[3] = r
-        cmd[4] = g
-        cmd[5] = b
+        cmd[1] = CMDS.TURN_OFF_ILLUMINATION
         self.serial_thread.send_binary_command(cmd)
-        self.log(f"Illumination LED matrix: pattern={pattern} R={r} G={g} B={b}")
+        self.log("Illumination LED matrix OFF")
 
     def _send_illu_intensity_factor(self, pct: int):
         """SET_ILLUMINATION_INTENSITY_FACTOR (cmd 17)"""
@@ -1258,6 +1288,20 @@ class TeensyControlGUI(QMainWindow):
         cmd[2] = pct
         self.serial_thread.send_binary_command(cmd)
         self.log(f"Illumination intensity factor: {pct}%")
+
+    # ── DAC 直控（squid++ bring-up，走 ASCII 调试通道） ────────────
+
+    def _send_dac_set(self, ch: int, raw: int):
+        """ASCII S:DAC_SET <ch> <raw> — 直控写 DAC raw（绕过 firmware factor）"""
+        self.send_command(f"S:DAC_SET {ch} {raw}", "DAC")
+
+    def _send_dac_gain(self, gain_hex: int):
+        """ASCII S:DAC_GAIN <hex> — 切 D8 5V↔2.5V GAIN"""
+        self.send_command(f"S:DAC_GAIN {gain_hex:02X}", "DAC")
+
+    def _send_dac_read_all(self):
+        """ASCII S:DAC_READ_ALL — 触发 CONFIG/GAIN/8 通道读回（回包打到 Log）"""
+        self.send_command("S:DAC_READ_ALL", "DAC")
 
     def clear_sent_commands(self):
         self.sent_display.clear()

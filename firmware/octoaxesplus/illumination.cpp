@@ -84,6 +84,8 @@ void illumination_init()
     // DAC 初始化
     set_DAC8050x_config();
     set_DAC8050x_default_gain();
+    // ttl_test bring-up 验证：DAC 通道开机零位，避免上电瞬态影响激光板
+    dac_zero_all();
 
     // 状态变量初始化
     illumination_intensity_factor = IlluminationConfig::DEFAULT_INTENSITY_FACTOR;
@@ -128,8 +130,57 @@ void set_DAC8050x_gain(uint8_t div, uint8_t gains)
 
 void set_DAC8050x_default_gain()
 {
+    // ttl_test bring-up 验证：GAIN 写两次中间留 2ms，规避 SPI 首事务偶发被丢
     set_DAC8050x_gain(IlluminationConfig::DAC_DEFAULT_DIV,
                       IlluminationConfig::DAC_DEFAULT_GAINS);
+    delay(2);
+    set_DAC8050x_gain(IlluminationConfig::DAC_DEFAULT_DIV,
+                      IlluminationConfig::DAC_DEFAULT_GAINS);
+    delay(2);
+}
+
+void dac_zero_all()
+{
+    for (int ch = 0; ch < 8; ch++)
+        set_DAC8050x_output(ch, 0);
+}
+
+uint16_t read_DAC8050x_reg(uint8_t addr)
+{
+    // DAC80508 两帧读协议（datasheet §9.5.2）：
+    //   帧 1：[R/W=1 | addr] + 16-bit 占位 → 请求读
+    //   帧 2：NOP (0x00 + 16 bit 0) → SDO 输出请求寄存器值
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
+    Pins::hc154_select(Pins::DAC8050x_CS);
+    SPI.transfer(0x80 | (addr & 0x0F));
+    SPI.transfer16(0x0000);
+    Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
+    SPI.endTransaction();
+
+    delayMicroseconds(2);
+
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
+    Pins::hc154_select(Pins::DAC8050x_CS);
+    SPI.transfer(0x00);                       // NOP 命令字节，丢弃返回的状态字节
+    uint16_t value = SPI.transfer16(0x0000);  // 接收 16-bit 寄存器数据
+    Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
+    SPI.endTransaction();
+
+    return value;
+}
+
+void illumination_update()
+{
+    // ttl_test bring-up 验证：setup-time SPI 写偶发被丢，进 loop 后再保险同步一次
+    static bool dac_sync_done = false;
+    if (!dac_sync_done) {
+        delay(10);
+        set_DAC8050x_config();
+        delay(2);
+        set_DAC8050x_default_gain();   // 内部已两次写 + delay
+        dac_zero_all();
+        dac_sync_done = true;
+    }
 }
 
 void set_DAC8050x_config()
@@ -250,6 +301,20 @@ void clear_matrix()
     FastLED.show();
 }
 
+// LED 矩阵 R/G 通道字节映射：
+//   默认（无 LED_MATRIX_SWAP_RG 宏）：按字面顺序 (r, g) 调用 led_set_*，
+//   配合 FastLED BGR 模板 + 标准 APA102 灯珠（字节排列 B/G/R）颜色正确。
+//   定义 -D LED_MATRIX_SWAP_RG：r/g 实参对调，兼容旧硬件批次（字节排列
+//   B/R/G）。等价于 2026-05-15 前历史行为，与旧 Squid functions.cpp 一致。
+//
+// 历史：旧 Squid + 旧硬件灯珠时代代码用 (g, r) 对调补偿硬件 BRG 排列；
+// 新批次灯珠改回标准 BGR 后，对调反而让用户输入 R/G 颠倒显示。详见 SESSION.md。
+#ifdef LED_MATRIX_SWAP_RG
+  #define LED_RG_ARGS(r_val, g_val) (g_val), (r_val)
+#else
+  #define LED_RG_ARGS(r_val, g_val) (r_val), (g_val)
+#endif
+
 void turn_on_LED_matrix_pattern(int pattern, uint8_t r, uint8_t g, uint8_t b)
 {
     // 强度缩放（0-255 → 0-LED_MAX_INTENSITY），注意：APA102 BGR 顺序
@@ -262,25 +327,25 @@ void turn_on_LED_matrix_pattern(int pattern, uint8_t r, uint8_t g, uint8_t b)
     switch (pattern)
     {
         case IlluminationConfig::LED_ARRAY_FULL:
-            led_set_all(scaled_g, scaled_r, scaled_b); break;
+            led_set_all(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_LEFT_HALF:
-            led_set_left(scaled_g, scaled_r, scaled_b); break;
+            led_set_left(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_RIGHT_HALF:
-            led_set_right(scaled_g, scaled_r, scaled_b); break;
+            led_set_right(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_LEFTB_RIGHTR:
             led_set_left(0, 0, scaled_b);
-            led_set_right(0, scaled_r, 0);
+            led_set_right(LED_RG_ARGS(scaled_r, 0), 0);
             break;
         case IlluminationConfig::LED_ARRAY_LOW_NA:
-            led_set_low_na(scaled_g, scaled_r, scaled_b); break;
+            led_set_low_na(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_LEFT_DOT:
-            led_set_left_dot(scaled_g, scaled_r, scaled_b); break;
+            led_set_left_dot(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_RIGHT_DOT:
-            led_set_right_dot(scaled_g, scaled_r, scaled_b); break;
+            led_set_right_dot(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_TOP_HALF:
-            led_set_top(scaled_g, scaled_r, scaled_b); break;
+            led_set_top(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         case IlluminationConfig::LED_ARRAY_BOTTOM_HALF:
-            led_set_bottom(scaled_g, scaled_r, scaled_b); break;
+            led_set_bottom(LED_RG_ARGS(scaled_r, scaled_g), scaled_b); break;
         default: break;
     }
     FastLED.show();
