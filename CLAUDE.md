@@ -55,23 +55,24 @@ documents/              文档资料：
 
 ## 当前状态
 
-**最后更新**: 2026-05-15（下半场收官）
-**当前硬件**: octoaxesplus TMC2240 驱动板；XYZ 三轴 + **W2 滤光转盘已实测端到端通过**；W1 PCB CLK 走线缺失（硬件 bug）
-**当前进度（octoaxes 主线，来自 develop）**: Z 编码器启用 + XYZ 速度基线 + Homing 调试打印清理 + `Axis::moveRelativeMicrosteps` 静默 reject 修复 + 旧 Squid X 卡死 root cause + 协议层下降沿立即发包优化 + Y homing 异响方案（256 微步 + 30 mm/s）；响应包保持 24 字节与旧 Squid 兼容
-**当前进度（octoaxesplus 双相机变体，来自 maxpro）**:
-- **2026-05-14 IC4 虚焊 root cause 修好**：SPI 通信端到端打通，X/Y 轴 PyQt 运动验证通过
-- **2026-05-15 上半场**：启用 XYZW1W2 五轴 firmware + 软件目录拆分 octoaxes/octoaxesplus/common + axis.cpp 两隐患修复 + S:SPITEST 寄存器笔误修复
-- **2026-05-15 下半场（端到端打通 W2）**：
-  - **协议 v2 实施**：octoaxesplus 24→40 字节扩展位置广播（cmd_id=0xFD，按 icID 索引 8 位置），octoaxes 24 字节不变，GUI 自动识别
-  - **W1/W2 firmware handler**：handleMoveW2 / handleMoveToW2 实施 + MOVETO_W2=43 cmd code + handleHomeOrZero 加 W→W1 兜底
-  - **GUI 修复**：W1/W2 用 AXIS_CONFIG["type"] 动态判断滤光轮菜单；send_homing/previous/next 支持 W1/W2；AxisManager 不再硬编码 7 轴
-  - **profile 隔离工程化**：verify_profiles.py 自动验证两 profile + CLAUDE.md common/ 修改原则
-  - **W2 用户实测确认**：GUI 上 W2 滤光转盘 Previous/Next/Homing 按钮均正常控制电机转动
-  - **W1 PCB 根因定位**：W1 连接器 pin 16 (CLK) = 0V（拔板/插板都 0V），主板走线未连，PCB 硬件 bug
+**最后更新**: 2026-05-18
+**当前硬件**: octoaxesplus TMC2240 驱动板；XYZ 三轴 + W2 滤光转盘已实测端到端通过；W1 PCB CLK 走线缺失（硬件 bug）；LED 矩阵新批次灯珠按字节标准 BGR 排列
+**当前进度（develop 主线，已合并 maxpro 全部进展 + 2026-05-18 illumination 完善）**:
+- **历史汇总**：octoaxes 主线（Z 编码器 + XYZ 速度基线 + Y homing 256/30 + 静默 reject + 协议下降沿即时发 + B.6/B.6.1 判完优化）；octoaxesplus（IC4 虚焊定位 + XYZW1W2 五轴 + software profile 拆分 + 协议 v2 + W2 端到端打通）；详见 SESSION.md
+- **2026-05-18 ttl_test 融合 + LED 矩阵双修**：
+  - **DAC bring-up 经验吸收**：octoaxesplus firmware illumination 加 GAIN 双写、dac_zero_all、read_DAC8050x_reg、illumination_update 主循环钩子 + 4 个 ASCII 调试命令（S:DAC_SET / S:DAC_GAIN / S:DAC_READ_ALL / S:DAC_READ）
+  - **IlluminationPanel 数据驱动化**：constants.py 加 ILLUMINATION_PORTS/DAC_CHANNELS/HAS_GAIN_SWITCH/HAS_DAC_READBACK 元数据，TTL 行动态生成（octoaxes 5 路保留 / octoaxesplus 自动扩 8 路 + DAC 直控滑条 + GAIN 切换 + Read 按钮）；DAC 滑条走 ASCII 绕过 factor 缩放
+  - **LED 矩阵 Set/Clear 按钮修复**：cmd 13 历史改为"仅缓存"后 GUI 未补 cmd 10/11；现 Set Matrix 改为发 cmd 13 + cmd 10 两步，Clear 改为发 cmd 11
+  - **LED 矩阵 R/G 颠倒根因修复**：旧代码强制 R/G 实参对调补偿旧灯珠 BRG 字节排列；新灯珠回归 BGR 后变单错位。引入 LED_RG_ARGS 宏 + LED_MATRIX_SWAP_RG 编译开关，默认按字面 RGB 顺序；新增 4 个 platformio env（teensy41_legacyled / teensy41_nointerlock_legacyled × octoaxes + octoaxesplus）
+  - **D1-D5 控制根因澄清**：octoaxes 必须烧 teensy41_nointerlock（或新 *_legacyled 衍生）才能拉起 D1-D5 TTL，默认 teensy41 联锁版 pin 2 浮空会拦截
 **下一步**:
-- W1 PCB CLK 走线飞线（firmware/software 都已就位，CLK 一通即用）
+- LED 矩阵 R/G/B 颜色映射用户实测确认（commit fec1526 烧入后）
+- DAC 滑条 + GAIN 切换 + Read 按钮硬件实测（commit 020c5e2 + 8b5d400 烧入后）
+- W1 PCB CLK 走线飞线（硬件 bug 待修）
 - Z 轴 PyQt 运动单独验证（X/Y/W2 已通）
-- bring-up 工具（clk_test/hc154_test/pg_test/pin13_blink）归宿决定（.gitignore 或归档）
+- master 12 个 commit 是否 cherry-pick 评估
+- bring-up 工具（clk_test/hc154_test/pg_test/pin13_blink）归宿决定
+- TMC2240 StallGuard4 调优（stash@{0} 6 步流程待恢复）
 - C 维度 HOME 复杂场景（AXES_XY 联合归位 + W1/W2 homing 实测）
 - 后续 8 轴扩展（F1/Z2/F2/R/T）— 协议层已铺好
 
