@@ -253,8 +253,13 @@ void joystick_update() {
 }
 
 void joystick_print_stats() {
-  serialProtocol.sendDebugInfo("JOYSTICK_STATS legacy=%lu crc_ok=%lu crc_fail=%lu",
-                               (unsigned long)joystick_legacy_count,
-                               (unsigned long)joystick_crc_ok_count,
-                               (unsigned long)joystick_crc_fail_count);
+  // 用 SerialUSB.println 直发（不走 DEBUG_PRINTLN），确保生产 env (teensy41)
+  // 下也能查询计数器；对齐 S:HWINFO / S:VERSION 同款 pattern
+  char buf[96];
+  snprintf(buf, sizeof(buf),
+           "JOYSTICK_STATS legacy=%lu crc_ok=%lu crc_fail=%lu",
+           (unsigned long)joystick_legacy_count,
+           (unsigned long)joystick_crc_ok_count,
+           (unsigned long)joystick_crc_fail_count);
+  SerialUSB.println(buf);
 }
