@@ -3,6 +3,7 @@
 #include "build_opt.h"
 #include "config.h"
 #include "def_octopi_80120.h"
+#include "serial.h"
 #include "trigger.h"
 #include "tmc/motion/MotorControl.h"
 #include "tmc/ic/TMC4361A/TMC4361A.h"
@@ -51,6 +52,13 @@ static bool focusPositionSynced = false;      // focusPosition 是否已与实�
 // 周期计时器
 static elapsedMicros joystickTimer;
 
+// 协议帧统计计数（S:JOYSTICK_STATS 读取）
+// byte[9] == 0 → legacy 包（老 joystick，不带 CRC）
+// byte[9] != 0 → 新 joystick，校验 CRC-8-CCITT(buffer[0..8])，0x00 映射为 0x01
+static uint32_t joystick_legacy_count = 0;
+static uint32_t joystick_crc_ok_count = 0;
+static uint32_t joystick_crc_fail_count = 0;
+
 // =============================================================================
 // PacketSerial 回调：解析手控盒 10 字节消息
 // =============================================================================
@@ -58,6 +66,20 @@ static elapsedMicros joystickTimer;
 static void onJoystickPacketReceived(const uint8_t *buffer, size_t size) {
   if (size != 10)
     return;
+
+  // CRC 兼容性闸门：byte[9]==0 视为 legacy（老 joystick），非 0 校验 CRC
+  uint8_t recv_crc = buffer[9];
+  if (recv_crc == 0x00) {
+    joystick_legacy_count++;
+  } else {
+    uint8_t calc = serialProtocol.crc8ccitt(const_cast<byte *>(buffer), 9);
+    if (calc == 0x00) calc = 0x01; // 与 joystick 侧映射规则一致
+    if (calc != recv_crc) {
+      joystick_crc_fail_count++;
+      return; // CRC 失配丢包
+    }
+    joystick_crc_ok_count++;
+  }
 
   // bytes[0-3]: 焦点轮绝对编码器位置 (int32 BE)
   int32_t focusWheelNew = (int32_t)((uint32_t)buffer[0] << 24 |
@@ -228,4 +250,11 @@ void joystick_update() {
 
   // Z 焦点轮：每次 loop 无条件运行（与 Squid 一致，在 flag_read_joystick 外面）
   do_focus_control();
+}
+
+void joystick_print_stats() {
+  serialProtocol.sendDebugInfo("JOYSTICK_STATS legacy=%lu crc_ok=%lu crc_fail=%lu",
+                               (unsigned long)joystick_legacy_count,
+                               (unsigned long)joystick_crc_ok_count,
+                               (unsigned long)joystick_crc_fail_count);
 }
