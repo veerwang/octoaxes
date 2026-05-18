@@ -84,6 +84,8 @@ void illumination_init()
     // DAC 初始化
     set_DAC8050x_config();
     set_DAC8050x_default_gain();
+    // ttl_test bring-up 验证：DAC 通道开机零位，避免上电瞬态影响激光板
+    dac_zero_all();
 
     // 状态变量初始化
     illumination_intensity_factor = IlluminationConfig::DEFAULT_INTENSITY_FACTOR;
@@ -128,8 +130,57 @@ void set_DAC8050x_gain(uint8_t div, uint8_t gains)
 
 void set_DAC8050x_default_gain()
 {
+    // ttl_test bring-up 验证：GAIN 写两次中间留 2ms，规避 SPI 首事务偶发被丢
     set_DAC8050x_gain(IlluminationConfig::DAC_DEFAULT_DIV,
                       IlluminationConfig::DAC_DEFAULT_GAINS);
+    delay(2);
+    set_DAC8050x_gain(IlluminationConfig::DAC_DEFAULT_DIV,
+                      IlluminationConfig::DAC_DEFAULT_GAINS);
+    delay(2);
+}
+
+void dac_zero_all()
+{
+    for (int ch = 0; ch < 8; ch++)
+        set_DAC8050x_output(ch, 0);
+}
+
+uint16_t read_DAC8050x_reg(uint8_t addr)
+{
+    // DAC80508 两帧读协议（datasheet §9.5.2）：
+    //   帧 1：[R/W=1 | addr] + 16-bit 占位 → 请求读
+    //   帧 2：NOP (0x00 + 16 bit 0) → SDO 输出请求寄存器值
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
+    Pins::hc154_select(Pins::DAC8050x_CS);
+    SPI.transfer(0x80 | (addr & 0x0F));
+    SPI.transfer16(0x0000);
+    Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
+    SPI.endTransaction();
+
+    delayMicroseconds(2);
+
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
+    Pins::hc154_select(Pins::DAC8050x_CS);
+    SPI.transfer(0x00);                       // NOP 命令字节，丢弃返回的状态字节
+    uint16_t value = SPI.transfer16(0x0000);  // 接收 16-bit 寄存器数据
+    Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
+    SPI.endTransaction();
+
+    return value;
+}
+
+void illumination_update()
+{
+    // ttl_test bring-up 验证：setup-time SPI 写偶发被丢，进 loop 后再保险同步一次
+    static bool dac_sync_done = false;
+    if (!dac_sync_done) {
+        delay(10);
+        set_DAC8050x_config();
+        delay(2);
+        set_DAC8050x_default_gain();   // 内部已两次写 + delay
+        dac_zero_all();
+        dac_sync_done = true;
+    }
 }
 
 void set_DAC8050x_config()
