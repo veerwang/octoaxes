@@ -715,7 +715,9 @@ class IlluminationPanel(QGroupBox):
         turn_off_all()
             → TURN_OFF_ALL_PORTS
         led_matrix_cmd(pattern, r, g, b)
-            → SET_ILLUMINATION_LED_MATRIX
+            → SET_ILLUMINATION_LED_MATRIX (cmd 13 缓存) + TURN_ON_ILLUMINATION (cmd 10 点亮)
+        led_matrix_off_cmd()
+            → TURN_OFF_ILLUMINATION (cmd 11)
         intensity_factor_cmd(pct_0_100)
             → SET_ILLUMINATION_INTENSITY_FACTOR
         dac_channel_cmd(channel, raw_0_65535)
@@ -729,6 +731,7 @@ class IlluminationPanel(QGroupBox):
     port_cmd            = pyqtSignal(int, int, bool)   # port, intensity, on
     turn_off_all        = pyqtSignal()
     led_matrix_cmd      = pyqtSignal(int, int, int, int)  # pattern, r, g, b
+    led_matrix_off_cmd  = pyqtSignal()                  # Clear → 真熄灭矩阵
     intensity_factor_cmd = pyqtSignal(int)             # 0-100
     dac_channel_cmd     = pyqtSignal(int, int)         # ch, raw 0-65535
     dac_gain_cmd        = pyqtSignal(int)              # gain hex 0x00..0xFF
@@ -1087,8 +1090,9 @@ class IlluminationPanel(QGroupBox):
         self.led_matrix_cmd.emit(pattern, r, g, b)
 
     def _clear_led_matrix(self):
-        # 发送 pattern=FULL, RGB=0,0,0 相当于熄灭
-        self.led_matrix_cmd.emit(0, 0, 0, 0)
+        # firmware cmd 13 只缓存参数不熄灭（2026-05-10 行为变更）；
+        # 必须发 cmd 11 TURN_OFF_ILLUMINATION 才能真熄灭矩阵
+        self.led_matrix_off_cmd.emit()
 
 
 class LogDisplay(QGroupBox):
