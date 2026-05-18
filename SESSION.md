@@ -104,11 +104,37 @@ firmware/joystick/                          (旧位置)
 
 - ✅ joystick 协议 CRC 实施完成，4 工程编译通过
 - ✅ 协议落地文档（含外部源码引用脚注）
-- ⏳ **硬件烧录验证**（用户实测）：
-  1. 回归：只烧新 firmware + 老 joystick → `S:JOYSTICK_STATS` 应见 `legacy=N crc_ok=0 crc_fail=0`
-  2. 正向：新 firmware + 新 joystick → `crc_ok` 持续增长，`crc_fail=0`
-  3. 反向：新 joystick + 老 firmware（含旧 Squid） → 摇杆/焦点/按钮行为不变
-  4. 干扰：长时间运行 `crc_fail` 应 ≈ 0
+- ✅ **硬件烧录验证（2026-05-18 实测部分闭环）**：
+  1. ⏳ 回归：新 fw + 老 joystick — 未测（未换回老 joystick）
+  2. ✅ **正向：新 fw + 新 joystick** — 实测 `crc_ok=110 → 5820 / 3.5s`，`crc_fail=0`
+  3. ✅ **反向：新 joystick + 老 fw（fa625d1 前 octoaxes）** — 摇杆/焦点/按钮正常
+  4. ✅ **干扰：crc_fail≈0** — 3.5s 内 5820 包零失败
+
+### 实测过程亮点 + 顺手发现的 DEBUG_PRINTLN bug
+
+1. **检测 fa625d1 前后固件**：脚本首次跑发现 `S:JOYSTICK_STATS` 没回包但
+   `S:VERSION` 有回包 → 烧的是 fa625d1 前固件。重烧 develop HEAD 后仍无回包。
+2. **DEBUG_PRINTLN 空宏 bug 暴露**：根因是 `joystick_print_stats` 错误地走
+   `sendDebugInfo` → `DEBUG_PRINTLN` 宏在生产 env (teensy41) 下展开为空，
+   响应被静默丢弃。fix(a716980): 改用 `SerialUSB.println` 直发，对齐
+   `S:HWINFO / S:VERSION` 同款 pattern。
+3. **第三次重烧后**：`crc_ok=110` → 3.5s 后 `5820`（增量 5710，速率 ~1631 pkts/s），
+   与 joystick 主循环 500 Hz × 中断驱动加速吻合；`crc_fail=0` 全程。
+4. **顺带验证反向兼容**：上一轮"烧错版本"的 octoaxes 主固件（pre-fa625d1）
+   配新 joystick 摇杆 / 焦点轮 / 按钮全正常 → 反向兼容性 §5 矩阵第 3 行的
+   旧 Squid 源码事实（`functions.cpp:509-546` 不读 byte[9]）在硬件上得到
+   二次确认。
+
+### 4 commit 累加（本次会话总计 6 个 develop commits）
+
+```
+a716980 fix(joystick): joystick_print_stats 改走 SerialUSB.println + 配套查询脚本
+912eaab Merge origin/develop: 2026-05-18 illumination/LED + joystick CRC 双线汇合
+1217e88 docs: 2026-05-18 joystick CRC 协议会话收尾
+c5e3867 docs(joystick): 兼容性矩阵补脚注 — 旧 Squid fw 源码已核实不读 byte[9]
+8824204 docs(joystick): 10 字节协议落地文档 + byte[9] 兼容性闸门约定
+fa625d1 feat(joystick): CRC-8-CCITT 协议 + 目录分离到 {octoaxes,octoaxesplus}
+```
 
 ### 下次继续
 

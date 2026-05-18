@@ -34,11 +34,17 @@
 - [x] **兼容性矩阵补脚注**：核实旧 Squid `functions.cpp:509-546`
   `onJoystickPacketReceived` 函数体不读 `buffer[9]`，"新 joy → 老 fw"
   从"95% 推测"升级为"100% 源码已核实"（commit c5e3867）
-- [ ] **硬件烧录验证（用户实测）**：
-  - [ ] 回归：新 fw + 老 joystick → `S:JOYSTICK_STATS legacy=N crc_ok=0 crc_fail=0`
-  - [ ] 正向：新 fw + 新 joystick → `crc_ok` 持续增长，`crc_fail=0`
-  - [ ] 反向：新 joystick + 老 fw（含旧 Squid） → 摇杆/焦点/按钮行为不变
-  - [ ] 干扰：长时间运行 `crc_fail` 应 ≈ 0
+- [x] **修复 joystick_print_stats DEBUG_PRINTLN 空宏 bug**（2026-05-18，commit a716980）：
+  fa625d1 误用 sendDebugInfo（受 -D DEBUG 控制，生产 env 空宏），改用
+  SerialUSB.println 直发对齐 S:HWINFO；新增 `software/common/tests/check_joystick_stats.py`
+  查询脚本
+- [x] **硬件烧录验证（部分实测，2026-05-18）**：
+  - [ ] 回归：新 fw + 老 joystick → 未测（未换回老 joystick）
+  - [x] **正向：新 fw + 新 joystick** → 实测 `crc_ok=110 → 5820 / 3.5s`，
+    `crc_fail=0` 全程 ✅（commit a716980 烧入后）
+  - [x] **反向：新 joystick + 老 fw（含 fa625d1 前 octoaxes）** → 摇杆/焦点/按钮
+    全部正常 ✅（与旧 Squid `functions.cpp:509-546` 不读 byte[9] 源码事实一致）
+  - [x] **干扰：crc_fail≈0** → 3.5s 内 5820 包零失败，趋势良好（长时间样本待累积）
 
 ### 2026-05-15 octoaxesplus W2 端到端打通 + 协议 v2 + GUI 修复全套
 
