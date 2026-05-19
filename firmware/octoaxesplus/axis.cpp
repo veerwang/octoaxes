@@ -557,12 +557,9 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
     return true;
   }
 
-  // 检查是否需要 VSTOP recovery（motor_moveToMicrosteps 会禁用限位）
-  uint32_t preStatus = motor_readStatus(_icID);
-  bool vstopWasActive = (preStatus & TMC4361A_VSTOPL_ACTIVE_F_MASK) ||
-                        (preStatus & TMC4361A_VSTOPR_ACTIVE_F_MASK);
-
-  motor_moveToMicrosteps(_icID, targetMicrosteps);
+  // motor_moveToMicrosteps 内部已读 STATUS 检查 VSTOP，复用其返回值
+  // 避免重复 SPI 读（2026-05-18 acquisition optimization #2.2，省 ~10-20µs/move）
+  bool vstopWasActive = motor_moveToMicrosteps(_icID, targetMicrosteps);
   startMovement(); // 设置移动状态
 
   if (vstopWasActive && _softLimitsEnabled) {
@@ -623,12 +620,9 @@ bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
     return true;
   }
 
-  // 检查是否需要 VSTOP recovery（motor_moveToMicrosteps 会禁用限位）
-  uint32_t preStatus = motor_readStatus(_icID);
-  bool vstopWasActive = (preStatus & TMC4361A_VSTOPL_ACTIVE_F_MASK) ||
-                        (preStatus & TMC4361A_VSTOPR_ACTIVE_F_MASK);
-
-  motor_moveToMicrosteps(_icID, targetPos);
+  // motor_moveToMicrosteps 内部已读 STATUS 检查 VSTOP，复用其返回值
+  // 避免重复 SPI 读（2026-05-18 acquisition optimization #2.2，省 ~10-20µs/move）
+  bool vstopWasActive = motor_moveToMicrosteps(_icID, targetPos);
   startMovement(); // 设置移动状态
 
   if (vstopWasActive && _softLimitsEnabled) {

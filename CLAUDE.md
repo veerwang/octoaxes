@@ -55,8 +55,8 @@ documents/              文档资料：
 
 ## 当前状态
 
-**最后更新**: 2026-05-18
-**当前硬件**: octoaxesplus TMC2240 驱动板；XYZ 三轴 + W2 滤光转盘已实测端到端通过；W1 PCB CLK 走线缺失（硬件 bug）；LED 矩阵新批次灯珠按字节标准 BGR 排列
+**最后更新**: 2026-05-19
+**当前硬件**: octoaxesplus TMC2240 驱动板；XYZ 三轴 + W1/W2 滤光转盘已实测端到端通过（W1 CLK 飞线 2026-05-18 修复）；LED 矩阵新批次灯珠按字节标准 BGR 排列，R/G/B 颜色映射已确认；DAC 直控/GAIN/Read 已实测
 **当前进度（develop 主线，已合并 maxpro 全部进展 + 2026-05-18 illumination 完善）**:
 - **历史汇总**：octoaxes 主线（Z 编码器 + XYZ 速度基线 + Y homing 256/30 + 静默 reject + 协议下降沿即时发 + B.6/B.6.1 判完优化）；octoaxesplus（IC4 虚焊定位 + XYZW1W2 五轴 + software profile 拆分 + 协议 v2 + W2 端到端打通）；详见 SESSION.md
 - **2026-05-18 ttl_test 融合 + LED 矩阵双修**：
@@ -66,15 +66,17 @@ documents/              文档资料：
   - **LED 矩阵 R/G 颠倒根因修复**：旧代码强制 R/G 实参对调补偿旧灯珠 BRG 字节排列；新灯珠回归 BGR 后变单错位。引入 LED_RG_ARGS 宏 + LED_MATRIX_SWAP_RG 编译开关，默认按字面 RGB 顺序；新增 4 个 platformio env（teensy41_legacyled / teensy41_nointerlock_legacyled × octoaxes + octoaxesplus）
   - **D1-D5 控制根因澄清**：octoaxes 必须烧 teensy41_nointerlock（或新 *_legacyled 衍生）才能拉起 D1-D5 TTL，默认 teensy41 联锁版 pin 2 浮空会拦截
 **下一步**:
-- LED 矩阵 R/G/B 颜色映射用户实测确认（commit fec1526 烧入后）
-- DAC 滑条 + GAIN 切换 + Read 按钮硬件实测（commit 020c5e2 + 8b5d400 烧入后）
-- W1 PCB CLK 走线飞线（硬件 bug 待修）
-- Z 轴 PyQt 运动单独验证（X/Y/W2 已通）
-- master 12 个 commit 是否 cherry-pick 评估
+- **写打点 #1（单 cmd 总耗时）firmware 代码**（优先级最高，定位 ~7s 主凶）— 详见 `documents/baselines/acquisition_8s_deep_analysis_20260519.md`
+- **#2.2 + 打点 firmware 烧录验证**（编译通过未烧录，等用户硬件空闲，顺带带回归测试）
+- 可选清理 #3/#4/#5（独立于 8s 主凶，消除噪声 ~800ms）
 - bring-up 工具（clk_test/hc154_test/pg_test/pin13_blink）归宿决定
 - TMC2240 StallGuard4 调优（stash@{0} 6 步流程待恢复）
 - C 维度 HOME 复杂场景（AXES_XY 联合归位 + W1/W2 homing 实测）
 - 后续 8 轴扩展（F1/Z2/F2/R/T）— 协议层已铺好
+
+**2026-05-18 已确认通过**: LED 矩阵 R/G/B 颜色映射 / DAC 滑条+GAIN+Read / W1 PCB CLK 飞线 / Z 轴 PyQt 运动 / master 12 commit cherry-pick 评估
+
+**2026-05-19 里程碑**: 采集 90→98s 全面分析（10 维度对比 + 二轮深读）。**用户同硬件 A/B 实测确认 firmware 是真主凶**（推翻初步"不在 firmware"结论）。可量化 overhead 1.0-1.1s（#2.2 已修，#3/#4/#5 可清），**仍缺 ~7s 静态 review 看不见**，需打点定位
 
 ### octoaxesplus 工程（squid++ 双相机变体）
 

@@ -215,8 +215,12 @@ void motor_moveByDistance(uint8_t icID, float distanceMM);
  * @brief Move to absolute position in microsteps
  * @param icID  IC identifier
  * @param position Target position in microsteps
+ * @return true if virtual stop (VSTOPL/VSTOPR) was active before the move;
+ *         caller can use this to decide whether limits need re-enabling later.
+ *         Single SPI STATUS read is done inside this function — callers do
+ *         NOT need to read STATUS themselves.
  */
-void motor_moveToMicrosteps(uint8_t icID, int32_t position);
+bool motor_moveToMicrosteps(uint8_t icID, int32_t position);
 
 /**
  * @brief Start velocity mode rotation

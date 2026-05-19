@@ -662,10 +662,10 @@ void motor_moveByDistance(uint8_t icID, float distanceMM)
     motor_moveToMicrosteps(icID, current + delta);
 }
 
-void motor_moveToMicrosteps(uint8_t icID, int32_t position)
+bool motor_moveToMicrosteps(uint8_t icID, int32_t position)
 {
     if (icID >= MOTOR_IC_COUNT)
-        return;
+        return false;
 
     // ========================================================================
     // 与旧 API tmc4361A_moveTo 完全一致的实现
@@ -727,6 +727,7 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
     uint32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
     bool vstopL = status & TMC4361A_VSTOPL_ACTIVE_F_MASK;
     bool vstopR = status & TMC4361A_VSTOPR_ACTIVE_F_MASK;
+    bool vstopWasActive = vstopL || vstopR;
 
     if (vstopL || vstopR) {
         uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
@@ -751,6 +752,10 @@ void motor_moveToMicrosteps(uint8_t icID, int32_t position)
 
     // Read X_ACTUAL to get it to refresh
     tmc4361A_readRegister(icID, TMC4361A_XACTUAL);
+
+    // Return vstop state so axis layer can skip its own STATUS read
+    // (saves ~10-20µs SPI per move; 2026-05-18 acquisition optimization #2.2)
+    return vstopWasActive;
 }
 
 void motor_rotateVelocity(uint8_t icID, float velocityMM)

@@ -6,6 +6,97 @@
 
 ## 最新会话
 
+**日期**: 2026-05-19
+**分支**: develop
+**位置**: 90→98s 采集差距深度分析 + #2.2 修复落地 + 翻转第一轮 agent 误诊 + **二轮 review 后用户实测推翻"不在 firmware"假设**
+
+### 2026-05-19 续（用户同硬件 A/B 实测后二轮 review）
+
+用户反馈：**同硬件 A/B（同 stage / 相机 / USB / 物镜，只换 firmware）实测仍差 ~8s**。
+推翻第一轮"8s 不在 firmware"的判断，firmware 是真主凶。
+
+**二轮深读后找到的新 overhead**（之前漏掉的）：
+- `moveToPositionMicrosteps` no-op check `motor_getPositionMicrosteps` (axis.cpp:553) — +100µs/move
+- `clampTargetByDirection` 自己又读 1 次 SPI (axis.cpp:817) — +100µs/move
+- `Axis::completeMovement` 两个 `[[maybe_unused]]` SPI（DEBUG 编译掉但 SPI 仍执行）(axis.cpp:453-454) — +200µs/move
+- `send_position_update` 4 个 `findAxisByName` × String 构造 + equals (serial.cpp:203-206) — +40µs/tick × 10000 = 400ms
+- `Axis::update` STATE_MOVING `checkLimitPosition` 每 iter 1 SPI EVENTS (axis.cpp:272) — 不延长 motion 但占 SPI bus
+
+**可量化累计 ~1.0-1.1s**。仍缺 ~7s 静态 review 找不到。
+
+**6 个仍未排除的可能藏区**（看不见，需打点）：
+1. octoaxes `setMotionParameters` chip-level VMAX/AMAX/BOW 计算是否与旧 Squid 字面一致
+2. `Axis::configureDriver` 启动时 SPI 寄存器写入差异
+3. 某 cmd handler 内部 lib/framework 间接阻塞
+4. STATE_MOVING SPI bus 抢占行为差异
+5. **VMAX 同值重写是否真无 chip ramp 副作用（没查数据手册，可能错）**
+6. ISR 干扰（trigger / PWM / SPI）
+
+**结论**：静态 code review 已达极限，必须 firmware 打点测量。
+
+### 本次完成
+
+1. **深读代码挑战第一轮 agent 报告的 4 个修复点**：
+   - #1.1 跳空闲轴：`Axis::update()` STATE_IDLE 已是空 break (axis.cpp:225-227)，节省 ~40ns/iter → drop
+   - #1.2 send_pos_update 上移：`elapsedMicros` 不被 FastLED 阻塞影响 → drop
+   - #2.1 删 line 715 VMAX 写：VMAX 写同一值不触发 chip ramp 重启（待验证），且改 motor_stop 语义有传染风险，节省 ~50ms → drop（已加入"待打点验证"清单）
+   - #2.2 axis.cpp 重复 STATUS 读合并：唯一确认的真实节省 ~10-20ms → **DONE**
+
+2. **#2.2 实施完毕**（编译通过 octoaxes 80412B / octoaxesplus 84188B，**未烧录**）：
+   - `MotorControl.h:219` `void motor_moveToMicrosteps` → `bool motor_moveToMicrosteps`，返回 vstopWasActive
+   - `MotorControl.cpp:665+` 末尾添加 `return vstopWasActive`
+   - `octoaxes/axis.cpp` 两处 (line 560-562 + 623-625) 移除 `motor_readStatus` 改用返回值
+   - `octoaxesplus/axis.cpp` 同步（两端 byte-identical 约束）
+   - 其他 caller 丢弃返回值，C++ 默认行为零修改
+
+3. **全面对比两套 firmware 主循环 + 命令路径**（覆盖 A-J 10 个角度），翻转 agent 假设：
+   - **旧 Squid main loop 26 个 call/iter** vs **octoaxes 7 个/iter** — octoaxes 反而更轻
+   - SPI 时钟 500 kHz 两端一致
+   - FastLED APA102 BGR 1 MHz 两端一致
+   - DEBUG_PRINT 在 production (NDEBUG) 编译掉
+   - `motor_moveToMicrosteps` 多 2 SPI ≈ 40µs/move × 1000 = 40ms（占 8s 的 0.5%）
+   - **静态可解释的 octoaxes overhead < 100ms，远不到 8s**
+
+4. **结论修正**：**8s 大概率不在 firmware 层**，可能在：相机型号 / USB 链路 / 机械 / Laser AF Python 侧 / 物镜校准。
+
+5. **完整报告**：`documents/baselines/acquisition_8s_deep_analysis_20260519.md`（取代 5-18 版）
+
+### 下次（用户验收）
+
+1. ~~跑同硬件 A/B~~ — **已完成**，同硬件差 ~8s，firmware 是真主凶
+2. **写打点 #1（单 cmd 总耗时）firmware 代码**，写完不烧录等用户硬件空闲
+   - 位置：`checkForCommand` 入口 + `send_position_update` 发完
+   - 输出：`S:CMD_TIMING <cmd_id> <us>` ASCII 调试输出
+   - 用途：区分主凶在 atomic cmd / move cmd / homing cmd
+3. 用户空闲时烧带打点的 firmware → 跑 1 well 采集 → 串口 dump → 分析
+4. **#2.2 烧录验证**（顺带带回归测试）— 跑现有 X/Y/Z/W 运动测试 + acquisition 确认无回归
+5. 可选清理（独立于 8s 主凶，但消除噪声）：
+   - #3 `completeMovement` 加 `#ifdef ENABLE_DEBUG` 包裹 SPI（节省 ~200ms）
+   - #4 `send_position_update` 缓存 axis 指针（节省 ~400ms）
+   - #5 `Axis::update` STATE_MOVING `checkLimitPosition` 加 10ms throttle
+
+### 关键决策记录
+
+1. **#2.2 单独干**：唯一确认的真实节省点，安全 ROI，~10-20ms
+2. **#1.1 #1.2 drop 不变**：代码事实推翻
+3. **#2.1 重新评估**：VMAX 同值写是否触发 chip ramp 重启，**未查 TMC4361A 数据手册**，可能是 1-5s 隐藏开销，需打点验证（被列入待验证清单 #5）
+4. **不写微基准脚本**：用户选择直接 A/B firmware 而非单独测 cmd 延迟，更干净
+5. **不烧录**：用户明确告知硬件在用，所有改动只编译验证
+6. **二轮 review 修正**：之前"8s 不在 firmware"基于估算，被用户实测推翻。教训：估算永远是估算，没实测前不要下定论
+
+### 备注
+
+- 本轮节奏：用户给场景 → 派 agent 调查（agent 报错估算）→ 用户选只做 #2.2 → 深读挑战 agent → 翻转结论 → 用户实测同硬件 A/B 再翻转 → 二轮深读找到更多 overhead 但仍缺 ~7s → 决定打点
+- 反面教材 #1：第一轮 agent 用"想当然"逻辑（main loop 加重 → ACK jitter）支撑数字估算，**没去对比代码本身**就编故事
+- 反面教材 #2：我自己第一轮深读后下了"8s 不在 firmware"结论，过于自信。**没有实测就别下定论**。同硬件 A/B 直接推翻
+- 反面教材 #3：估算 chip-level 行为（VMAX 同值写不触发 ramp 重启）没查数据手册就当事实，可能错
+- ttl_test agent 流式超时：单 agent 50s 内必须返回，过长任务要分段
+- 本轮全程未烧录、未触碰硬件
+
+---
+
+## 上次会话
+
 **日期**: 2026-05-18
 **分支**: develop（已合并 origin/develop 把 maxpro 全部进展拉入主线）
 **位置**: 融合 test 分支 ttl_test 到生产 illumination + LED 矩阵两条历史 bug 修复
@@ -109,16 +200,54 @@ Squid 颜色才正确。但新批次灯珠回归标准 BGR 排列，单错位变
 4. **IlluminationPanel 改造按 profile-safe 原则**：用 constants 元数据动态渲染，
    octoaxes 5 路保留，octoaxesplus 自动扩 8 路 + DAC + GAIN + Read
 
-### 下次继续
+### 2026-05-18 采集 90→98s 主凶定位（只调查，未动 firmware）
 
-1. **LED 矩阵 R/G/B 颜色映射用户实测确认**（commit fec1526 烧入后）
-2. **DAC 直控滑条 + GAIN 切换 + Read 按钮硬件实测**（commit 020c5e2 + 8b5d400 烧入后）
-3. W1 PCB CLK 走线飞线（硬件 bug 待修）
-4. Z 轴 PyQt 运动单独验证（X/Y/W2 已通）
-5. bring-up 工具归宿决策（clk_test/hc154_test/pg_test/pin13_blink）
-6. master 12 个 commit 是否 cherry-pick 评估
-7. TMC2240 StallGuard4 调优（stash@{0} 待恢复，6 步流程已规划）
-8. C 维度 HOME 复杂场景（AXES_XY 联合归位 + W1/W2 homing 实测）
+用户在硬件上跑 Wellplate Multipoint single-well 单 well（D6）+ Laser AF + BF/561/638 三通道 + 20x，发现 octoaxes 比旧 Squid 慢 8s（98 vs 90）。派 general-purpose agent 跨三个代码库做时序图 + handler diff，结论：
+
+**FOV 估 ~200，单 FOV 多 40ms**
+
+**主凶 #1（~6-7s / 75%）— ACK 心跳抖动 + BF FastLED.show 阻塞**
+- octoaxes 主循环 `axisManager.updateAll()` + `joystick_update` + 二级 dispatch 比旧 Squid 重，每 iter ~50-150µs vs ~30-80µs
+- `send_position_update` 10ms 心跳抖动到 ~10-13ms
+- BF `turn_on_illumination → FastLED.show()` 128 LED APA102 串行 ~2ms + `noInterrupts` 阻塞，下一帧 ACK 推迟
+- 每 FOV 16 atomic 命令 × ~2ms 抖动 ≈ 30ms
+
+**主凶 #2（~1.5-2s / 25%）— `motor_moveToMicrosteps` SPI 翻倍**
+- 旧 `tmc4361A_moveTo` 4 个 SPI op vs octoaxes 9-12 个 SPI（含 line 715 无条件 VMAX 写）
+- VMAX 写可能触发 chip 内部 ramp 重启延迟 1-5ms
+- Laser AF 单 FOV 5 次 move 累积放大
+
+**修复方向（讨论稿，待硬件空闲实施）**：
+1. `axisManager.updateAll` 加 `if (!isMoving) continue;` 跳过空闲轴
+2. `send_position_update` 节流上移到 FastLED.show 之前
+3. `motor_moveToMicrosteps` 去掉 line 715 无条件 VMAX 写
+4. `axis.cpp:561` pre-status 改按需读
+
+**完整报告**：`documents/baselines/acquisition_90vs98_analysis_20260518.md`（含 file:line 引用 / 数据信心度 / Python 侧不烧录的实测验证流程）
+
+**下一步**：用户硬件在用，先不动 firmware。可选优先级：
+- Option A：Python 侧启用 `wait_till_operation_is_completed` elapsed_ms 日志跑 10 FOV，按 cmd 类型聚合统计验证主凶 #1 / #2 占比
+- Option B：把修复方向写成 diff 暂存，等硬件空闲再烧
+- Option C：暂停，等用户硬件空闲再继续
+
+---
+
+### 2026-05-18 后续硬件确认（用户口头确认）
+
+以下 5 项已实测通过 / 评估完毕，统一标记已确认：
+
+1. ✅ **LED 矩阵 R/G/B 颜色映射**（commit fec1526 烧入后）
+2. ✅ **DAC 直控滑条 + GAIN 切换 + Read 按钮**（commit 020c5e2 + 8b5d400 烧入后）
+3. ✅ **W1 PCB CLK 走线**（飞线已修，W1 自动可用）
+4. ✅ **Z 轴 PyQt 运动单独验证**（X/Y/W2 之外 Z 也通过）
+5. ✅ **master 12 个 commit cherry-pick 评估**（结论已落）
+
+### 下次继续（剩余）
+
+1. bring-up 工具归宿决策（clk_test/hc154_test/pg_test/pin13_blink）
+2. TMC2240 StallGuard4 调优（stash@{0} 待恢复，6 步流程已规划）
+3. C 维度 HOME 复杂场景（AXES_XY 联合归位 + W1/W2 homing 实测）
+4. **下一步主题：效率提升**（用户将给出具体方向）
 
 ### 备注
 

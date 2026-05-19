@@ -29,8 +29,8 @@
 - [x] **AxisManager 不再硬编码 7 轴**（commit 7517f7a）
 - [x] **constants.py 去油**：octoaxesplus profile 只 5 轴纯净（commit 120972f）
 - [x] **POWER_GOOD bypass 撤销**：电源线飞线修好后 firmware 恢复原 LTC2903 轮询逻辑
-- [ ] **W1 PCB CLK 走线缺失**：万用表确诊 W1 连接器 pin 16 = 0V，主板未连。**PCB 硬件问题**，firmware/software 已就位，等飞线（CLK 一通 W1 自动可用）
-- [ ] **Z 轴 PyQt 运动单独验证**（X/Y 已通，Z 待确认）
+- [x] **W1 PCB CLK 走线缺失** (2026-05-18 用户确认) — 飞线已修，CLK 通后 W1 自动可用
+- [x] **Z 轴 PyQt 运动单独验证** (2026-05-18 用户确认) — Z 运动通过
 - [ ] **bring-up 工具归宿决策**：clk_test/hc154_test/pg_test/pin13_blink 4 个工程 → `.gitignore` 还是归档到 `firmware/tests/`
 - [ ] **C 维度 HOME 复杂场景**：handleHomeOrZero AXES_XY 联合归位等扩展
 
@@ -124,6 +124,45 @@
     6. 移除 axis.cpp:152 TMC2240 守卫，启用 X/Y 碰撞保护
 - [x] **Y homing 异响 + 慢（2026-05-12 解决：256 微步 + 30 mm/s）** — 硬件切回 TMC2660 后用 `diag_y_homing_noise.py` 扫 (微步 × 速度) 矩阵，**实测最优：微步 256 + 速度 30 mm/s 最安静**。配置改动：① `config.h HOMING_VELOCITY_Y_MM = 30`（原 10/15）；② `axis.cpp configureDriver` 撤回 `_config.homingMicrostepping = microstepping` 同步，让 Y homing 永远走 config.h 默认 `HOMING_MICROSTEPPING_Y = 256`；③ chopper HSTRT=0/HEND=0 保留（对齐老 Squid 全局默认）。新增 `S:SET_HOMING_VEL <axis> <vel>` 调试命令（serial.cpp +40 行，FLASH +8K String 库），运行时设 homingVelocityMM 不重烧。新增 `check_homing_vel_cmd.py` 验证 firmware 支持 + `diag_y_homing_noise.py` 交互扫描脚本。**理论**：满速 + 高微步避开 SpreadCycle 低速噪声段，未触及根因（chopper 模式/电流/接地），但生产可接受。**新性能**：76mm / 30 mm/s ≈ 3-4s（原 ~8s，缩半）。**调试基础设施关键发现**：firmware ASCII 调试协议需 `0x55 0xAA` 二进制前缀（DEBUG_PROTOCOL_HEADER_1/2），不是直接 S: ASCII
 - [x] **2026-05-12 chopper 对齐 TMC2660 全局默认**（前置改动，axis.cpp `Axis::begin` + `configureDriver` 两处 HSTRT 4→0、HEND -2→0）— 对齐老 Squid `CHOPCONF=0x000900C3` 零滞回静音配置，三 TMC2660 轴同改。单独看未消除异响，但与最终方案叠加无副作用，保留
+
+### 采集流程效率优化（2026-05-18 启动，2026-05-19 二轮 review 后用户同硬件 A/B 实测推翻初步结论）
+
+**最新报告**：`documents/baselines/acquisition_8s_deep_analysis_20260519.md`（已包含 2026-05-19 二轮 review 更新）
+**初版报告**：`documents/baselines/acquisition_90vs98_analysis_20260518.md`（已 superseded）
+
+**场景**：Wellplate Multipoint single-well + Laser AF + BF/561/638 三通道 + 20x，~200 FOV，旧 Squid 90s / octoaxes 98s 差距 8s
+
+**实测确认（2026-05-19 用户反馈）**：**同硬件 A/B（同 stage / 相机 / USB / 物镜，只换 firmware）实测仍差 ~8s** — firmware 是真主凶。
+
+**二轮 review 累计可量化 overhead ≈ 1.0-1.1s**（见报告候选主凶表），**仍缺 ~7s 静态 review 看不见**。
+
+- [x] **#2.2 motor_moveToMicrosteps 重复 STATUS 读合并** (2026-05-19, 编译通过未烧录) — `MotorControl.h:219` 签名 void→bool 返回 vstopWasActive，axis.cpp 两处 (line 560-562 + 623-625) 移除 `motor_readStatus`，octoaxesplus 同步。省 ~10-20µs/move
+- [x] **同硬件 A/B 实测** (2026-05-19 用户已完成) — 差 ~8s，firmware 是真主凶
+- [ ] **写打点 #1（单 cmd 总耗时）firmware 代码** — 优先级最高
+  - 位置：`checkForCommand` 入口 + `send_position_update` 发完
+  - 输出：`S:CMD_TIMING <cmd_id> <us>` ASCII 调试输出
+  - 用途：区分主凶在 atomic cmd / move cmd / homing cmd
+  - 估代码量：15-20 行
+- [ ] **打点 firmware 烧录测试** — 用户硬件空闲时
+- [ ] **#2.2 烧录验证** — 跑现有 X/Y/Z/W 运动测试 + acquisition 确认无回归
+
+**可选清理（独立于 8s 主凶，但消除噪声 ~800ms）**：
+- [ ] **#3 `completeMovement` 加 `#ifdef ENABLE_DEBUG` 包裹**（axis.cpp:453-454 的 `[[maybe_unused]]` SPI，节省 ~200ms / 200 FOV）
+- [ ] **#4 `send_position_update` 缓存 axis 指针**（构造时一次 `findAxisByName`，节省 ~400ms / 200 FOV，serial.cpp:203-206）
+- [ ] **#5 `Axis::update` STATE_MOVING `checkLimitPosition` 加 10ms throttle**（axis.cpp:272，对齐旧 Squid `check_position` 节流，减少 SPI bus 抢占）
+
+**仍未排除的可能藏区（~7s 主凶候选，需打点）**：
+1. `setMotionParameters` chip-level VMAX/AMAX/BOW 计算差异
+2. `Axis::configureDriver` 启动时 SPI 寄存器写入差异
+3. 某 cmd handler lib/framework 间接阻塞
+4. STATE_MOVING SPI bus 抢占行为差异
+5. **VMAX 同值重写是否触发 chip ramp 重启**（没查 TMC4361A 数据手册，1-5s 隐藏开销可能）
+6. ISR 干扰（trigger 100µs strobeTimer / PWM / SPI）
+
+**dropped（深读代码挑战不成立）**：
+- ~~#1.1 axisManager.updateAll 跳空闲轴~~ — `Axis::update()` STATE_IDLE 已是空 break (axis.cpp:225-227)
+- ~~#1.2 send_pos_update 上移到 FastLED 前~~ — `elapsedMicros` 不被 FastLED 阻塞影响 (serial.cpp:198)
+- ~~Python 侧 elapsed_ms 日志验证主凶占比~~ — 用户改选直接 A/B firmware
 
 ### 框架效率优化（2026-05-12 启动新一轮，协议层）
 - [x] **移动完成下降沿立即发包** (2026-05-12, commit a6c5786, **硬件实测**) — `send_position_update` 增加 any_moving 下降沿检测，所有轴 moving→idle 那一帧绕过 10ms 心跳节流立即发 COMPLETED；对旧 Squid + GUI + benchmark 三端同时有效。实测 X/Y 短距离命令省 2-7ms（平均 5ms，10μm 122→116ms 省 5%）；Z 几乎无收益（vmax 慢一个量级，已与心跳 phase 对齐）。每完成一次只触发 1 包，流量影响可忽略
