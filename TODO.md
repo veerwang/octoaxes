@@ -147,9 +147,9 @@
 - [ ] **#2.2 烧录验证** — 跑现有 X/Y/Z/W 运动测试 + acquisition 确认无回归
 
 **可选清理（独立于 8s 主凶，但消除噪声 ~800ms）**：
-- [ ] **#3 `completeMovement` 加 `#ifdef ENABLE_DEBUG` 包裹**（axis.cpp:453-454 的 `[[maybe_unused]]` SPI，节省 ~200ms / 200 FOV）
-- [ ] **#4 `send_position_update` 缓存 axis 指针**（构造时一次 `findAxisByName`，节省 ~400ms / 200 FOV，serial.cpp:203-206）
-- [ ] **#5 `Axis::update` STATE_MOVING `checkLimitPosition` 加 10ms throttle**（axis.cpp:272，对齐旧 Squid `check_position` 节流，减少 SPI bus 抢占）
+- [x] **#3 `completeMovement` 加 `#ifdef ENABLE_DEBUG` 包裹** (2026-05-19，编译通过未烧录) — axis.cpp 两端同步，DEBUG 编译掉后 SPI 不再执行，省 ~200ms / 200 FOV
+- [x] **#4 `send_position_update` 缓存 axis 指针** (2026-05-19，编译通过未烧录) — octoaxes/serial.cpp 加 static + 一次性 findAxisByName + cached flag，省 ~400ms / 200 FOV。octoaxesplus 已用 index lookup 无需改
+- [x] **#5 `Axis::update` STATE_MOVING `checkLimitPosition` 加 10ms throttle** (2026-05-19，编译通过未烧录) — axis.h 加 `_limitCheckThrottle` elapsedMicros 成员，axis.cpp STATE_MOVING 分支加 `if (_limitCheckThrottle >= 10000)` 节流，对齐旧 Squid `check_limits` 节流，减少 SPI bus 抢占
 
 **仍未排除的可能藏区（~7s 主凶候选，需打点）**：
 1. `setMotionParameters` chip-level VMAX/AMAX/BOW 计算差异

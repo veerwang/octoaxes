@@ -134,6 +134,11 @@ protected:
 
   elapsedMicros _checkHomeReachTimeout;
 
+  // STATE_MOVING checkLimitPosition 节流（对齐旧 Squid check_limits 10ms 节流，
+  // 减少 SPI bus 抢占；hard limit 完成判定容忍 0-10ms 延迟，chip 内部已物理停止）
+  // (#5, 2026-05-19)
+  elapsedMicros _limitCheckThrottle;
+
   uint32_t _homing_timeout_ms;
 
 public:

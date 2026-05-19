@@ -200,8 +200,13 @@ void Axis::update() {
   case STATE_MOVING: {
     checkMovementComplete();
 
-    // 极限状态检测
-    checkLimitPosition();
+    // 极限状态检测：对齐旧 Squid `check_limits` 10ms 节流（operations.cpp:533）
+    // 减少 SPI bus 抢占；hard limit 完成判定容忍 0-10ms 延迟（chip 已物理停止）
+    // (#5, 2026-05-19)
+    if (_limitCheckThrottle >= 10000) {
+      _limitCheckThrottle = 0;
+      checkLimitPosition();
+    }
 
     // VSTOP recovery 后延迟恢复虚拟限位：
     // 等电机离开边界（STATUS 中 VSTOP flags 清除）后才重新使能限位，
@@ -446,12 +451,6 @@ void Axis::startMovement() {
 
 // 新增：完成移动
 void Axis::completeMovement() {
-  unsigned long now = micros();
-  [[maybe_unused]] unsigned long motorTime = now - _moveStartMicros;
-  [[maybe_unused]] unsigned long totalTime = now - _cmdRecvMicros;
-  [[maybe_unused]] unsigned long prepTime = _moveStartMicros - _cmdRecvMicros;
-  [[maybe_unused]] int32_t endPos = motor_getPositionMicrosteps(_icID);
-  [[maybe_unused]] int32_t targetPos = motor_getTargetMicrosteps(_icID);
   _isMoving = false;
   setState(STATE_IDLE);
 
@@ -461,7 +460,16 @@ void Axis::completeMovement() {
     _needReenableLimits = false;
   }
 
-  // 格式: DONE: total=Xus prep=Yus motor=Zus pos=N tgt=N err=N
+#ifdef ENABLE_DEBUG
+  // DEBUG-only: 调试时段记录 motor / prep / total 时间和位置 vs 目标
+  // 生产构建 (NDEBUG) 不读 SPI，省 ~200µs/move × 1000 ≈ 200ms (#3, 2026-05-19)
+  unsigned long now = micros();
+  unsigned long motorTime = now - _moveStartMicros;
+  unsigned long totalTime = now - _cmdRecvMicros;
+  unsigned long prepTime = _moveStartMicros - _cmdRecvMicros;
+  int32_t endPos = motor_getPositionMicrosteps(_icID);
+  int32_t targetPos = motor_getTargetMicrosteps(_icID);
+
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":DONE: total=");
   DEBUG_PRINT(totalTime);
@@ -475,6 +483,7 @@ void Axis::completeMovement() {
   DEBUG_PRINT(targetPos);
   DEBUG_PRINT(" err=");
   DEBUG_PRINTLN(endPos - targetPos);
+#endif
 }
 
 bool Axis::handleHoming() {

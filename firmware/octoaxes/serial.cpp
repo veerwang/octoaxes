@@ -200,10 +200,21 @@ void SerialProtocolHandler::send_position_update() {
   _us_since_last_pos_update = 0;
 
   // 读取各轴位置（微步，与旧 Squid tmc4361A_currentPosition 一致）
-  Axis *xAxis = axisManager.findAxisByName("X");
-  Axis *yAxis = axisManager.findAxisByName("Y");
-  Axis *zAxis = axisManager.findAxisByName("Z");
-  Axis *wAxis = axisManager.findAxisByName("W");
+  // 缓存 axis 指针：findAxisByName 每次构造 4 个 String + 4 次 equals，每 tick 累计
+  // ~40µs × 10000 tick ≈ 400ms 浪费。axis 指针在 axisManager 生命周期内不变，
+  // 静态缓存安全（即使首次为 nullptr 也是真实情况，不必重试）(#4, 2026-05-19)
+  static Axis *xAxis = nullptr;
+  static Axis *yAxis = nullptr;
+  static Axis *zAxis = nullptr;
+  static Axis *wAxis = nullptr;
+  static bool axes_cached = false;
+  if (!axes_cached) {
+    xAxis = axisManager.findAxisByName("X");
+    yAxis = axisManager.findAxisByName("Y");
+    zAxis = axisManager.findAxisByName("Z");
+    wAxis = axisManager.findAxisByName("W");
+    axes_cached = true;
+  }
 
   int32_t x_pos = xAxis ? xAxis->getCurrentPositionMicrosteps() : 0;
   int32_t y_pos = yAxis ? yAxis->getCurrentPositionMicrosteps() : 0;
