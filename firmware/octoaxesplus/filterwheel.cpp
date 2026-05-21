@@ -159,9 +159,12 @@ void FilterWheel::performHomingSequence() {
         setState(STATE_LEAVING_HOME);
       } else {
         // 不在感应区，快速搜索
+        // 2026-05-21 方向 bug 修复：乘 _config.homing_direct 跟随上位机请求的方向，
+        // 与 stepaxis.cpp 对齐。原版硬编码 + 方向，无视上位机 HOME_NEGATIVE 命令。
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Fast search...");
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        int32_t speedInternal = _config.homing_direct *
+                                motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         motor_setVelocityInternal(_icID, speedInternal);
         setState(STATE_HOMING_SEARCH);
       }
@@ -224,31 +227,31 @@ void FilterWheel::performLeavingHome() {
       // 已离开感应区
       DEBUG_PRINT(_axisName);
 
+      // 2026-05-21 方向 bug 修复：search/leave 方向跟随 _config.homing_direct，
+      // 与 stepaxis.cpp 对齐。leave 方向 = -search 方向。
       if (_slowApproach) {
         // 先停车，确保慢速逼近起点一致
         motor_setVelocityInternal(_icID, 0);
         delay(100);
         DEBUG_PRINTLN(":Left sensor, slow approach...");
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM / 5.0);
+        int32_t speedInternal = _config.homing_direct *
+                                motor_velocityMMToInternal(_icID, _config.homingVelocityMM / 5.0);
         motor_setVelocityInternal(_icID, speedInternal);
       } else {
         // 快速搜索感应区
         DEBUG_PRINTLN(":Left sensor, fast search...");
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        int32_t speedInternal = _config.homing_direct *
+                                motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         motor_setVelocityInternal(_icID, speedInternal);
       }
       setState(STATE_HOMING_SEARCH);
     } else {
-      // 仍在感应区，继续移出
+      // 仍在感应区，继续移出（反向于 search 方向）
       float leaveSpeed = _slowApproach
         ? _config.homingVelocityMM / 5.0   // 慢速移出，减少过冲
         : _config.homingVelocityMM;          // 全速移出
-      int32_t speedInternal;
-      if (_config.homingSwitch == RGHT_SW) {
-        speedInternal = motor_velocityMMToInternal(_icID, leaveSpeed);
-      } else {
-        speedInternal = -1 * motor_velocityMMToInternal(_icID, leaveSpeed);
-      }
+      int32_t speedInternal = -1 * _config.homing_direct *
+                              motor_velocityMMToInternal(_icID, leaveSpeed);
       motor_setVelocityInternal(_icID, speedInternal);
     }
   }
