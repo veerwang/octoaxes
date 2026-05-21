@@ -6,6 +6,77 @@
 
 ## 最新会话
 
+**日期**: 2026-05-21
+**分支**: develop（filtewheel 分支保留完整 W 修复链）
+**位置**: 从 filtewheel 分支精准 cherry-pick "filterwheel.cpp homing 方向 bug 修复" 到 develop
+
+### 背景
+
+5-20/5-21 在 `filtewheel` 分支做了一长串 W 轴修复（量纲对齐 1/64 + 方向修复 + chip 时序根因 + 距离自适应 VMAX + 编码器启用 + 调试打印 + 测试脚本，共 2 个 commit `ba71a46` 和 `fd8d032`，全部已 GUI 实测通过）。
+
+今天评估后决定：**只把"方向 bug 修复"单独 cherry-pick 到 develop**，其余修复保留在 filtewheel 分支（量纲改动影响范围大、有不可回退风险；距离自适应是 motor 层 API 改动，需要更多回归才能进主线）。
+
+### 本次完成
+
+#### Commit: `2b5dce4 fix(firmware): filterwheel.cpp homing 方向跟随 _config.homing_direct`
+
+`firmware/{octoaxes,octoaxesplus}/filterwheel.cpp`：4 处速度计算从硬编码 `+vel` 改为 `_config.homing_direct * vel`，与 stepaxis.cpp 对齐。
+
+```diff
+- int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
++ int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+```
+
+涉及的位置：
+1. `performHomingSequence` 中 fast search（不在感应区时启动 search）
+2. `performLeavingHome` 中 slow approach（离开感应区后慢逼近）
+3. `performLeavingHome` 中 fast search restart（离开感应区后再次 search）
+4. `performLeavingHome` 中 continue leaving（仍在感应区，移出方向 = -search 方向 = `-1 * _config.homing_direct * vel`）
+
+`tmc/` 目录是符号链接，两 firmware 共享 motor 层；filterwheel.cpp 是独立文件，通过 `cp` 同步。
+
+**编译通过**：octoaxes + octoaxesplus 两 env 均 SUCCESS，**未烧验证**。
+
+### 为什么这次才发现这个 bug
+
+历次 review 没检测出来的原因（事后分析）：
+
+1. **filterwheel.cpp 和 stepaxis.cpp 是两个独立文件**，review 不会强制对比 `_config.homing_direct` 是否在两边都用
+2. **行为表面正常**：W 最终能 home 完成（最坏多绕半圈），用户视觉无感
+3. **协议层正确**：上位机发 `HOME_NEGATIVE` → firmware `handleHomeOrZero` 写 `_config.homing_direct=-1`，但 filterwheel.cpp 不读，是"firmware 接受命令后丢弃" — grep handleHomeOrZero 看不到问题
+4. **W 缺方向回归测试**：历史测试只测"能 homing 完成"，没测"chip 朝上位机请求的方向"
+5. **历次 review 主线在 X/Y/Z 高频路径**（VSTOP / 边界 margin / 方向感知闸门等），filterwheel 长期视为"小众功能 能 work 即可"
+6. **改 1/64 量纲让 W 测试更敏感** — chip 启动位置碰巧"刚跨过 home 标志一点点"时，朝 + 方向需要绕近 1 圈，~4 秒延迟暴露出来
+
+### 不影响 X/Y/Z
+
+- X/Y/Z 实例化为 `StepAxis` 类（octoaxes.ino:100-102）
+- W 实例化为 `FilterWheel`（line 103）
+- 本次只改 `filterwheel.cpp`，stepaxis.cpp 不动，X/Y/Z 行为完全不变
+
+### filtewheel 分支保留的工作（未进 develop）
+
+| 类别 | 包含 | 状态 |
+|---|---|---|
+| W 量纲对齐旧 Squid 1/64 | config.h + constants.py × 2 profile + define.py | 完整工作 + GUI 实测通过 |
+| chip 时序根因修复 | `motor_setVelocityInternal` VMAX/RAMPMODE 写入顺序交换 | 全 motor 层 API，影响所有轴 |
+| 距离自适应 VMAX | `motor_moveToMicrosteps` 短距离 cap VMAX = vmax/8 | 影响所有轴，需要 X/Y/Z 回归 |
+| W 编码器启用 | has_encoder=True | profile 改动 |
+| 调试打印 | `[WHOMING]` / `[WMOVE]` always-on SerialUSB | 应清理或保留为编译开关 |
+| 测试脚本 | test_w_homing_with_encoder.py / test_w_move_no_encoder.py | 新建 |
+
+要进 develop 需要逐项评估 + X/Y/Z 回归测试。
+
+### 下次
+
+1. **烧 develop firmware 验证方向修复** — 跑 W homing，看是否朝 - 方向
+2. **决定下一步从 filtewheel 拉哪些** — 量纲对齐？chip 时序？距离自适应？
+3. **filtewheel 分支命名** — 拼写笔误（少 r），择期重命名为 filterwheel
+
+---
+
+## 上次会话
+
 **日期**: 2026-05-19
 **分支**: develop
 **位置**: 90→98s 采集差距深度分析 + #2.2 修复落地 + 翻转第一轮 agent 误诊 + **二轮 review 后用户实测推翻"不在 firmware"假设**

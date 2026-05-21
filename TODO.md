@@ -8,6 +8,9 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
+- [x] **filterwheel.cpp homing 方向 bug 修复** (2026-05-21, commit 2b5dce4) — 4 处速度计算从硬编码 +vel 改为 `_config.homing_direct * vel`，与 stepaxis.cpp 对齐，W/W1/W2 homing 跟随上位机请求方向。**不影响 X/Y/Z**（用 StepAxis）。从 filtewheel 分支精准 cherry-pick，不带其他改动。**未烧验证**
+- [ ] **烧 develop firmware 验证方向修复** — W homing 应朝 - 方向（HOME_NEGATIVE），若 chip 启动在 home 标志附近秒级完成而非 ~4 秒绕一圈
+- [ ] **决定从 filtewheel 拉哪些后续改动** — 量纲对齐 1/64 / chip 时序根因 / 距离自适应 VMAX / 编码器启用
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
 - [x] **方向感知闸门完整工程化** (2026-05-09, commits 82dfe2d→e773f21→d92fa2d→df4f1f6→17b8f71, 旧 Squid + octoaxes 双端验证通过) - 包括 reject→clamp 兼容旧 Squid、no-op 短路防 5 秒卡顿、homing VSTOP recovery 完整化、边界 margin 防 chip hard-stop latch 四次迭代
 - [x] **上位机限位收紧到物理行程** (2026-05-09, commit febc844) - X (-10, 115000) / Y (-10, 76000) μm，与旧 Squid 配置一致便于复现 VSTOP 场景
