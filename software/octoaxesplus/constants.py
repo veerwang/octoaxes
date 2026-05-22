@@ -72,8 +72,8 @@ AXIS_CONFIG = {
         "has_encoder": False,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
-        "actuator_screw_pitch_mm": 100.0,
-        "actuator_microstepping": 8,
+        "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
+        "actuator_microstepping": 64,      # 2026-05-21 对齐旧 Squid MICROSTEPPING_DEFAULT_W=64
     },
     "W2": {
         "display_name": "Filter Wheel 2 - w2_axis",
@@ -85,8 +85,8 @@ AXIS_CONFIG = {
         "has_encoder": False,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
-        "actuator_screw_pitch_mm": 100.0,
-        "actuator_microstepping": 8,
+        "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
+        "actuator_microstepping": 64,
     },
 }
 
@@ -99,7 +99,7 @@ AXIS_MM_PER_STEP = {
 }
 
 # 移动距离
-FILTERWHEEL_DISTANCE = 0.125 * 100  # mm
+FILTERWHEEL_DISTANCE = 0.125  # mm  2026-05-21 W 量纲对齐旧 Squid，去掉 ×100 补偿
 
 # 命令前缀（GUI 解析用户输入命令时识别的轴名称）
 COMMAND_PREFIXES = list(AXIS_CONFIG.keys())

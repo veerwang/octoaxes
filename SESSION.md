@@ -6,6 +6,167 @@
 
 ## 最新会话
 
+**日期**: 2026-05-21 续（晚间）
+**分支**: develop
+**位置**: 量纲对齐 1/64 cherry-pick 到 develop + 复现旧 Squid sRampInit 行为 + 禁用 jerk-start (ASTART=0)
+
+### 接续早上的工作
+
+早上 cherry-pick 了 filterwheel.cpp 方向 bug 修复 (commit 2b5dce4)。下午用户实测 GUI W homing 不符合预期：offset 移动转盘没看到明显动作。
+
+### 本次完成
+
+#### 1. W 量纲对齐 1/64 完整 cherry-pick
+
+把 filtewheel 分支的量纲改动拿到 develop：
+
+| 文件 | 改动 |
+|---|---|
+| `firmware/{octoaxes,octoaxesplus}/config.h` | `SCREW_PITCH_FILTERWHEEL_MM` 100→1, `MICROSTEPPING_FILTERWHEEL` 8→64 |
+| `software/octoaxes/constants.py` W | actuator pitch 100.0→1.0, microstepping 8→64 |
+| `software/octoaxesplus/constants.py` W1/W2 | 同上 |
+| `software/common/define.py` | `SQUID_FILTERWHEEL_OFFSET` `0.008*100` → `0.008` |
+| `software/{octoaxes,octoaxesplus}/constants.py` | `FILTERWHEEL_DISTANCE` `0.125*100` → `0.125` |
+
+GUI 算 offset 微步：12 → **102 微步**（与旧 Squid 完全一致）。
+
+#### 2. 深度对比旧 Squid firmware sRampInit，找到 ASTART 是真正根因
+
+实测 W offset 102 微步后 chip XACTUAL 过冲到 **1884 微步 = 50.12°**（接近一整个孔位），最终回到 ~102。视觉看到大幅震荡。
+
+审查 `/home/hds/github.com/veerwang/lihongquan/Squid/firmware/controller/`:
+- `TMC4361A_TMC2660_Utils.cpp:985` `tmc4361A_sRampInit`：**`rstBits(TMC4361A_GENERAL_CONF, USE_ASTART_AND_VSTART_MASK)`** — 永远禁用 jerk-start
+- `init.cpp:167-168`: `rampParam[ASTART_IDX] = 0; rampParam[DFINAL_IDX] = 0;` — 不用 ASTART
+- 配置 `MAX_VELOCITY_W_mm = 3.19 mm/s, MAX_ACCELERATION_W_mm = 300 mm/s²`
+
+对比 octoaxes W_AXIS:
+- `.astartMM = 180 * SCREW_PITCH_FILTERWHEEL_MM = 180 mm/s³`（**启用 jerk-start**）
+- `MAX_VELOCITY_FILTERWHEEL_mm = 4.2, MAX_ACCELERATION_FILTERWHEEL_mm = 400`
+
+**ASTART 是过冲根因**。`motor_moveToMicrosteps` 看到 `astart > 0` 启用 `USE_ASTART_AND_VSTART_MASK`，chip 用 ASTART 作为 ramp 起始加速度，jerk-bounded ramp 在短距离过冲。
+
+#### 3. 禁用 W 的 ASTART（与旧 Squid 完全对齐）
+
+把 W/W1/W2/E4 的 `.astartMM = 180 * SCREW_PITCH_FILTERWHEEL_MM` 改为 `.astartMM = 0`：
+- `firmware/octoaxes/config.h` (W_AXIS line 397, EXPAND4_AXIS line 511)
+- `firmware/octoaxesplus/config.h` (W_AXIS line 490, EXPAND4_AXIS/W1/W2 line 623 + W_AXIS=W1_AXIS 别名)
+
+`motor_moveToMicrosteps` 看到 `motorParams.astart == 0` 自动 `rstBits(USE_ASTART_AND_VSTART_MASK)`，chip 进入与旧 Squid sRampInit 完全一致的状态。
+
+两 firmware 编译 SUCCESS。**未烧验证**，等用户烧后实测。
+
+### 性能影响讨论（用户关注 filter wheel 效率）
+
+**禁用 ASTART 的物理后果**：
+- chip ramp 从 0 加速度开始 jerk-bounded ramp（之前从 ASTART=180 起步）
+- **短距离 (offset 102 微步)**: 不再过冲 ✓
+- **长距离 (切槽位 1600 微步)**: ramp 启动更平缓，整体加速时间可能略增（待实测确认）
+
+**如果切槽位变慢明显，方案**：
+- 距离自适应 ASTART：`motor_moveToMicrosteps` 入口判断 delta，短距离禁用 ASTART（不过冲），长距离启用 ASTART（保留 jerk-start 加速优势）
+- ~10 行 firmware 改动，只对 motorParams.astart > 0 的轴生效
+- **暂不实施**，先实测 astart=0 切槽位耗时再决定
+
+### 决策记录
+
+1. **暂用与旧 Squid 完全一致的配置（astart=0）**：风险最低，行为可预测
+2. **不实施距离自适应 ASTART**：等实测确认切槽位真的太慢再加复杂度
+3. **filter wheel 效率是关键关注点**：本次记录是为下次评估准备 — 如果切槽位耗时不可接受，参考此处方案 B 实施
+
+### 提交记录
+
+- `2b5dce4` fix(firmware): filterwheel.cpp homing 方向跟随 _config.homing_direct（早上）
+- `2aa3e94` docs: 记录 2026-05-21 cherry-pick 决策（早上）
+- 本次改动（量纲对齐 1/64 + ASTART=0）尚**未 commit**，等实测后提交
+
+### 下次
+
+1. **烧 develop firmware** (W=1mm pitch/64 微步/ASTART=0) 验证 GUI W homing
+2. **实测切槽位耗时**（test_w_homing_sequence.py，offset 改成 1600 微步）
+3. 若切槽位 > 300ms 可接受，commit 并收尾
+4. 若切槽位太慢，加距离自适应 ASTART (方案 B)
+
+### 续：编码器辅助定位 + 1 号孔位精确匹配
+
+烧 develop firmware（含量纲 + ASTART=0）后，GUI 测试 W homing+offset 位置目测不对。深入调试：
+
+#### 1. 开启 W 编码器
+
+`software/octoaxes/constants.py` W: `has_encoder = True`。GUI 启动时 `_configure_encoders` 下发 CONFIGURE_STAGE_PID(W) 启用 chip ABN 编码器，位置上报走 ENC_POS（chip 真实位置）。
+
+#### 2. 反复手动定位实测 1 号孔位
+
+用 disable axis + 手动转动 + read encoder 流程多次测量：
+
+| 次数 | W ENC_POS | 物理 | 状态 |
+|---|---|---|---|
+| 1 | -157 µstep | -4.42° | "1 号孔位"（用户首次） |
+| 2 | +83 µstep | +2.33° | 用户误转到相邻孔位 |
+| 3 | **-141 µstep** | **-3.97°** | 用户确认这次是 1 号孔位 |
+
+第 2 次的 +2.33° 与旧 Squid 设计 (+2.87°) 同向，差距小，曾误判旧 Squid 设计正确；后续手动反复测量确认 1 号孔位实际在 **home 标志的 - 方向 3.97°**（与旧 Squid 设计反向）。
+
+#### 3. 最终 offset 配置
+
+`software/common/define.py`:
+```python
+SQUID_FILTERWHEEL_OFFSET = -0.011  # 实测匹配硬件 1 号孔位 (chip -141 µstep)
+```
+
+注意：
+- **数值与旧 Squid 反号**（-0.011 vs +0.008）— 你的硬件 home 标志位置与旧 Squid 设计假设镜像
+- **movement_sign 保留 1**（与旧 Squid 一致）— movement_sign 只影响 home search 方向，不影响 offset 物理方向；chip 归零后无论怎么 search 都停在 home 标志位
+- GUI 算: `int(-0.011 × 1000) = -11 → -11/0.0625 ≈ -141 µstep` ✓
+
+#### 4. 实测验证
+
+| 项 | 期望 | 实际 |
+|---|---|---|
+| Homing 完成 | W=0 | **W=0** ✓ |
+| Homing 耗时 | <1s | **768 ms** ✓ |
+| Offset 完成位置 | -141 µstep | **-138 µstep** (误差 3 µstep = 0.08°) ✓ |
+| Offset peak | 接近 target | **-144** (微小过冲 4 µstep) ✓ |
+| Offset 耗时 | <200 ms | **111 ms** ✓ |
+
+视觉上 chip 停在 1 号孔位中心，与手动定位完美吻合。
+
+### 完整配置清单（develop 当前生效）
+
+| 配置 | 值 | 来源 |
+|---|---|---|
+| W chip 量纲 | 1mm pitch / 64 微步 | `firmware/{octoaxes,octoaxesplus}/config.h` |
+| W 上位机量纲 | actuator_pitch=1.0 / microstepping=64 | `software/octoaxes/constants.py` W + `software/octoaxesplus/constants.py` W1/W2 |
+| W ASTART | 0 | `firmware/{octoaxes,octoaxesplus}/config.h` W_AXIS/EXPAND4_AXIS |
+| W movement_sign | 1 | `software/octoaxes/constants.py` |
+| W has_encoder | True | `software/octoaxes/constants.py` |
+| SQUID_FILTERWHEEL_OFFSET | **-0.011** mm | `software/common/define.py`（**硬件特有**） |
+| FILTERWHEEL_DISTANCE | 0.125 mm | `software/{octoaxes,octoaxesplus}/constants.py` |
+| filterwheel.cpp 方向 bug 修复 | 已生效 | commit 2b5dce4 |
+
+### 关键决策记录
+
+1. **量纲对齐旧 Squid (1/64)**：让 GUI 算的微步数与旧 Squid 一致（102 微步/2.87°），chip 4361A 内部 ramp 行为与旧 Squid 等价
+2. **ASTART=0**：与旧 Squid `sRampInit::rstBits(USE_ASTART_AND_VSTART)` 一致，禁用 jerk-start，消除短距离过冲（之前 50° 过冲降到 < 4°）
+3. **SQUID_FILTERWHEEL_OFFSET = -0.011 是硬件实测特有值**：与旧 Squid 设计反号，因为本硬件 home 标志位与标准 Squid 镜像装配。**换硬件需要重新实测**
+4. **不实施距离自适应 ASTART**：ASTART=0 已经完美，切槽位耗时也 OK（不需要 jerk-start 加速）
+5. **filterwheel.cpp 方向 bug 修复 (2b5dce4) 是基础**：让 chip 朝上位机请求的方向 search，所有后续配置才能生效
+
+### 反面教材
+
+1. **第二次手动定位误转到 +2.33°**：与旧 Squid 设计 +2.87° 接近，曾误判"旧 Squid 配置就是对的"。撤销了 movement_sign=-1 和 offset 反号改动，结果还是不对。**滤光转盘有 8 个孔，手动定位时要确保转到正确的孔**（用户重新转后是 -3.97°，与第一次 -4.42° 接近）
+2. **disable axis 后忘记 re-enable 跑测试**：第一次跑 GUI homing 测试时 W 没动，chip 耗时 5s 还 W=83 不变。原因是脚本前调过 disable 让用户手动转，没 re-enable 就跑 homing，chip 收命令但 motor 线圈无电流，电机不动。修复：跑 homing 前必须 enable axis
+3. **手动定位精度**：±10-20 µstep（0.3-0.6°）是合理误差范围，单次实测 -141 与 -157 的差 16 µstep = 0.45° 视觉看不出，但取多次平均更稳
+
+### 下次（如换硬件需重做）
+
+每台新硬件需重新做"手动定位 + 实测 SQUID_FILTERWHEEL_OFFSET"流程，因为 home 标志位与孔位的物理偏移取决于装配。可以考虑：
+- 把 `SQUID_FILTERWHEEL_OFFSET` 移到 profile-specific 配置（每机一份）
+- 或在 GUI 加"校准"按钮，让用户运行时调整后写入配置文件
+
+---
+
+## 上次会话
+
 **日期**: 2026-05-21
 **分支**: develop（filtewheel 分支保留完整 W 修复链）
 **位置**: 从 filtewheel 分支精准 cherry-pick "filterwheel.cpp homing 方向 bug 修复" 到 develop

@@ -219,13 +219,13 @@ namespace AxisConstDefinition {
 		const float SCREW_PITCH_X_MM = 2.54;
 		const float SCREW_PITCH_Y_MM = 2.54;
 		const float SCREW_PITCH_Z_MM = 0.3;
-		const float SCREW_PITCH_FILTERWHEEL_MM = 100;
+		const float SCREW_PITCH_FILTERWHEEL_MM = 1;   // 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
 		const float SCREW_PITCH_OBJECTIVES_MM = 1;
 
 		const int MICROSTEPPING_X = 256;
 		const int MICROSTEPPING_Y = 256;
 		const int MICROSTEPPING_Z = 256;
-		const int MICROSTEPPING_FILTERWHEEL = 8;
+		const int MICROSTEPPING_FILTERWHEEL = 64;     // 2026-05-21 对齐旧 Squid MICROSTEPPING_DEFAULT_W=64
 		const int MICROSTEPPING_OBJECTIVES = 64;
 
 		// 编码器分辨率 (μm/pulse)
@@ -487,7 +487,7 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 180 * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 起始加速度 180 rev/s²
+        .astartMM = 0,  // 2026-05-21 对齐旧 Squid sRampInit (rstBits USE_ASTART_AND_VSTART)，禁用 jerk-start 消除短距离 ramp 过冲
         .dfinalMM = 0,                                   // 同 astart
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
@@ -620,7 +620,7 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 180 * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 起始加速度 180 rev/s²
+        .astartMM = 0,  // 2026-05-21 对齐旧 Squid sRampInit (rstBits USE_ASTART_AND_VSTART)，禁用 jerk-start 消除短距离 ramp 过冲
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
         .homing_direct = 1,

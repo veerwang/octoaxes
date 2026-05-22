@@ -64,13 +64,13 @@ AXIS_CONFIG = {
         "type": "filter_wheel",
         "has_limits": False,
         "limits": (0, 7),
-        "movement_sign": 1,
+        "movement_sign": 1,    # 与旧 Squid 一致（sign=1 → HOME_NEGATIVE → chip 朝 - 方向 search）
         "index": 3,
-        "has_encoder": False,
+        "has_encoder": True,    # 2026-05-21 启用 ABN 编码器，GUI 通过 ENC_POS 反映 chip 真实位置
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
-        "actuator_screw_pitch_mm": 100.0,
-        "actuator_microstepping": 8,
+        "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
+        "actuator_microstepping": 64,      # 2026-05-21 对齐旧 Squid MICROSTEPPING_DEFAULT_W=64
     },
     "E1": {
         "display_name": "Objectives - expand1_axis",
@@ -116,7 +116,7 @@ AXIS_MM_PER_STEP = {
 }
 
 # 移动距离
-FILTERWHEEL_DISTANCE = 0.125 * 100  # mm
+FILTERWHEEL_DISTANCE = 0.125  # mm  2026-05-21 W 量纲对齐旧 Squid，去掉 ×100 补偿（1 槽 = 1/8 圈 = 0.125 mm）
 
 # 命令前缀
 COMMAND_PREFIXES = list(AXIS_CONFIG.keys())
