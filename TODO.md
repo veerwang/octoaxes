@@ -20,6 +20,10 @@
 - [x] **octoaxes firmware 完整替代旧 Squid firmware** (2026-05-25 用户实测确认) — "旧 Squid software + octoaxes firmware" 与 "旧 Squid software + 旧 Squid firmware" 行为完全一致 ✓
 - [x] **W round-trip 测试脚本** (2026-05-25, commit 7e7de9a) — test_w_round_trip.py 与 GUI W Test 按钮完全对齐 (sleep 0.5, send_homing 完整流程)，增强 ENC_POS 准确性验证。10 轮 × 7 槽 = 140/140 通过，累计漂移 +7 µstep
 - [x] **W 视觉位置最终验证** (2026-05-25 用户确认) — chip W=+103 µstep (home + offset 完成位置) **实际在 1 号孔位中心 ✓**。之前手动测量的 1 号孔位 chip raw 数据不可靠（8 孔均匀转盘手动定位精度差，转过头一格差 45°）。**chip ENC_POS 是 ground truth，不要用人眼"测量"绝对位置**
+- [x] **W 累积漂移根因定位 — motor↔wheel 机械打滑** (2026-05-25 续晚二) — 用户报告"视觉差异越来越大"。降速测试 (4.2→1.0 / 400→80) 仍漂移 → 排除动态扭矩。日志统计 108 条 W-POS：chip_w 全程漂移 ≤ 9 µstep ≈ 0.25°，远小于视觉 22.5°。编码器装在 motor 后端同轴，用户硬件直接观察确认 motor↔wheel 之间打滑。**结论：静态机械预紧不足（紧定螺钉/联轴器/皮带），软件无法修复**。临时降速改动已撤回，工作树干净
+- [ ] **硬件紧固 motor↔wheel 机械连接**（硬件待办，软件无法替代）— 检查联轴器/皮带轮紧定螺钉、皮带张力、联轴器弹性元件等。紧固后回测确认漂移消失
+- [ ] **（可选）周期 auto-home 软件缓解** — 硬件修复前每 N 次切槽位自动 home 一次，强制 motor↔wheel 重新对齐。硬件修好后此项可不做
+- [ ] **（长期可选）编码器移到 wheel 端 + 启用 PID 闭环** — 让 chip_w 反映 wheel 真实位置，chip 自动纠偏机械打滑。需要硬件改装
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
 - [x] **方向感知闸门完整工程化** (2026-05-09, commits 82dfe2d→e773f21→d92fa2d→df4f1f6→17b8f71, 旧 Squid + octoaxes 双端验证通过) - 包括 reject→clamp 兼容旧 Squid、no-op 短路防 5 秒卡顿、homing VSTOP recovery 完整化、边界 margin 防 chip hard-stop latch 四次迭代
 - [x] **上位机限位收紧到物理行程** (2026-05-09, commit febc844) - X (-10, 115000) / Y (-10, 76000) μm，与旧 Squid 配置一致便于复现 VSTOP 场景

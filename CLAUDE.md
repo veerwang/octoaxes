@@ -55,8 +55,8 @@ documents/              文档资料：
 
 ## 当前状态
 
-**最后更新**: 2026-05-19
-**当前硬件**: octoaxesplus TMC2240 驱动板；XYZ 三轴 + W1/W2 滤光转盘已实测端到端通过（W1 CLK 飞线 2026-05-18 修复）；LED 矩阵新批次灯珠按字节标准 BGR 排列，R/G/B 颜色映射已确认；DAC 直控/GAIN/Read 已实测
+**最后更新**: 2026-05-25
+**当前硬件**: octoaxes 主线机；W 累积漂移根因已定位为 **motor↔wheel 机械打滑（用户硬件直接观察）**，chip_w deterministic ≤ 0.25° 漂移，软件无法修复，等待硬件紧固。octoaxesplus TMC2240 驱动板 W1/W2 端到端通过；LED 矩阵 R/G/B / DAC 直控/GAIN/Read 已实测
 **当前进度（develop 主线，已合并 maxpro 全部进展 + 2026-05-18 illumination 完善）**:
 - **历史汇总**：octoaxes 主线（Z 编码器 + XYZ 速度基线 + Y homing 256/30 + 静默 reject + 协议下降沿即时发 + B.6/B.6.1 判完优化）；octoaxesplus（IC4 虚焊定位 + XYZW1W2 五轴 + software profile 拆分 + 协议 v2 + W2 端到端打通）；详见 SESSION.md
 - **2026-05-18 ttl_test 融合 + LED 矩阵双修**：
@@ -66,7 +66,9 @@ documents/              文档资料：
   - **LED 矩阵 R/G 颠倒根因修复**：旧代码强制 R/G 实参对调补偿旧灯珠 BRG 字节排列；新灯珠回归 BGR 后变单错位。引入 LED_RG_ARGS 宏 + LED_MATRIX_SWAP_RG 编译开关，默认按字面 RGB 顺序；新增 4 个 platformio env（teensy41_legacyled / teensy41_nointerlock_legacyled × octoaxes + octoaxesplus）
   - **D1-D5 控制根因澄清**：octoaxes 必须烧 teensy41_nointerlock（或新 *_legacyled 衍生）才能拉起 D1-D5 TTL，默认 teensy41 联锁版 pin 2 浮空会拦截
 **下一步**:
-- **写打点 #1（单 cmd 总耗时）firmware 代码**（优先级最高，定位 ~7s 主凶）— 详见 `documents/baselines/acquisition_8s_deep_analysis_20260519.md`
+- **硬件层紧固 W motor↔wheel 机械连接**（用户待办，软件无法替代）— 检查联轴器/紧定螺钉/皮带张力，紧固后回测漂移消失
+- 可选周期 auto-home 软件缓解（硬件修好后此项可不做）
+- **写打点 #1（单 cmd 总耗时）firmware 代码**（优先级次高，定位 ~7s 主凶）— 详见 `documents/baselines/acquisition_8s_deep_analysis_20260519.md`
 - **#2.2 + 打点 firmware 烧录验证**（编译通过未烧录，等用户硬件空闲，顺带带回归测试）
 - 可选清理 #3/#4/#5（独立于 8s 主凶，消除噪声 ~800ms）
 - bring-up 工具（clk_test/hc154_test/pg_test/pin13_blink）归宿决定
