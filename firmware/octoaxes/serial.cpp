@@ -3,6 +3,7 @@
 #include "build_opt.h"
 #include "commandprocessor.h"
 #include "illumination.h"
+#include "joystick.h"
 #include "trigger.h"
 #include "tmc/motion/MotorControl.h"
 #include "tmc/ic/TMC4361A/TMC4361A.h"
@@ -348,6 +349,14 @@ void SerialProtocolHandler::processSerialDebugCommands() {
         }
       }
       SerialUSB.println("S:HWINFO:END");
+      return;
+    }
+
+    // S:JOYSTICK_STATS — 打印手控盒协议帧统计
+    //   legacy = byte[9]==0（老 joystick 不带 CRC）
+    //   crc_ok / crc_fail = 新 joystick CRC-8-CCITT 校验结果
+    if (command == "S:JOYSTICK_STATS") {
+      joystick_print_stats();
       return;
     }
 

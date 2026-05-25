@@ -24,6 +24,34 @@
 
 ## 待办
 
+### 2026-05-18 joystick ↔ firmware 10 字节协议加 CRC-8-CCITT 校验
+
+- [x] **joystick 固件目录分离**：`firmware/joystick/{octoaxes,octoaxesplus}/`
+  对称主 firmware 目录；`TM1650.h` 用相对符号链接共享（commit fa625d1）
+- [x] **CRC-8-CCITT 校验实施**：byte[9] 兼容性闸门（== 0 → legacy 直通，
+  ≠ 0 → CRC 校验失败丢包），CRC=0x00 强制映射为 0x01 避免 sentinel 冲突。
+  复用 firmware ↔ 上位机协议同款 CRC 算法（poly 0x07 / init 0x00）。
+  四工程编译 SUCCESS（commit fa625d1）
+- [x] **`S:JOYSTICK_STATS` 调试命令**：firmware 侧输出 `legacy=N crc_ok=N crc_fail=N`
+  三个计数器，现场诊断 5 种指纹场景（commit fa625d1）
+- [x] **协议落地文档**：`documents/joystick_protocol.md`（218 行 / 9 章节），
+  含物理层 / 字段表 / byte[9] 双语义 / CRC 算法 / 兼容性矩阵 / 诊断速查 /
+  升级路径约束（commit 8824204）
+- [x] **兼容性矩阵补脚注**：核实旧 Squid `functions.cpp:509-546`
+  `onJoystickPacketReceived` 函数体不读 `buffer[9]`，"新 joy → 老 fw"
+  从"95% 推测"升级为"100% 源码已核实"（commit c5e3867）
+- [x] **修复 joystick_print_stats DEBUG_PRINTLN 空宏 bug**（2026-05-18，commit a716980）：
+  fa625d1 误用 sendDebugInfo（受 -D DEBUG 控制，生产 env 空宏），改用
+  SerialUSB.println 直发对齐 S:HWINFO；新增 `software/common/tests/check_joystick_stats.py`
+  查询脚本
+- [x] **硬件烧录验证（部分实测，2026-05-18）**：
+  - [ ] 回归：新 fw + 老 joystick → 未测（未换回老 joystick）
+  - [x] **正向：新 fw + 新 joystick** → 实测 `crc_ok=110 → 5820 / 3.5s`，
+    `crc_fail=0` 全程 ✅（commit a716980 烧入后）
+  - [x] **反向：新 joystick + 老 fw（含 fa625d1 前 octoaxes）** → 摇杆/焦点/按钮
+    全部正常 ✅（与旧 Squid `functions.cpp:509-546` 不读 byte[9] 源码事实一致）
+  - [x] **干扰：crc_fail≈0** → 3.5s 内 5820 包零失败，趋势良好（长时间样本待累积）
+
 ### 2026-05-15 octoaxesplus W2 端到端打通 + 协议 v2 + GUI 修复全套
 
 - [x] **W2 端到端运动验证通过**（2026-05-15 用户实测确认）
