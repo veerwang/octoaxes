@@ -380,7 +380,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_X_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_X),
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false（octoaxesplus 新硬件待实测）
     };
 
     // Y轴配置
@@ -419,7 +420,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Y_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Y),
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false（octoaxesplus 新硬件待实测）
     };
 
     // Z轴配置
@@ -495,7 +497,8 @@ namespace AxisConfigs {
         .currentRange = 2,
         .enableEncoder = false,
         .encoderLinesPerRev = 4000,
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false（octoaxesplus 新硬件待实测）
     };
 
     // 扩展轴1配置 (objectives)
@@ -533,7 +536,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false（octoaxesplus 新硬件待实测）
     };
 
     // 扩展轴3配置 (Z轴配置)
@@ -571,7 +575,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false（octoaxesplus 新硬件待实测）
     };
 
     // ============================================================================
@@ -628,7 +633,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false（octoaxesplus 新硬件待实测）
     };
 }
 

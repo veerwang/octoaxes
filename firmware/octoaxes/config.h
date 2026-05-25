@@ -287,7 +287,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_X_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_X),
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
     };
 
     // Y轴配置
@@ -326,7 +327,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Y_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Y),
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
     };
 
     // Z轴配置
@@ -368,6 +370,10 @@ namespace AxisConfigs {
     };
 
     // W轴4配置 (filter wheel)
+    // 2026-05-25 W .invert_direction = true：本硬件 home 标志位与"标准旧 Squid 装配"镜像，
+    // 需要 firmware 反相所有 W 方向命令，让 chip 朝相反物理方向走，与旧 Squid 同上位机协议
+    // 配同样的命令在你硬件上停在相同的"逻辑位置"（1 号孔位）。
+    // 如果换标准硬件，改回 .invert_direction = false 即可。
     const Axis::AxisConfig W_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = LEFT_SW,
@@ -402,7 +408,8 @@ namespace AxisConfigs {
         .currentRange = 2,
         .enableEncoder = false,
         .encoderLinesPerRev = 4000,
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = true    // 2026-05-25 W 硬件镜像装配，反相所有方向命令（详见本 struct 上方注释）
     };
 
     // 扩展轴1配置 (objectives)
@@ -440,7 +447,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
     };
 
     // 扩展轴3配置 (Z轴配置)
@@ -478,7 +486,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
     };
 
     // 扩展轴4配置 (filter wheel)
@@ -516,7 +525,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
-        .invertEncoderDir = false
+        .invertEncoderDir = false,
+        .invert_direction = true    // 2026-05-25 E4 同 W 镜像装配，反相所有方向命令
     };
 }
 

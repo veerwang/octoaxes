@@ -63,6 +63,13 @@ public:
     bool enableEncoder;          // 是否启用 ABN 编码器，默认 false
     uint16_t encoderLinesPerRev; // 编码器线数 (每转), 如 4000。直接作为 transitions 使用
     bool invertEncoderDir;       // 反转编码器计数方向，默认 false
+    bool invert_direction;       // 2026-05-25 硬件方向反相：true 时所有 MOVE/HOMING 命令在
+                                 // firmware 层反 payload，让镜像装配的硬件（home 标志位与
+                                 // 旧 Squid 设计相反）能用相同的上位机命令到达正确物理位置。
+                                 // moveTo/moveRelative 反 target/delta；
+                                 // getCurrentPositionMicrosteps 反 chip XACTUAL；
+                                 // filterwheel.cpp homing search 反速度方向。
+                                 // 默认 false（与旧 Squid 行为完全一致）。
   };
 
 protected:

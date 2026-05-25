@@ -526,6 +526,12 @@ bool Axis::handleReset() {
 
 // 移动到绝对位置（微步单位，协议层入口）
 bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
+  // 2026-05-25 硬件方向反相：镜像装配的硬件需要 chip 朝相反方向走
+  // 上位机协议层不变（仍按"标准 Squid 设计"发命令），firmware 层反 target
+  if (_config.invert_direction) {
+    targetMicrosteps = -targetMicrosteps;
+  }
+
   // 自动从错误状态恢复（虚拟限位超时等非硬件故障）
   if (_currentState == STATE_ERROR) {
     DEBUG_PRINT(_axisName);
@@ -591,6 +597,11 @@ bool Axis::moveToPosition(float positionMM) {
 
 // 相对移动（微步单位，协议层入口）
 bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
+  // 2026-05-25 硬件方向反相：反 delta 让 chip 朝相反物理方向走
+  if (_config.invert_direction) {
+    deltaMicrosteps = -deltaMicrosteps;
+  }
+
   // 自动从错误状态恢复
   if (_currentState == STATE_ERROR) {
     DEBUG_PRINT(_axisName);
@@ -686,20 +697,27 @@ float Axis::getCurrentPositionMM() const {
 // 获取当前位置（微步）
 // 编码器使能时返回 ENC_POS（经 ENC_CONST 换算，单位与微步一致）
 // 未使能时返回 XACTUAL（开环位置）
+// 2026-05-25 硬件方向反相：上报给上位机的值反相，让上位机看到与协议层一致的方向
 int32_t Axis::getCurrentPositionMicrosteps() const {
+  int32_t raw;
   if (_config.enableEncoder) {
-    return (int32_t)tmc4361A_readRegister(_icID, TMC4361A_ENC_POS);
+    raw = (int32_t)tmc4361A_readRegister(_icID, TMC4361A_ENC_POS);
+  } else {
+    raw = motor_getPositionMicrosteps(_icID);
   }
-  return motor_getPositionMicrosteps(_icID);
+  return _config.invert_direction ? -raw : raw;
 }
 
 // 获取编码器位置（微步单位，经 ENC_CONST 换算）
 // 未启用编码器时返回 XACTUAL
 int32_t Axis::getEncoderPositionMicrosteps() const {
+  int32_t raw;
   if (_config.enableEncoder) {
-    return (int32_t)tmc4361A_readRegister(_icID, TMC4361A_ENC_POS);
+    raw = (int32_t)tmc4361A_readRegister(_icID, TMC4361A_ENC_POS);
+  } else {
+    raw = motor_getPositionMicrosteps(_icID);
   }
-  return motor_getPositionMicrosteps(_icID);
+  return _config.invert_direction ? -raw : raw;
 }
 
 // Homing 细分切换

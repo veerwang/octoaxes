@@ -6,6 +6,114 @@
 
 ## 最新会话
 
+**日期**: 2026-05-25
+**分支**: develop
+**位置**: octoaxes firmware 完整替代旧 Squid firmware 能力 — filterwheel.cpp 行为对齐 + 硬件方向反相层
+
+### 目标
+
+让 **"旧 Squid software + octoaxes firmware"** 与 **"旧 Squid software + 旧 Squid firmware"** 行为完全一致。旧 Squid software 不可改，octoaxes firmware 必须 mimic 旧 Squid firmware 的字节级行为。
+
+### 深入对比旧 Squid firmware W 段，发现两个偏离
+
+#### 偏离 1：commit 2b5dce4 的"方向 bug 修复"实际偏离旧 Squid W 段
+
+旧 Squid `stage_commands.cpp:621-636` W HOME_NEGATIVE 段：
+```cpp
+if (homing_direction_W == HOME_NEGATIVE) {
+  if (limit_state == 0x00) {
+    setSpeed(LEFT_DIR * vel);   // 在感应区，朝 LEFT 移出
+  } else {
+    setSpeed(RGHT_DIR * vel);   // ★ 不在感应区，朝 RGHT (+ 方向) search
+  }
+}
+```
+
+**W 段 HOME_NEGATIVE search 方向是 RGHT_DIR (+1)**，与 X/Y/Z 用 LEFT_DIR (-1) search 相反。这是 W 段特定行为（filter wheel 光电感应器逻辑反向）。
+
+commit 2b5dce4 把 filterwheel.cpp 的硬编码 + 方向改成"跟 `_config.homing_direct`"（与 stepaxis.cpp X/Y/Z 对齐），**结果反而偏离旧 Squid W 段特定行为**。
+
+#### 偏离 2：硬件镜像装配但 firmware 没适配层
+
+本硬件 1 号孔位在 home 标志的**顺时针**方向（chip -141 µstep = -3.97°），但旧 Squid 设计假设 1 号孔位在 home 标志的**逆时针**方向（chip +102 µstep = +2.87°）。
+
+旧 Squid firmware **没有硬件方向反相功能**，所以"旧 Squid software + 旧 Squid firmware + 你硬件"实际也错（chip 停在 +2.87° 不到 1 号孔位）。如果想用"旧 Squid software + octoaxes firmware"在你硬件上正确，必须 firmware 加镜像适配层。
+
+### 本次完成
+
+#### 1. 撤销 commit 2b5dce4 W 部分
+
+`firmware/{octoaxes,octoaxesplus}/filterwheel.cpp`：4 处方向计算从 "跟 `_config.homing_direct`" 改回 "硬编码 + 方向"（与旧 Squid W 段一致）。`continue leaving` 分支恢复原始 "按 `homingSwitch == RGHT_SW` 二选一" 逻辑。
+
+#### 2. 加 firmware 层硬件方向反相 `invert_direction`
+
+`firmware/{octoaxes,octoaxesplus}/axis.h`：AxisConfig 加字段：
+```cpp
+bool invert_direction;   // 硬件方向反相：true 时所有 MOVE/HOMING 命令在 firmware 层反 payload
+```
+
+`firmware/{octoaxes,octoaxesplus}/axis.cpp` 入口反相：
+- `moveToPositionMicrosteps(target)`: target *= -1 if invert
+- `moveRelativeMicrosteps(delta)`: delta *= -1 if invert
+- `getCurrentPositionMicrosteps()` / `getEncoderPositionMicrosteps()`: chip XACTUAL/ENC_POS 返回值反相
+
+`firmware/{octoaxes,octoaxesplus}/filterwheel.cpp`：所有 `motor_setVelocityInternal(speed)` 前判断 invert 反 speed。
+
+#### 3. 配置生效
+
+`firmware/octoaxes/config.h`:
+- **W_AXIS .invert_direction = true** （本硬件镜像装配）
+- **EXPAND4_AXIS .invert_direction = true** （E4 同 W 同类型 filter wheel）
+- X/Y/Z/E1/E3 = false（默认）
+
+`firmware/octoaxesplus/config.h`:
+- 所有 axis = false（squid++ 新硬件待实测，如需反相用户自改）
+
+#### 4. 恢复 software 与旧 Squid 完全一致
+
+`software/common/define.py`: `SQUID_FILTERWHEEL_OFFSET = -0.011 → +0.008`（**与旧 Squid 完全一致**）
+`software/octoaxes/constants.py` W: `movement_sign = 1`（与旧 Squid 一致）
+
+### 实测验证（用户确认两组行为一致 ✓）
+
+| 用例 | 行为 |
+|---|---|
+| 旧 Squid software + 旧 Squid firmware（参考组） | 用户原有视觉行为 |
+| 旧 Squid software + **octoaxes firmware（修复后）** | ✓ **完全一致** |
+| octoaxes software + octoaxes firmware（修复后） | ✓ 也一致（同样的 firmware，同样的协议命令） |
+
+**达成"octoaxes firmware 完整替代旧 Squid firmware"的目标**：
+- 协议层：W 行为字节级一致（同 cmd 同 payload 同响应）
+- 物理层：chip 反相后镜像硬件也能到正确位置
+
+### 关键决策记录
+
+1. **撤销 commit 2b5dce4 而不是保留方向修复 + 补丁**：commit 2b5dce4 假设 filterwheel 应与 stepaxis 一致，但这与旧 Squid W 段特定行为冲突。要替代旧 Squid 必须复刻 W 段反向特性
+2. **硬件反相在 firmware 层，不在 software**：让 software 协议层与旧 Squid 完全一致，所有"硬件特异"集中在 firmware AxisConfig
+3. **invert_direction 默认 false**：与旧 Squid 行为兼容，硬件镜像装配机器单独打开
+4. **octoaxesplus 默认 false**：squid++ 新硬件未实测，保守
+
+### 设计权衡
+
+| | 旧方案（SQUID_FILTERWHEEL_OFFSET=-0.011） | 新方案（firmware invert_direction） |
+|---|---|---|
+| 改动层 | software/common/define.py | firmware/{octoaxes,octoaxesplus}/{axis,filterwheel,config}.h/cpp |
+| 替代旧 Squid firmware | ✗（旧 Squid software 用 +0.008 仍会到错位置） | ✓ |
+| 硬件配置切换 | 改 software 常量（重启 GUI 生效）| 改 firmware config.h + 重烧 |
+| 通用性 | W 专用 | 任意轴可标记反相 |
+
+新方案让 firmware 成为"硬件抽象层"，更符合架构设计。
+
+### 下次
+
+1. 同步改动到 octoaxesplus 实际硬件验证（W1/W2 实测，看是否也需要 invert）
+2. X/Y/Z 回归测试（理论 invert=false 不影响，axis.cpp 入口加判断后确认无回归）
+3. 如果其他硬件需要 X/Y/Z 方向反相，invert_direction 字段已就位可直接用
+
+---
+
+## 上次会话
+
 **日期**: 2026-05-21 续（晚间）
 **分支**: develop
 **位置**: 量纲对齐 1/64 cherry-pick 到 develop + 复现旧 Squid sRampInit 行为 + 禁用 jerk-start (ASTART=0)
