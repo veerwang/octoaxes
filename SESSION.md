@@ -8,7 +8,57 @@
 
 **日期**: 2026-05-25
 **分支**: develop
-**位置**: octoaxes firmware 完整替代旧 Squid firmware 能力 — filterwheel.cpp 行为对齐 + 硬件方向反相层
+**位置**: octoaxes firmware 完整替代旧 Squid firmware 能力 — filterwheel.cpp 行为对齐 + 硬件方向反相层 + round-trip 测试 + 视觉验证
+
+### 5-25 晚追加：round-trip 测试 + 视觉确认配置正确
+
+下午 commit cae430f 完成后，用户跑 GUI 视觉发现"测试完成转盘不在孔位上"，进入深度调试。
+
+**新建 `software/common/tests/test_w_round_trip.py`** (commit 7e7de9a)：完整复刻 GUI `run_w_test` 流程 (启用编码器 → send_homing → N 轮 (next ×7 + previous ×7)，每 move 后 sleep(0.5))，增强：每步比对 ENC_POS 与期望位置。
+
+实测 10 轮 × 7 槽 = 140 次 move 全部通过，每步误差 ≤7 µstep ≈ 0.2°，累计漂移 +7 µstep，chip 行为完全 deterministic。
+
+#### 视觉位置怀疑 → 多次手动定位测量
+
+用户多次 disable axis 手动转盘到"1 号孔位"读编码器：
+- 5-22 三次: -157, +83, -141 (不一致)
+- 5-25: -839 (与脚本完成位置 +103 差 -736 µstep ≈ -20.7°)
+- 测 2-8 号孔位 chip raw: +700, +2323, +3913, +5504, +7120, +8713, +10316
+- 8 孔间距平均 1593.6 µstep ≈ 44.8° (与设计 45° 极接近)
+
+数据看似显示：脚本完成位置（W=+103）不在任何孔位中心，与"用户手动 1 号孔位" -839 差 ≈ 0.46 孔位。曾怀疑硬件 home 标志位置偏离 1 号孔位 20°。
+
+#### 关键转折：用户视觉确认 chip 真的在 1 号孔位中心
+
+让用户直接看 chip 当前停的位置（W=+103，没动），**用户视觉确认转盘对准 1 号孔位中心 ✓**。
+
+**之前手动测量数据全部不可靠** — 视觉判断"哪个是 1 号孔位"在 8 孔均匀转盘上不可靠（转过头一格差 1600 µstep）。chip ENC_POS 才是 ground truth。
+
+### 最终配置确认（不变）
+
+| 配置 | 值 | 来源 |
+|---|---|---|
+| W chip 量纲 | 1mm pitch / 64 微步 | `firmware/{octoaxes,octoaxesplus}/config.h` |
+| ASTART | 0 | 同上 W_AXIS/EXPAND4_AXIS |
+| has_encoder | True | `software/octoaxes/constants.py` W |
+| **W invert_direction** | **true** | `firmware/octoaxes/config.h` W_AXIS/EXPAND4_AXIS |
+| **SQUID_FILTERWHEEL_OFFSET** | **+0.008** (与旧 Squid 完全一致) | `software/common/define.py` |
+| filterwheel.cpp | 与旧 Squid W 段一致（硬编码 + 方向 search） | commit cae430f 撤销了 2b5dce4 W 部分 |
+
+### 反面教材
+
+**手动定位的视觉精度**：8 孔均匀转盘上视觉判断"哪个孔是 1 号"非常容易出错。转过头一格差 45°（1600 µstep），眼睛容差大。**chip ENC_POS 是 ground truth，不要用人眼"测量"绝对位置**。
+
+未来类似调试，应该：
+1. 先让 chip 跑到设计位置（脚本 home + offset 后不动）
+2. **视觉确认**当前停的位置（"在 / 不在 / 偏多少"）
+3. 而不是反过来"手动转到 1 号孔位 + 测 chip raw"
+
+### 当前提交
+
+- 7e7de9a test: W round-trip 测试脚本（已 push）
+- cae430f feat: octoaxes 替代旧 Squid firmware 能力（已 push）
+- 5-25 晚的"视觉确认 + 文档"将单独 commit
 
 ### 目标
 

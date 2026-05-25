@@ -18,6 +18,8 @@
 - [x] **加 firmware 层 invert_direction 反相** (2026-05-25) — axis.h AxisConfig 加字段；axis.cpp 3 个入口反相；filterwheel.cpp homing search 反速度。W_AXIS/EXPAND4_AXIS=true（octoaxes 本硬件镜像装配）
 - [x] **SQUID_FILTERWHEEL_OFFSET 恢复 +0.008** (2026-05-25) — software 协议层与旧 Squid 完全一致
 - [x] **octoaxes firmware 完整替代旧 Squid firmware** (2026-05-25 用户实测确认) — "旧 Squid software + octoaxes firmware" 与 "旧 Squid software + 旧 Squid firmware" 行为完全一致 ✓
+- [x] **W round-trip 测试脚本** (2026-05-25, commit 7e7de9a) — test_w_round_trip.py 与 GUI W Test 按钮完全对齐 (sleep 0.5, send_homing 完整流程)，增强 ENC_POS 准确性验证。10 轮 × 7 槽 = 140/140 通过，累计漂移 +7 µstep
+- [x] **W 视觉位置最终验证** (2026-05-25 用户确认) — chip W=+103 µstep (home + offset 完成位置) **实际在 1 号孔位中心 ✓**。之前手动测量的 1 号孔位 chip raw 数据不可靠（8 孔均匀转盘手动定位精度差，转过头一格差 45°）。**chip ENC_POS 是 ground truth，不要用人眼"测量"绝对位置**
 - [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
 - [x] **方向感知闸门完整工程化** (2026-05-09, commits 82dfe2d→e773f21→d92fa2d→df4f1f6→17b8f71, 旧 Squid + octoaxes 双端验证通过) - 包括 reject→clamp 兼容旧 Squid、no-op 短路防 5 秒卡顿、homing VSTOP recovery 完整化、边界 margin 防 chip hard-stop latch 四次迭代
 - [x] **上位机限位收紧到物理行程** (2026-05-09, commit febc844) - X (-10, 115000) / Y (-10, 76000) μm，与旧 Squid 配置一致便于复现 VSTOP 场景
