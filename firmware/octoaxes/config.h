@@ -366,7 +366,8 @@ namespace AxisConfigs {
         .currentRange = 0,
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Z_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Z),
-        .invertEncoderDir = true
+        .invertEncoderDir = true,
+        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
     };
 
     // W轴4配置 (filter wheel)
