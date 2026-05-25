@@ -1238,14 +1238,15 @@ void motor_initABNEncoder(uint8_t icID, uint32_t transitions_per_rev,
     // Set encoder resolution
     tmc4361A_writeRegister(icID, TMC4361A_ENC_IN_RES, transitions_per_rev);
 
-    // 验证写入（注意: 0x54 读回的是 ENC_CONST 而非 ENC_IN_RES）
-    uint32_t encConst = tmc4361A_readRegister(icID, TMC4361A_ENC_IN_RES);
-    SerialUSB.print("ENC_INIT icID=");
-    SerialUSB.print(icID);
-    SerialUSB.print(" wrote_ENC_IN_RES=");
-    SerialUSB.print(transitions_per_rev);
-    SerialUSB.print(" readback_ENC_CONST=");
-    SerialUSB.println(encConst);
+    // 2026-05-25 撤销 always-on debug print：旧 Squid software 没有 ASCII/binary 混合
+    // 解析，会把 "ENC_INIT ..." 文本当响应包字节，导致 checksum 错 + 后续命令 ack 错位
+    // → cmd 7 (HOME_OR_ZERO) timeout abort。改回 DEBUG_PRINT (NDEBUG 编译掉)。
+    DEBUG_PRINT("ENC_INIT icID=");
+    DEBUG_PRINT(icID);
+    DEBUG_PRINT(" wrote_ENC_IN_RES=");
+    DEBUG_PRINT(transitions_per_rev);
+    DEBUG_PRINT(" readback_ENC_CONST=");
+    DEBUG_PRINTLN((uint32_t)tmc4361A_readRegister(icID, TMC4361A_ENC_IN_RES));
 
     // Set encoder velocity mean filter:
     // ENC_VMEAN_FILTER = wait_time | (filter_exp << 8) | (vmean_int << 16)
