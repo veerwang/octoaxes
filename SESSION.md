@@ -6,6 +6,99 @@
 
 ## 最新会话
 
+**日期**: 2026-05-26 续二
+**分支**: develop
+**位置**: W 轴速度优化 — 1 slot 181ms → 72ms (-60%)
+
+### 总览
+
+完整优化路径见 `documents/baselines/W-speed-optimization-20260526.md`。
+
+5 个里程碑：
+- **B1**: 脚本 `wait_completed` idle frames 5→1（去除 50ms 人为防抖）
+- **B2**: firmware `axis.cpp` W/W2 `target_tolerance` 2→20 encoder counts
+- **C v2**: `astartMM = 22.5f * SCREW_PITCH_FILTERWHEEL_MM`（与历史 chip 寄存器值匹配）
+- **路径 D**: `MICROSTEPPING_FILTERWHEEL` 64 → 16（BOW 截断 29→7×）
+- **最终**: `MICROSTEPPING_FILTERWHEEL` 16 → 8（BOW 截断 7→3.6×，匹配 2026-02 历史最优）
+
+### 1 slot 时间演进
+
+```
+181ms (原)  →  141ms (B1)  →  129ms (C v2)  →  87ms (ms=16)  →  72ms (ms=8)
+            -22%             -29%            -52%             -60%
+```
+
+### 全档位最终数据 (ms=8, ASTART=22.5, PID on, P=4096, idle=1, tol=20)
+
+| 角度 | 时间 (ms) | std (ms) |
+|---|---|---|
+| 1.4° (6 µstep) | 23.3 | 0.2 |
+| 5.6° (25) | 37.0 | 0.3 |
+| 22.5° (100) | 57.5 | 0.3 |
+| **45° (200) = 1 slot** | **72.2** | 0.3 |
+| 90° (400) | 97.5 | 0.3 |
+| 135° (600) | 125.9 | 0.3 |
+| 180° (800) | 154.8 | 0.3 |
+
+重复性极佳：std < 0.4ms 全档位。
+
+### 失败实验记录（路径 C v1）
+
+ASTART=180 rev/s² @ microstep=64 直接复用历史值灾难性失败：
+- 短距 50 µstep 退化 +187ms（62 → 234ms）
+- HOME 时间从 1.4s 暴涨到 17.6s
+- Offset 末位置严重过冲（W=628 vs 期望 102）
+
+**根因**：chip 寄存器层 ASTART = 180 × 12800 = 2.3M µstep/s²（历史 ms=8 时 288K，本次 ms=64 翻 8 倍）。短距 chip ramp 起步过猛 → encoder 检测过冲 → PID 反拉振荡。
+
+**教训**：跨微步参数迁移要按"chip 寄存器值等价"换算，不能直接复用 rev/s² 物理值。
+
+### 字节级对齐牺牲
+
+本次优化偏离 CLAUDE.md "字节级 drop-in 旧 Squid firmware" 原则：
+1. **MICROSTEPPING_FILTERWHEEL = 8**（旧 Squid 64）— 旧 Squid software 会通过 `configure_motor_driver` 协议覆盖回 64，**本次优化仅对 benchmark 脚本有效**，对旧 Squid GUI 实际无效
+2. **ASTART = 22.5 rev/s²**（旧 Squid `sRampInit` 强制 0）— 旧 Squid software 无法感知 chip 寄存器，**对旧 Squid GUI 完全透明**
+
+**对旧 Squid GUI 实际有效的优化**：仅 B2 (tolerance=20) + ASTART=22.5（chip 层），约节省 ~50ms。要享受全部收益需要修改旧 Squid software 让它发 `configure_motor_driver(W, 8, ...)`。
+
+### 配置最终值
+
+`firmware/octoaxes/config.h`:
+- `MICROSTEPPING_FILTERWHEEL = 8`
+- `HOMING_MICROSTEPPING_FILTERWHEEL = 256`（不变）
+- `W_AXIS.astartMM = 22.5f * SCREW_PITCH_FILTERWHEEL_MM`
+- `EXPAND4_AXIS.astartMM = 22.5f * SCREW_PITCH_FILTERWHEEL_MM`（W2 同步）
+
+`firmware/octoaxes/axis.cpp` + `firmware/octoaxesplus/axis.cpp`:
+- W/W2 `target_tolerance = 20`, `pid_tolerance = 20`（替代之前 2）
+
+`software/common/tests/benchmark_w_speed.py`:
+- 新增 `--pid`, `--pid-p/-i/-d`, `--idle-frames`, `--label` CLI
+- W_MICROSTEPPING = 8
+- 距离档位改为基于角度派生 (跨微步物理可比)
+- 新增 `send_init_filter_wheel` + `configure_pid` 函数
+
+### 剩余优化空间（未实施）
+
+| 路径 | 估算 | 风险 |
+|---|---|---|
+| ASTART 22.5 → 180 @ ms=8 (匹配历史 chip 寄存器 288K µstep/s²) | 1 slot 72 → ~65ms | 低，历史已证 |
+| 调大 VMAX | 协议层硬约束（旧 Squid software 覆盖） | 不可行 |
+| Target pipeline | 仅连续 move 受益 | 中难度，单 slot 无效 |
+
+**理论物理底线**（jerk-limited @ ms=8 + BOW 不截断）≈ 40ms motor + 5ms overhead = 45ms。
+
+### 下次
+
+1. 决策：试 ASTART=180 @ ms=8（打满到历史 ~65ms）还是定稿 ms=8 + ASTART=22.5 (72ms)
+2. 提交（firmware + 脚本 + 9 份基线 + 优化文档）
+3. 决定是否同步改动到 octoaxesplus
+4. 回到主题：硬件紧固 W motor↔wheel + 采集 8s 打点
+
+---
+
+## 上次会话
+
 **日期**: 2026-05-26 续
 **分支**: develop
 **位置**: INITFILTERWHEEL 触发 homing 的字节级偏差修复（长 homing 时 5s 超时根因）

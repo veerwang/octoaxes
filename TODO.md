@@ -28,7 +28,9 @@
 - [ ] **硬件紧固 motor↔wheel 机械连接**（硬件待办，软件无法替代）— 检查联轴器/皮带轮紧定螺钉、皮带张力、联轴器弹性元件等。紧固后回测确认漂移消失
 - [ ] **（可选）周期 auto-home 软件缓解** — 硬件修复前每 N 次切槽位自动 home 一次，强制 motor↔wheel 重新对齐。硬件修好后此项可不做
 - [ ] **（长期可选）编码器移到 wheel 端 + 启用 PID 闭环** — 让 chip_w 反映 wheel 真实位置，chip 自动纠偏机械打滑。需要硬件改装
-- [ ] **优化 W 轴换孔时间** - 基准 144ms，目标 ≤ 60ms，当前 61.3ms (ASTART=180, BOW 截断为硬约束)
+- [x] **W 轴速度优化二轮 (2026-05-26 续二)** — 1 slot 181ms → **72ms (-60%)**。优化路径：脚本 idle frames 5→1 (B1) + firmware W/W2 target_tolerance 2→20 (B2) + W_AXIS.astartMM 22.5 rev/s² (C v2) + MICROSTEPPING_FILTERWHEEL 64→16→8（路径 D）。全档位 std < 0.4ms 极稳定。失败实验：ASTART=180 @ ms=64 灾难性退化（HOME 17.6s），根因跨微步 chip 寄存器值线性缩放被忽略。完整报告 `documents/baselines/W-speed-optimization-20260526.md`。**字节级牺牲**：MICROSTEPPING=8 (旧 Squid software 覆盖回 64，仅 benchmark 脚本生效)、ASTART=22.5 (旧 Squid 透明)。剩余空间：ASTART 22.5→180 @ ms=8 可能再到 ~65ms 历史水平
+- [ ] **（可选）W 速度优化第三轮** — ASTART=180 @ ms=8（匹配历史 chip 寄存器 288K µstep/s²，2026-02-10 已实证 motor 61.3ms / PC ~69ms）
+- [ ] ~~优化 W 轴换孔时间~~ ~~基准 144ms，目标 ≤ 60ms~~（2026-05-26 二轮优化 1 slot 达到 72ms，超目标）
 - [x] **方向感知闸门完整工程化** (2026-05-09, commits 82dfe2d→e773f21→d92fa2d→df4f1f6→17b8f71, 旧 Squid + octoaxes 双端验证通过) - 包括 reject→clamp 兼容旧 Squid、no-op 短路防 5 秒卡顿、homing VSTOP recovery 完整化、边界 margin 防 chip hard-stop latch 四次迭代
 - [x] **上位机限位收紧到物理行程** (2026-05-09, commit febc844) - X (-10, 115000) / Y (-10, 76000) μm，与旧 Squid 配置一致便于复现 VSTOP 场景
 - [x] **修复旧 Squid 随机点动 X/Y 卡死** (2026-05-08) - axisName ↔ CS 引脚映射与硬件接线反，X 命令实际驱动物理 Y 电机，导致走到 Y 上限时 fw 把 STOPR_EVENT 归到 X 轴卡死。修复 octoaxes.ino 交换 axisName 字符串

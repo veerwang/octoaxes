@@ -140,7 +140,7 @@ namespace AxisConstDefinition {
 		const int MICROSTEPPING_X = 256;
 		const int MICROSTEPPING_Y = 256;
 		const int MICROSTEPPING_Z = 256;
-		const int MICROSTEPPING_FILTERWHEEL = 64;     // 2026-05-21 对齐旧 Squid MICROSTEPPING_DEFAULT_W=64
+		const int MICROSTEPPING_FILTERWHEEL = 8;      // 2026-05-26 路径 C 速度优化 v2：16→8（BOW 截断从 7× 进一步缓解到 3.6×，匹配 2026-02 历史最优 microstep=8 配置，1 slot 物理底线 ~70ms）
 		const int MICROSTEPPING_OBJECTIVES = 64;
 
 		// 编码器分辨率 (μm/pulse)
@@ -408,7 +408,7 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 0,  // 2026-05-21 对齐旧 Squid sRampInit (rstBits USE_ASTART_AND_VSTART)，禁用 jerk-start 消除短距离 ramp 过冲
+        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 路径 C v2：ASTART=22.5 rev/s²，等效 microstep=8 时代历史最优 chip 寄存器值 288,000 µstep/s²（历史 180 rev/s² × 1600 µstep/rev = 288K; 当前需 22.5 × 12800 = 288K）。短距离避免过冲，长距离仍有 jerk-start 加速优势。
         .dfinalMM = 0,                                   // 同 astart
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
@@ -525,7 +525,7 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 0,  // 2026-05-21 对齐旧 Squid sRampInit (rstBits USE_ASTART_AND_VSTART)，禁用 jerk-start 消除短距离 ramp 过冲
+        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 路径 C v2：W2 同 W (22.5 rev/s² ≈ 288K µstep/s² chip 寄存器，详见 W_AXIS 注释)
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
         .homing_direct = 1,

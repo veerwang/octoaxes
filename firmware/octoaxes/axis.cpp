@@ -890,8 +890,11 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
 
   // 根据轴名称区分参数
   if (strcmp(_axisName, "W") == 0 || strcmp(_axisName, "W2") == 0) {
-    target_tolerance = 2;
-    pid_tolerance = 2;
+    // 2026-05-26 速度优化：W/W2 tolerance 2→20 encoder counts ≈ 6 µstep ≈ 0.17°
+    // 滤光转盘 45°/槽，0.17° 视觉无感，允许 chip 提早判完末端 settling，
+    // 预期省 10-20ms（PID 模式下 chip 等 ENC_POS 在 target ± tolerance 内才认为到位）。
+    target_tolerance = 20;
+    pid_tolerance = 20;
     pid_iclip = 4096;
   } else if (strcmp(_axisName, "Z") == 0) {
     target_tolerance = 25;
