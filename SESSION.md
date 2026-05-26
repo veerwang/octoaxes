@@ -6,6 +6,80 @@
 
 ## 最新会话
 
+**日期**: 2026-05-26 续
+**分支**: develop
+**位置**: INITFILTERWHEEL 触发 homing 的字节级偏差修复（长 homing 时 5s 超时根因）
+
+### 问题报告
+
+用户场景：旧 Squid software + octoaxes firmware，在 homing 时间较长时 GUI 启动报 `TimeoutError: Current mcu operation timed out after 5 [s]`。Traceback 显示 `configure_squidfilter` → `set_leadscrew_pitch` → `wait_till_operation_is_completed` 超时。旧 Squid software + 旧 Squid firmware 无此问题。
+
+### 根因诊断（旧 Squid 源码对照）
+
+**旧 Squid `callback_initfilterwheel` (commands.cpp:188-192)**：
+```cpp
+void callback_initfilterwheel() {
+    enable_filterwheel = true;
+    init_filterwheel_axis(w);  // 仅 chip 寄存器配置（atomic）
+}
+// 不设 mcu_cmd_execution_in_progress，不触发 homing
+```
+
+**octoaxes `handleInitFilterWheel`（错版）**：
+```cpp
+Axis *axis = axisManager.findAxisByName("W");
+if (axis) {
+  axis->startHoming();   // ← 错：触发实际 homing
+}
+```
+
+**触发链**（旧 Squid `cephla.py::_configure_wheel`）：
+```python
+self.microcontroller.init_filter_wheel(axis)         # cmd 253
+time.sleep(0.5)
+self.microcontroller.configure_squidfilter(axis)     # set_leadscrew_pitch + wait(5s) + ...
+```
+
+- 旧 Squid fw: chip config 原子，wait 立即返回 ✓
+- octoaxes fw: W 仍在 homing → any_moving=true → status=IN_PROGRESS → set_leadscrew_pitch 后 **wait 5s 超时** ❌
+
+实际 W homing 由后续 `home_w()` (HOME_OR_ZERO + AXIS_W) 单独触发，符合旧 Squid 协议。
+
+### 本次完成
+
+**修复**：`handleInitFilterWheel` / `handleInitFilterWheelW2` 改为 no-op + 日志（两 firmware 同步）。
+
+- `firmware/octoaxes/commandprocessor.cpp`: 删除 startHoming，加完整注释解释字节级偏差
+- `firmware/octoaxesplus/commandprocessor.cpp`: 同步修复（保持两 firmware 一致）
+
+**为何 no-op 安全**：
+1. W/W1/W2 轴在 `axesmrg::beginAll` 启动时已配置 filter wheel 模式（W_AXIS / EXPAND4_AXIS / W2_AXIS 模板），chip 已初始化
+2. 后续 `configure_squidfilter` 的 set_leadscrew_pitch / configure_motor_driver / set_max_velocity_acceleration 会重写 chip 关键寄存器（microstep/current/VMAX/AMAX）
+3. octoaxes GUI 自身不调用 INITFILTERWHEEL（software/common/define.py:105 仅定义命令值，无调用代码），零回归
+
+### 反面教材
+
+把"INITFILTERWHEEL"望文生义解释成"初始化滤光轮（包括 homing）"，但旧 Squid 协议里它只是"chip 配置 + enable flag"。homing 走单独的 HOME_OR_ZERO 命令。
+
+**教训**：实现协议命令时必须以**对方协议规范**为准，不能用名字推断行为。drop-in replacement 任何 handler 都要看旧 Squid 源码 callback 验证语义。
+
+### 编译验证
+
+- `firmware/octoaxes` teensy41: SUCCESS（FLASH 几乎不变）
+- `firmware/octoaxesplus` teensy41: SUCCESS
+
+未烧录，等用户硬件空闲。
+
+### 待用户验证
+
+1. 旧 Squid software + octoaxes firmware：启动 `_configure_wheel` 在长 homing 场景下不再 5s 超时
+2. W/W2 homing 通过单独的 `home_w()` / `home_w2()` 命令正常触发
+3. configure_squidfilter 全程通过：set_leadscrew_pitch + configure_motor_driver + set_max_velocity_acceleration 三步均在原子时间内 COMPLETED
+
+---
+
+## 上次会话
+
 **日期**: 2026-05-26
 **分支**: develop
 **位置**: W2 (Filter Wheel 2) 适配 + W invert_direction 回归 false（字节级 drop-in 一致性修复）

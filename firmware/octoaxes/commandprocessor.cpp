@@ -497,21 +497,28 @@ void CommandProcessor::handleSetPinLevel(const byte *data) {
 }
 
 void CommandProcessor::handleInitFilterWheel(const byte *data) {
-  // 触发 W 轴（滤光轮）延迟初始化 homing
-  Axis *axis = axisManager.findAxisByName("W");
-  if (axis) {
-    axis->startHoming();
-    DEBUG_PRINTLN("INITFILTERWHEEL: W homing started");
-  }
+  // 2026-05-26 修复字节级 drop-in 偏差：
+  // 旧 Squid callback_initfilterwheel (commands.cpp:188-192) 是原子操作：
+  //   enable_filterwheel = true;
+  //   init_filterwheel_axis(w);    // 仅 chip 重新配置（SW_RESET + 寄存器写）
+  // **不**触发 homing，**不**设 mcu_cmd_execution_in_progress = true。
+  // 实际 W homing 由后续 home_w() (HOME_OR_ZERO + AXIS_W) 单独触发。
+  //
+  // 错误历史：之前在此处 axis->startHoming() 触发 W homing →
+  // 老 Squid software init_filter_wheel(W) + sleep(0.5) + configure_squidfilter(W) 时，
+  // octoaxes 让 wait_till_operation_is_completed 在 set_leadscrew_pitch 后 5s 超时
+  // （homing 期间 any_moving=true → status=IN_PROGRESS，wait 不被唤醒）。
+  //
+  // 修复：no-op + 日志。W 轴已在 axesmrg::beginAll 启动时配置为 filter wheel 模式
+  // (W_AXIS 模板)，chip 在 startup 已初始化。后续 configure_squidfilter 会重写
+  // microstep/current/VMAX/AMAX 等关键寄存器，无需此处重复初始化。
+  DEBUG_PRINTLN("INITFILTERWHEEL: no-op (W configured at startup; awaiting HOME_OR_ZERO for actual homing)");
 }
 
 void CommandProcessor::handleInitFilterWheelW2(const byte *data) {
-  // W2 轴当前未启用，忽略
-  Axis *axis = axisManager.findAxisByName("W2");
-  if (axis) {
-    axis->startHoming();
-    DEBUG_PRINTLN("INITFILTERWHEEL_W2: W2 homing started");
-  }
+  // 同 handleInitFilterWheel：旧 Squid callback_initfilterwheel_w2 (commands.cpp:194-198)
+  // 仅 enable_filterwheel_w2=true + chip re-init，不触发 homing。详见 handleInitFilterWheel 注释。
+  DEBUG_PRINTLN("INITFILTERWHEEL_W2: no-op (W2 configured at startup; awaiting HOME_OR_ZERO for actual homing)");
 }
 
 void CommandProcessor::handleInitialize(const byte *data) {

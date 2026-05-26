@@ -523,21 +523,17 @@ void CommandProcessor::handleSetPinLevel(const byte *data) {
 }
 
 void CommandProcessor::handleInitFilterWheel(const byte *data) {
-  // 触发 W 轴（滤光轮）延迟初始化 homing
-  Axis *axis = axisManager.findAxisByName("W");
-  if (axis) {
-    axis->startHoming();
-    DEBUG_PRINTLN("INITFILTERWHEEL: W homing started");
-  }
+  // 2026-05-26 修复字节级 drop-in 偏差（与 octoaxes 同步）：
+  // 旧 Squid callback_initfilterwheel 是原子操作（仅 chip re-init，不 homing）。
+  // 之前 octoaxes 在此处 startHoming() 让老 Squid software 的 wait_till_operation_is_completed
+  // 在 set_leadscrew_pitch 后 5s 超时（详见 octoaxes/commandprocessor.cpp 完整注释）。
+  // 修复：no-op + 日志。W1 已在 startup 配好 filter wheel 模式，homing 由后续 home_w() 单独触发。
+  DEBUG_PRINTLN("INITFILTERWHEEL: no-op (W1 configured at startup; awaiting HOME_OR_ZERO for actual homing)");
 }
 
 void CommandProcessor::handleInitFilterWheelW2(const byte *data) {
-  // W2 轴当前未启用，忽略
-  Axis *axis = axisManager.findAxisByName("W2");
-  if (axis) {
-    axis->startHoming();
-    DEBUG_PRINTLN("INITFILTERWHEEL_W2: W2 homing started");
-  }
+  // 同 handleInitFilterWheel，旧 Squid 协议下仅 chip re-init，不触发 homing。
+  DEBUG_PRINTLN("INITFILTERWHEEL_W2: no-op (W2 configured at startup; awaiting HOME_OR_ZERO for actual homing)");
 }
 
 void CommandProcessor::handleInitialize(const byte *data) {
