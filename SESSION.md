@@ -6,6 +6,113 @@
 
 ## 最新会话
 
+**日期**: 2026-05-26
+**分支**: develop
+**位置**: W2 (Filter Wheel 2) 适配 + W invert_direction 回归 false（字节级 drop-in 一致性修复）
+
+### 背景
+
+CLAUDE.md 写的核心目标：**octoaxes firmware 字节级替代旧 Squid firmware**，让"旧 Squid software + octoaxes firmware"与"旧 Squid software + 旧 Squid firmware"行为完全一致。
+
+旧 Squid firmware 有 W2 (AXIS_W2=6) 第二滤光转盘，octoaxes 主线长期未实例化 → 旧 Squid software 发 MOVE_W2/INITFILTERWHEEL_W2 等命令时 silent no-op。本次补齐。
+
+同时 2026-05-25 加的 W_AXIS.invert_direction=true 被用户测出导致 next/previous 方向与旧 Squid 反 → 回滚到 false。
+
+### 本次完成
+
+#### 1. W2 (Filter Wheel 2) 适配（6 文件，3 环境编译通过）
+
+旧 Squid software 发的 W2 命令清单与 octoaxes 现状：
+
+| 旧 Squid software 命令 | cmd | octoaxes 改前 | octoaxes 改后 |
+|---|---|---|---|
+| `move_w2_usteps()` | MOVE_W2=19 | stub: NOT_IMPLEMENTED | 完整实现 (handleMoveW2) ✓ |
+| `init_filter_wheel(W2)` | INITFILTERWHEEL_W2=252 | handler 已存在，W2 未实例化 → no-op | W2 已实例化 ✓ |
+| `home_w2()` / `zero_w2()` | HOME_OR_ZERO=5 + axis=6 | handler 已支持 W2 路由，axis 未实例化 | ✓ |
+| `configure_squidfilter(W2)` 内含 leadscrew/driver/velocity | 通用 axis cmd + axis=6 | `protocolAxisToName(6)→"W2"` 已就绪 | ✓ |
+| `configure_stage_pid(W2)` etc | 通用 axis cmd | 同上 | ✓ |
+| 24 字节响应包 W2 位置 | — | 旧 Squid 也不上报 W2，上位机本地累加 | 零改动 ✓ |
+
+**关键硬件对齐**：W2 复用原 EXPAND4 硬件，CS=pin 16, CLK=pin 28，与旧 Squid `pin_TMC4361_CS[4]=16` / `pin_TMC4361_CLK_W2=28` 字节级一致。
+
+**改动**：
+- `tmc/hal/TMC_SPI.h`: TMC4361A_IC_COUNT 7→5（移除 E1/E3 未实例化槽位）
+- `tmc/hal/TMC_SPI.cpp`: 删 PIN_CS_E1/E3，新增 PIN_CS_W2=16，tmc_ic_configs[] 5 槽位 (Y/X/Z/W/W2)
+- `config.h`: 加 `Pins::W2_AXIS_CS = EXPAND4_AXIS_CS` 别名；EXPAND4_AXIS 仍作 W2 config 模板
+- `octoaxes.ino`: 实例化 `new FilterWheel(Pins::W2_AXIS_CS, 4, "W2")`，addAxis 顺序 X/Y/Z/W/W2
+- `axesmrg.cpp::beginAll`: 加 "W2" → EXPAND4_AXIS 分支
+- `commandprocessor.cpp`: handleMoveW2 完整实现（仿 octoaxesplus）
+
+#### 2. W2 板未插兼容性代码（通用化处理）
+
+`axesmrg::beginAll` 检测到任意轴 begin 失败时（SPI 无响应：写 SW_RESET 后读 VERSION_NO 返回 0/-1）：
+
+```cpp
+if (!success) {
+  DEBUG_PRINT("Failed to initialize axis: ");
+  DEBUG_PRINTLN(axisName);
+  delete axes[i];     // ← 新增：删除 Axis 实例
+  axes[i] = nullptr;  // ← 新增：槽位置 nullptr
+  allSuccess = false;
+}
+```
+
+**效果链**：
+- `findAxisByName("W2")` 已 nullptr-safe（line 95 检查 `axes[i] != nullptr`） → 返回 nullptr
+- 所有 W2 handler 的 `if (axis) axis->...` 保护自动让命令 silent no-op
+- `send_position_update` 检测 any_moving=false 立即报 STATUS_COMPLETED
+- 旧 Squid `wait_till_operation_is_completed` 立刻唤醒，不卡 5 秒 timeout
+- 不会浪费 SPI 总线对死 chip 反复轮询
+
+**通用化**：所有 5 轴都享受这层保护（不只 W2 专用）。比当前"保留 dead axis"行为严格更好，无退化风险。
+
+#### 3. W_AXIS.invert_direction 从 true 回归 false（字节级 drop-in 修复）
+
+**问题报告**：用户在旧 Squid software 下，分别用旧 Squid firmware 与 octoaxes firmware 做下位机，点 filter wheel next/previous **物理方向相反**。
+
+**根因**：2026-05-25 加的 `W_AXIS.invert_direction=true`（"修正镜像装配让 home+offset 落 1 号孔位"）让 axis.cpp 入口反相 MOVE_W/MOVETO_W，filterwheel.cpp 反相 motor_setVelocityInternal 速度 → 所有 W 运动物理方向与旧 Squid 反。
+
+**决策**：用户选择"纯字节级替代"，回滚 invert_direction：
+- `W_AXIS.invert_direction` true → **false**
+- `EXPAND4_AXIS.invert_direction` true → **false**（W2 同步）
+- 代码层（axis.cpp / filterwheel.cpp）反相逻辑保留（其他轴未来如需启用直接打开 flag），仅配置位翻转
+
+**牺牲**：W home+offset 物理停在 +2.87°（你硬件镜像装配引起），不在 1 号孔位中心 — 与旧 Squid firmware 在你硬件上完全相同的"固有错位"。slot 1 精准对齐需要硬件层重新装配 wheel，不是 firmware 能修复的。
+
+### 反面教材
+
+2026-05-25 的"firmware 加镜像适配层"决策违反了 CLAUDE.md 的"字节级 drop-in replacement"目标。当时只验证 home+offset 视觉落位 + chip frame round-trip 测试 140/140 通过，**没测物理方向是否与旧 Squid 一致**（round-trip 测试是 next×7 + previous×7 闭环，方向反也能通过；视觉确认是单点位置，看不出运动方向）。
+
+**教训**：drop-in replacement 的回归测试必须包含**多方向比对**，不只单点位置。物理硬件相关的"修正"应推到硬件层（重装配）或上位机 config 层（调 offset），不要把 firmware 改成"比旧 firmware 行为更好"，会破坏字节级一致性。
+
+### 编译验证
+
+| 环境 | FLASH | 增量 |
+|---|---|---|
+| firmware/octoaxes teensy41 | 80796 | +128B (W2 添加 + handleMoveW2) |
+| firmware/octoaxes teensy41_debug | 89412 | — |
+| firmware/octoaxes teensy41_nointerlock | (success) | — |
+| firmware/octoaxesplus teensy41 | 84380 | 0（tmc/ 符号链接走 HC154 路径不受影响） |
+
+**未烧录**，等用户硬件空闲。
+
+### 待用户验证
+
+1. 旧 Squid software → octoaxes firmware：W next/previous 方向应与旧 Squid firmware 一致
+2. 旧 Squid software → octoaxes firmware：W2 端到端通过（init/home/move_w2/configure_squidfilter）
+3. W2 板未插场景：拔掉 W2 后跑同套测试，确认 X/Y/Z/W 仍工作，W2 命令 silent no-op
+4. W home+offset 落点回到 +2.87°（不在 1 号孔位中心是预期行为，与旧 Squid 一致）
+
+### 下次
+
+1. 烧录 + 用户实测验证 4 项
+2. 等用户硬件紧固 motor↔wheel（继续 W 累积漂移课题）
+3. 采集 8s 打点 firmware（继续 acquisition 优化）
+
+---
+
+## 上次会话
+
 **日期**: 2026-05-25 续（晚二）
 **分支**: develop
 **位置**: W 累积漂移根因定位 — motor↔wheel 机械打滑（chip_w 不变但 wheel 转角累积偏移）

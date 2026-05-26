@@ -76,6 +76,10 @@ namespace Pins {
     const int EXPAND3_AXIS_CS = 17;
     const int EXPAND4_AXIS_CS = 16;
 
+    // W2 (第二滤光转盘) 复用原 EXPAND4 硬件：CS=pin 16, CLK=pin 28 (TMC4361_EXPAND_CLK)。
+    // 与旧 Squid pin_TMC4361_CS[4]=16 / pin_TMC4361_CLK_W2=28 完全一致。
+    const int W2_AXIS_CS = EXPAND4_AXIS_CS;
+
     // 控制引脚数组
     const uint8_t CONTROL_PINS[] = {EXPAND1_AXIS_CS, EXPAND2_AXIS_CS, EXPAND3_AXIS_CS, EXPAND4_AXIS_CS};
     const uint8_t STANDARD_CONTROL_PINS[] = {W_AXIS_CS, Z_AXIS_CS, Y_AXIS_CS, X_AXIS_CS};
@@ -371,10 +375,13 @@ namespace AxisConfigs {
     };
 
     // W轴4配置 (filter wheel)
-    // 2026-05-25 W .invert_direction = true：本硬件 home 标志位与"标准旧 Squid 装配"镜像，
-    // 需要 firmware 反相所有 W 方向命令，让 chip 朝相反物理方向走，与旧 Squid 同上位机协议
-    // 配同样的命令在你硬件上停在相同的"逻辑位置"（1 号孔位）。
-    // 如果换标准硬件，改回 .invert_direction = false 即可。
+    // 2026-05-26 W .invert_direction 改回 false：让 octoaxes firmware 与旧 Squid firmware 字节级一致。
+    // 旧决策（2026-05-25 设 true）意图是修正本硬件镜像装配后 home+offset 落在 1 号孔位中心，
+    // 但代价是所有 MOVE_W (next/previous)、MOVETO_W 物理方向也反，与旧 Squid 不一致，
+    // 违反 CLAUDE.md 的"字节级 drop-in replacement"目标。
+    // 现回归 byte-level 一致：home+offset 物理位置与旧 Squid 完全相同（你硬件上 +2.87°，
+    // 不在 1 号孔位中心 — 这是旧 Squid 在本硬件上的固有行为，由硬件镜像装配引起，
+    // 不是 octoaxes 的 bug）。slot 1 精准对齐需要硬件层修复（重新装配 wheel）。
     const Axis::AxisConfig W_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = LEFT_SW,
@@ -410,7 +417,7 @@ namespace AxisConfigs {
         .enableEncoder = false,
         .encoderLinesPerRev = 4000,
         .invertEncoderDir = false,
-        .invert_direction = true    // 2026-05-25 W 硬件镜像装配，反相所有方向命令（详见本 struct 上方注释）
+        .invert_direction = false   // 2026-05-26 回归字节级 drop-in：与旧 Squid firmware 物理方向一致（详见本 struct 上方注释）
     };
 
     // 扩展轴1配置 (objectives)
@@ -527,7 +534,7 @@ namespace AxisConfigs {
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
         .invertEncoderDir = false,
-        .invert_direction = true    // 2026-05-25 E4 同 W 镜像装配，反相所有方向命令
+        .invert_direction = false   // 2026-05-26 W2 同 W 回归字节级 drop-in（详见 W_AXIS 上方注释）
     };
 }
 

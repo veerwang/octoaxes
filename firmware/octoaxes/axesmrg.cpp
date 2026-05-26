@@ -67,18 +67,29 @@ bool AxisManager::beginAll() {
         success = axes[i]->begin(AxisConfigs::EXPAND3_AXIS);
       } else if (axisName.equals("E4")) {
         success = axes[i]->begin(AxisConfigs::EXPAND4_AXIS);
+      } else if (axisName.equals("W2")) {
+        // W2 = 第二滤光转盘，复用 EXPAND4_AXIS 配置（filter wheel + invert_direction=true）。
+        // 与旧 Squid 协议（AXIS_W2=6 / MOVE_W2=19 / INITFILTERWHEEL_W2=252）配套。
+        success = axes[i]->begin(AxisConfigs::EXPAND4_AXIS);
       } else {
         DEBUG_PRINT("Unknown axis configuration for: ");
         DEBUG_PRINTLN(axisName);
         success = false;
       }
-      
+
       DEBUG_PRINT("beginAll:AFTER_BEGIN:");
       DEBUG_PRINTLN(axisName);  // 调试点
 
       if (!success) {
         DEBUG_PRINT("Failed to initialize axis: ");
         DEBUG_PRINTLN(axisName);
+        // 兼容性：begin 失败说明 TMC4361A SPI 无响应（板未插 / chip 损坏 / 接线断）。
+        // 删除该 Axis 实例并把槽位置 nullptr，让后续 findAxisByName 返回 nullptr，
+        // 所有 handler 的 if (axis) 保护自动让命令 silent no-op（响应包 any_moving=false
+        // 即时报 COMPLETED，上位机 wait_till_operation_is_completed 立刻唤醒）。
+        // 避免后续 SPI 操作打到死 chip 浪费总线 + 假阳性 status。
+        delete axes[i];
+        axes[i] = nullptr;
         allSuccess = false;
       } else {
         DEBUG_PRINT("Successfully initialized axis: ");
@@ -86,7 +97,7 @@ bool AxisManager::beginAll() {
       }
     }
   }
-  
+
   return allSuccess;
 }
 

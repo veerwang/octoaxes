@@ -29,9 +29,8 @@
 #define PIN_CS_Y     36
 #define PIN_CS_Z     35
 #define PIN_CS_W     34
-#define PIN_CS_E1    19
-#define PIN_CS_E3    17
-#define PIN_CS_E4    16
+#define PIN_CS_W2    16   // 2026-05-26 W2 复用原 EXPAND4 硬件（CS=pin 16, CLK=pin 28），
+                          // 与旧 Squid pin_TMC4361_CS[4]=16 / pin_TMC4361_CLK_W2=28 完全一致
 #endif
 
 // Clock source identifiers
@@ -63,14 +62,13 @@ const TMC_IC_Config tmc_ic_configs[TMC4361A_IC_COUNT] = {
     { .csPin = (uint8_t)Pins::HC154_AXIS_R,  .clockSource = CLOCK_STANDARD },  // icID=6 占位
     { .csPin = (uint8_t)Pins::HC154_AXIS_F1, .clockSource = CLOCK_STANDARD },  // icID=7 占位
 #else
-    // octoaxes 7 轴：添加顺序 Y(0), X(1), Z(2), W(3), E1(4), E3(5), E4(6)
+    // octoaxes 5 轴：添加顺序 Y(0), X(1), Z(2), W(3), W2(4)
+    // W2 用 CLOCK_EXPAND (pin 28)，与旧 Squid pin_TMC4361_CLK_W2 一致
     { .csPin = PIN_CS_Y,  .clockSource = CLOCK_STANDARD },
     { .csPin = PIN_CS_X,  .clockSource = CLOCK_STANDARD },
     { .csPin = PIN_CS_Z,  .clockSource = CLOCK_STANDARD },
     { .csPin = PIN_CS_W,  .clockSource = CLOCK_STANDARD },
-    { .csPin = PIN_CS_E1, .clockSource = CLOCK_EXPAND  },
-    { .csPin = PIN_CS_E3, .clockSource = CLOCK_EXPAND  },
-    { .csPin = PIN_CS_E4, .clockSource = CLOCK_EXPAND  },
+    { .csPin = PIN_CS_W2, .clockSource = CLOCK_EXPAND  },
 #endif
 };
 

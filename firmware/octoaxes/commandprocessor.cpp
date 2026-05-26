@@ -289,7 +289,17 @@ void CommandProcessor::handleHeartbeat(const byte *data) {
 }
 
 void CommandProcessor::handleMoveW2(const byte *data) {
-  DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: MOVE_W2");
+  // 旧 Squid MOVE_W2 (cmd 19)：相对运动，data[2..5] 为 int32 微步大端序。
+  // W2 板未插时 axesmrg::beginAll 已删除该轴 → findAxisByName 返回 nullptr →
+  // silent no-op（响应包立即报 COMPLETED）。
+  int32_t relative_position =
+      int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
+              (uint32_t(data[4]) << 8) + uint32_t(data[5]));
+  Axis *axis = axisManager.findAxisByName("W2");
+  if (axis)
+    axis->moveAxis(relative_position);
+
+  DEBUG_PRINTLN("Get MoveW2 Command");
 }
 
 void CommandProcessor::handleSetTriggerMode(const byte *data) {

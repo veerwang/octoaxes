@@ -27,9 +27,10 @@ extern "C" {
 #define TMC4361A_IC_COUNT   8
 #define TMC2660_IC_COUNT    8
 #else
-// octoaxes 7 轴：X, Y, Z, W, E1, E3, E4
-#define TMC4361A_IC_COUNT   7
-#define TMC2660_IC_COUNT    7
+// octoaxes 5 轴：Y, X, Z, W, W2（2026-05-26 W2 接管原 E4 硬件 CS=pin 16/CLK=pin 28；
+// 原 E1/E3 不启用，移除以匹配实际实例化轴数）
+#define TMC4361A_IC_COUNT   5
+#define TMC2660_IC_COUNT    5
 #endif
 
 // ============================================================================

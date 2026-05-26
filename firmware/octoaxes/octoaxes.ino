@@ -97,17 +97,20 @@ bool initializeSystem() {
   // 引发旧 Squid 点动 X 卡死的现象（X 走到 79.9mm 触发的是 Y 物理限位）。
   //
   // axisIndex (icID) 只是内部数组索引，不影响 CS 物理对应。
-  Axis *xAxis = new StepAxis(Pins::Y_AXIS_CS, 0, "X");  // CS=36 = 物理 X 电机
-  Axis *yAxis = new StepAxis(Pins::X_AXIS_CS, 1, "Y");  // CS=41 = 物理 Y 电机
-  Axis *zAxis = new StepAxis(Pins::Z_AXIS_CS, 2, "Z");
-  Axis *wAxis = new FilterWheel(Pins::W_AXIS_CS, 3, "W");
-  // Axis* expand1Axis = new Objectives(Pins::EXPAND1_AXIS_CS, 4, "E1");
-  // Axis* expand3Axis = new StepAxis(Pins::EXPAND3_AXIS_CS, 6, "E3");
-  // Axis* expand4Axis = new FilterWheel(Pins::EXPAND4_AXIS_CS, 7, "E4");
+  Axis *xAxis  = new StepAxis  (Pins::Y_AXIS_CS,  0, "X");   // CS=36 = 物理 X 电机
+  Axis *yAxis  = new StepAxis  (Pins::X_AXIS_CS,  1, "Y");   // CS=41 = 物理 Y 电机
+  Axis *zAxis  = new StepAxis  (Pins::Z_AXIS_CS,  2, "Z");
+  Axis *wAxis  = new FilterWheel(Pins::W_AXIS_CS,  3, "W");
+  // W2 = 第二滤光转盘，接管原 E4 硬件（CS=pin 16, CLK=pin 28 = TMC4361_EXPAND_CLK），
+  // 与旧 Squid pin_TMC4361_CS[4]=16 / pin_TMC4361_CLK_W2=28 完全一致。
+  // 板可能未插：axesmrg.cpp::beginAll 会在 SPI 无响应时 delete + nullptr 该槽位，
+  // 所有 W2 handler 的 if (axis) 保护自动让命令 silent no-op，不影响其他轴。
+  Axis *w2Axis = new FilterWheel(Pins::W2_AXIS_CS, 4, "W2");
 
-  // 按 axisIndex 顺序添加: X(0), Y(1), Z(2), W(3)
-  if (!axisManager.addAxis(xAxis) || !axisManager.addAxis(yAxis) ||
-      !axisManager.addAxis(zAxis) || !axisManager.addAxis(wAxis)) {
+  // 按 axisIndex 顺序添加: X(0), Y(1), Z(2), W(3), W2(4)
+  if (!axisManager.addAxis(xAxis)  || !axisManager.addAxis(yAxis)  ||
+      !axisManager.addAxis(zAxis)  || !axisManager.addAxis(wAxis)  ||
+      !axisManager.addAxis(w2Axis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");
     return false;
   }
