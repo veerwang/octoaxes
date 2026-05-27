@@ -61,7 +61,7 @@ HOME_OR_ZERO_ZERO = 2
 
 # W 默认参数（与 firmware/octoaxes/config.h W_AXIS 一致）
 W_PITCH_MM = 1.0
-W_MICROSTEPPING = 8    # 2026-05-26 路径 C v2：16→8 进一步缓解 BOW 截断（详见 firmware/octoaxes/config.h:143）
+W_MICROSTEPPING = 16   # 2026-05-27 ms=8→16 降噪（ms=8 共振杂音；用速度换静音，1 slot 72→87ms）
 W_CURRENT_MA = 3100
 W_HOLD_RATIO = 0.5
 W_VMAX_MM_S = 4.2
