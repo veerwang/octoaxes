@@ -890,11 +890,11 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
 
   // 根据轴名称区分参数
   if (strcmp(_axisName, "W") == 0 || strcmp(_axisName, "W2") == 0) {
-    // 2026-05-26 速度优化：target_tolerance 2→20 让 chip 提早判完末端 settling。
-    // 2026-05-27 实验 A：pid_tolerance 20→5（PID 死区收紧）— ms=16 已消除共振 hunting，
-    // 验证 PID 是否能在更紧死区下保持静音（位置精度从 ~1.8° 提升到 ~0.45°）。
+    // 2026-05-26 速度优化：target_tolerance / pid_tolerance 2→20 让 chip 提早判完末端 settling，
+    // 同时压制 PID hunting（位置精度 ±1.8°，滤光转盘 45°/槽视觉无感）。
+    // 2026-05-27：曾尝试 pid_tolerance=5 收紧但未烧实测；最终实测验证配置为 ms=8 + P=8192 + tol=20。
     target_tolerance = 20;
-    pid_tolerance = 5;
+    pid_tolerance = 20;
     pid_iclip = 4096;
   } else if (strcmp(_axisName, "Z") == 0) {
     target_tolerance = 25;

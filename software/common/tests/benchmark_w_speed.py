@@ -49,7 +49,7 @@ CMD_DISABLE_STAGE_PID = 27
 CMD_SET_PID_ARGUMENTS = 29
 
 # W PID 默认参数（与旧 Squid _def.py PID_P_W / PID_I_W / PID_D_W 一致）
-W_PID_P = 4096      # 1 << 12
+W_PID_P = 8192      # 2026-05-27 P 扫描后选 8192（1024-32768 速度无差异；P=32768 末端异响，8192 实测安静）
 W_PID_I = 1
 W_PID_D = 1
 W_ENCODER_TRANSITIONS_PER_REV = 4000   # 与 test_w_round_trip.py 一致
@@ -61,7 +61,7 @@ HOME_OR_ZERO_ZERO = 2
 
 # W 默认参数（与 firmware/octoaxes/config.h W_AXIS 一致）
 W_PITCH_MM = 1.0
-W_MICROSTEPPING = 16   # 2026-05-27 ms=8→16 降噪（ms=8 共振杂音；用速度换静音，1 slot 72→87ms）
+W_MICROSTEPPING = 8    # 2026-05-27 临时回 ms=8 测试听感（搭配 P=8192 看 PID 调参是否能压制噪声）
 W_CURRENT_MA = 3100
 W_HOLD_RATIO = 0.5
 W_VMAX_MM_S = 4.2

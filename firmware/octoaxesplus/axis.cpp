@@ -890,10 +890,9 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
 
   // 根据轴名称区分参数
   if (strcmp(_axisName, "W") == 0 || strcmp(_axisName, "W2") == 0) {
-    // 2026-05-26 速度优化（与 octoaxes 同步）：target_tolerance 2→20。
-    // 2026-05-27 实验 A：pid_tolerance 20→5（详见 octoaxes/axis.cpp 注释）。
+    // 2026-05-26 速度优化（与 octoaxes 同步）：target_tolerance / pid_tolerance 2→20。
     target_tolerance = 20;
-    pid_tolerance = 5;
+    pid_tolerance = 20;
     pid_iclip = 4096;
   } else if (strcmp(_axisName, "Z") == 0) {
     target_tolerance = 25;
