@@ -66,7 +66,7 @@ void Objectives::performHomingSequence() {
       motor_enableSoftLimits(_icID, false, false);
       switchToHomingMicrosteps();
 
-      if (limit_state == OBSW_SW) {
+      if (limit_state == _config.homingSwitch) {
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Already at home position, moving away first...");
         setState(STATE_LEAVING_HOME);
@@ -82,7 +82,7 @@ void Objectives::performHomingSequence() {
       break;
 
     case STATE_HOMING_SEARCH:
-      if (limit_state == OBSW_SW) {
+      if (limit_state == _config.homingSwitch) {
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Home limit switch triggered!");
 
@@ -148,7 +148,7 @@ void Objectives::performLeavingHome() {
   uint8_t limit_state = readLimitSwitches();
 
   if (_currentState == STATE_LEAVING_HOME) {
-    if (!(limit_state == OBSW_SW)) {
+    if (!(limit_state == _config.homingSwitch)) {
       DEBUG_PRINT(_axisName);
       DEBUG_PRINTLN(":Left home position, starting homing...");
 
