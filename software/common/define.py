@@ -19,6 +19,7 @@ class AXIS:
     XY = 4   # 联合归位专用
     W  = 5
     W2 = 6
+    E1 = 7   # 2026-05-29 物镜转换器（octoaxes 扩展，firmware protocolAxisToName case 7）
 
 
 class LIMIT_CODE:
@@ -47,6 +48,7 @@ class CMD_SET:
     MOVE_THETA = 3
     MOVE_W = 4
     MOVE_W2 = 19   # octoaxesplus 新增（firmware config.h:MOVE_W2 已定义，handler 待实施）
+    MOVE_E1 = 44   # 2026-05-29 E1 物镜转换器相对运动专属命令（firmware handleMoveE1）
 
     # 绝对移动命令
     MOVETO_X = 6
@@ -54,6 +56,7 @@ class CMD_SET:
     MOVETO_Z = 8
     MOVETO_W = 18
     MOVETO_W2 = 43   # octoaxesplus W2 绝对运动（firmware config.h:MOVETO_W2 已加）
+    MOVETO_E1 = 45   # 2026-05-29 E1 物镜转换器绝对运动专属命令（firmware handleMoveToE1）
 
     # 归位命令
     HOME_OR_ZERO = 5
@@ -115,7 +118,7 @@ AXIS_MOVE_CMD_MAP = {
     "Y": CMD_SET.MOVE_Y,      # 1
     "Z": CMD_SET.MOVE_Z,      # 2
     "W": CMD_SET.MOVE_W,      # 4
-    "E1": CMD_SET.MOVE_W,     # 4 (E1 使用与 W 相同的命令，通过轴索引区分)
+    "E1": CMD_SET.MOVE_E1,    # 44 (2026-05-29 物镜转换器专属命令，firmware handleMoveE1→findAxisByName("E1"))
     "E3": CMD_SET.MOVE_Z,     # 2 (E3 使用与 Z 相同的命令，通过轴索引区分)
     "E4": CMD_SET.MOVE_W,     # 4 (E4 使用与 W 相同的命令，通过轴索引区分)
     # octoaxesplus 双相机（W1/W2 = 滤光转盘）
@@ -129,7 +132,7 @@ AXIS_MOVETO_CMD_MAP = {
     "Y": CMD_SET.MOVETO_Y,    # 7
     "Z": CMD_SET.MOVETO_Z,    # 8
     "W": CMD_SET.MOVETO_W,    # 18
-    "E1": CMD_SET.MOVETO_W,   # 18
+    "E1": CMD_SET.MOVETO_E1,  # 45 (2026-05-29 物镜转换器专属命令)
     "E3": CMD_SET.MOVETO_Z,   # 8
     "E4": CMD_SET.MOVETO_W,   # 18
     # octoaxesplus（W1/W2 暂复用 W 命令，待 firmware 提供 MOVETO_W2 独立 cmd 后改）

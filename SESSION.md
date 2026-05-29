@@ -6,6 +6,77 @@
 
 ## 最新会话
 
+**日期**: 2026-05-29
+**分支**: develop
+**位置**: 把 objectives 分支的物镜转换器代码适配到 develop 的 E1 轴（W 滤光轮完全不动）
+
+### 背景
+
+objectives 分支（领先 develop 7 commit，线性）为测试物镜把 **W 轴 (icID=3)** 从 FilterWheel 改成 Objectives。但这会破坏 develop 上 W 滤光轮的全部成果（72ms 速度优化、ABN 编码器、W2 适配）。用户要求：把 objectives 分支里**真正属于物镜转换器的通用代码**适配到 develop 的 **E1 轴**，不动 W。
+
+develop 上 E1 在软件里本就是 `type=objective` + 用 `EXPAND1_AXIS` 配置模板，但 firmware **从未实例化 E1**（octoaxes.ino 只 new 了 X/Y/Z/W/W2），且协议路由断裂（`MOVE_W` 硬编码到 "W"，E1 复用 MOVE_W 会误驱动 W）。所以物镜功能在 develop 上一直是死代码。
+
+### 硬件确认（用户 2026-05-29）
+
+- 轴构成：**6 轴并存** X/Y/Z/W(滤光轮)/W2(滤光轮2)/**E1(物镜转换器, 4 物镜)**
+- E1 CS = **pin 19** (`EXPAND1_AXIS_CS`)，时钟 CLK = pin 28 (CLOCK_EXPAND，与 W2 共用扩展时钟线)
+- E1 占 **icID=5**（新增），`TMC4361A_IC_COUNT` 5→6
+
+### 本次完成（12 文件，两固件 + 两 profile 全部编译/加载通过）
+
+#### Firmware（8 文件）
+
+| 文件 | 改动 |
+|---|---|
+| `tmc/hal/TMC_SPI.h` | `TMC4361A/TMC2660_IC_COUNT` 5→6；IC 枚举更正（icID4=W2, icID5=E1，加"实际由 addAxis 顺序决定"注释） |
+| `tmc/hal/TMC_SPI.cpp` | 加 `#define PIN_CS_E1 19` + tmc_ic_configs 第 6 槽 `{PIN_CS_E1, CLOCK_EXPAND}` (icID=5) |
+| `octoaxes.ino` | `new Objectives(Pins::EXPAND1_AXIS_CS, 5, "E1", 4)` + addAxis（顺序 X/Y/Z/W/W2/E1） |
+| `config.h` | EXPAND1_AXIS：`homingSwitch LEFT_SW→RGHT_SW` + enableLeft/Right 对调 + `currentRange 0→1`；常量 `MAX_ACCELERATION_OBJECTIVES` 200→80、`OBJECTIVES_MOTOR_PEAK_CURRENT` 1000→1800；Commands 加 `MOVE_E1=44`/`MOVETO_E1=45` |
+| `objectives.cpp` | homing 根因修复 `OBSW_SW`→`_config.homingSwitch`（performHomingSequence × 2 + performLeavingHome × 1） |
+| `commandprocessor.h/cpp` | 新增 `handleMoveE1`/`handleMoveToE1`（findAxisByName("E1")，仿 handleMoveW2）；`protocolAxisToName` 加 case 7→"E1" |
+| `serial.cpp` | 分发 `case MOVE_E1`/`MOVETO_E1` |
+
+#### 上位机（4 文件）
+
+| 文件 | 改动 |
+|---|---|
+| `common/define.py` | `AXIS.E1=7`、`CMD_SET.MOVE_E1=44`/`MOVETO_E1=45`、`AXIS_MOVE_CMD_MAP["E1"]→MOVE_E1`、`AXIS_MOVETO_CMD_MAP["E1"]→MOVETO_E1`（不再复用 MOVE_W） |
+| `octoaxes/constants.py` E1 | limits (0,4)→**(0,3)**；movement_sign 1→**-1**（翻转显示 + 让 homing home_dir=0→+1 与 EXPAND1_AXIS.homing_direct=1 一致）；**index 4→5**（=firmware icID） |
+| `common/gui/main_window.py` | homing `_AXIS_PROTOCOL` 加 `"E1": AXIS.E1` |
+| `common/gui/widgets.py` | `rounds_label` 改 `self.rounds_label`；objective 类型隐藏 Test/Rounds 控件（仅 filter_wheel 显示） |
+
+### 为什么必须加专属协议命令（不能纯移植）
+
+objectives 分支干脆改 W 来绕开协议路由问题：MOVE_W → handleMoveW → findAxisByName("W")，而 W 此时是 Objectives 实例，"自动 work"。要把物镜放 E1 而不动 W，必须解决 objectives 分支回避的协议路由——`MOVE_W`/`MOVETO_W` 硬编码到 "W" 且不带轴索引，无法兼用。故仿 W2 给 E1 加专属 `MOVE_E1=44`/`MOVETO_E1=45` + `protocolAxisToName` case 7（旧 Squid 不发这些命令，不破坏字节级 drop-in）。
+
+### 编译/加载验证
+
+- `firmware/octoaxes` teensy41: **SUCCESS** (FLASH 81628)
+- `firmware/octoaxesplus` teensy41: **SUCCESS**（共享 tmc/ 符号链接改动都在 `#ifndef USE_HC154_CS` 内，HC154 路径不受影响）
+- 两 profile constants 加载正常：E1 type=objective / index=5 / limits=(0,3) / sign=-1 / mm_per_step=7.8125e-05；协议映射 MOVE_E1=44 / MOVETO_E1=45 / AXIS.E1=7 全部正确
+
+### ⚠️ 已知限制（选 E1 而非 W 的固有代价）
+
+E1 **不在 24 字节响应包**（仅含 X/Y/Z/W）。objectives 分支把物镜放 W 所以位置能从响应包回读；E1 物镜运动/homing 都正常，但 **GUI 位置显示不会从固件刷新**。要 E1 位置回读需走 40 字节扩展包（Phase 3.3，需硬件验证）。
+
+### 待用户验证（未烧录）
+
+1. E1 homing（home sensor 接 TMC4361A RIGHT 引脚 → RGHT_SW）
+2. previous/next 切 4 物镜的方向与位置显示（movement_sign=-1，Next 显正值）
+3. 1800mA + 加速度 80 mm/s² 下齿轮减速物镜不丢步
+4. E1 板未插场景：beginAll delete+nullptr → MOVE_E1/HOME 命令 silent no-op，不影响 X/Y/Z/W/W2
+
+### 下次
+
+1. 烧录 + 实测验证上述 4 项
+2. （可选）E1 物镜测试脚本
+3. （可选）若需 E1 位置回读 → 推进 40 字节扩展包
+4. 回到主题：硬件紧固 W motor↔wheel + 采集 8s 打点
+
+---
+
+## 上次会话
+
 **日期**: 2026-05-26 续二
 **分支**: develop
 **位置**: W 轴速度优化 — 1 slot 181ms → 72ms (-60%)

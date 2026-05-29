@@ -388,8 +388,8 @@ class ControlPanel(QGroupBox):
 
         filter_btn_layout.addStretch()
 
-        rounds_label = QLabel("Rounds:")
-        filter_btn_layout.addWidget(rounds_label)
+        self.rounds_label = QLabel("Rounds:")
+        filter_btn_layout.addWidget(self.rounds_label)
 
         self.test_rounds_spin = QSpinBox()
         self.test_rounds_spin.setRange(1, 10)
@@ -582,6 +582,12 @@ class ControlPanel(QGroupBox):
             if axis_type in ("filter_wheel", "objective"):
                 # FilterWheel / Objectives 轴 - 显示第1页（滤光转盘 / 物镜控制）
                 target_index = 1
+                # Rounds + Test 按钮原为 filter wheel 自动测试 (Next×7 → Previous×7) × N rounds
+                # （详见 main_window.run_w_test）。objective 是 4 物镜不是 8 槽，不适用，仅 filter_wheel 显示。
+                is_filter_wheel = (axis_type == "filter_wheel")
+                self.test_btn.setVisible(is_filter_wheel)
+                self.test_rounds_spin.setVisible(is_filter_wheel)
+                self.rounds_label.setVisible(is_filter_wheel)
             else:
                 # 普通步进电机轴 - 显示第0页
                 target_index = 0

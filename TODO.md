@@ -8,6 +8,8 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
+- [x] **物镜转换器代码适配到 E1 轴（不动 W）** (2026-05-29) — objectives 分支（领先 develop 7 commit）为测试把 W(icID=3) 改成 Objectives，会破坏 develop 的 W 滤光轮成果（72ms 优化/编码器/W2）。本次把**物镜通用代码适配到 E1 轴**，W 完全不动。硬件确认：6 轴并存 X/Y/Z/W/W2/**E1(物镜,4 物镜)**，E1 CS=pin19/CLK=pin28/**icID=5**(新增)。改 12 文件：① firmware `TMC_SPI.h` IC_COUNT 5→6；② `TMC_SPI.cpp` PIN_CS_E1=19 + 第 6 IC 槽(CLOCK_EXPAND)；③ `octoaxes.ino` `new Objectives(EXPAND1_AXIS_CS,5,"E1",4)`+addAxis；④ `config.h` EXPAND1_AXIS(RGHT_SW+enable对调+currentRange=1) + 加速度 200→80 + 电流 1000→1800 + Commands `MOVE_E1=44`/`MOVETO_E1=45`；⑤ `objectives.cpp` homing 根因修复 OBSW_SW→`_config.homingSwitch`(3 处)；⑥ `commandprocessor.{h,cpp}` handleMoveE1/handleMoveToE1 + protocolAxisToName case7→"E1"；⑦ `serial.cpp` 分发；⑧ `define.py` AXIS.E1=7 + MOVE/MOVETO_E1 + CMD_MAP 改专属命令；⑨ `constants.py` E1 limits(0,3)/movement_sign=-1/index=5；⑩ `main_window.py` homing _AXIS_PROTOCOL 加 E1；⑪ `widgets.py` objective 隐藏 Test/Rounds。**为何加专属命令**：MOVE_W 硬编码到"W"无轴索引，objectives 分支靠改 W 绕开路由；放 E1 必须仿 W2 加 MOVE_E1/MOVETO_E1（旧 Squid 不发，不破坏 drop-in）。两固件 + 两 profile 编译/加载通过（octoaxes FLASH 81628）。**已知限制**：E1 不在 24 字节响应包 → GUI 位置不回读（运动/homing 正常），需 40 字节扩展包。**未烧录**待实测
+
 - [x] **filterwheel.cpp homing 方向 bug 修复** (2026-05-21, commit 2b5dce4)（**后于 5-25 撤销 W 部分**：偏离旧 Squid W 段特定行为）
 - [x] **W 量纲对齐 1/64** (2026-05-22)
 - [x] **W ASTART = 0** (2026-05-22) — 与旧 Squid sRampInit::rstBits(USE_ASTART_AND_VSTART) 一致，消除短距离过冲

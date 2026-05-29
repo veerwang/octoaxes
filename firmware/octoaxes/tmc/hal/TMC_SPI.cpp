@@ -31,6 +31,7 @@
 #define PIN_CS_W     34
 #define PIN_CS_W2    16   // 2026-05-26 W2 复用原 EXPAND4 硬件（CS=pin 16, CLK=pin 28），
                           // 与旧 Squid pin_TMC4361_CS[4]=16 / pin_TMC4361_CLK_W2=28 完全一致
+#define PIN_CS_E1    19   // 2026-05-29 E1 物镜转换器（CS=pin 19 = EXPAND1_AXIS_CS, CLK=pin 28）
 #endif
 
 // Clock source identifiers
@@ -62,13 +63,15 @@ const TMC_IC_Config tmc_ic_configs[TMC4361A_IC_COUNT] = {
     { .csPin = (uint8_t)Pins::HC154_AXIS_R,  .clockSource = CLOCK_STANDARD },  // icID=6 占位
     { .csPin = (uint8_t)Pins::HC154_AXIS_F1, .clockSource = CLOCK_STANDARD },  // icID=7 占位
 #else
-    // octoaxes 5 轴：添加顺序 Y(0), X(1), Z(2), W(3), W2(4)
-    // W2 用 CLOCK_EXPAND (pin 28)，与旧 Squid pin_TMC4361_CLK_W2 一致
+    // octoaxes 6 轴：添加顺序 Y(0), X(1), Z(2), W(3), W2(4), E1(5)
+    // W2/E1 用 CLOCK_EXPAND (pin 28)；W2 与旧 Squid pin_TMC4361_CLK_W2 一致，
+    // E1(物镜) 共用同一扩展时钟线（多片 TMC4361A 可共享 clock）
     { .csPin = PIN_CS_Y,  .clockSource = CLOCK_STANDARD },
     { .csPin = PIN_CS_X,  .clockSource = CLOCK_STANDARD },
     { .csPin = PIN_CS_Z,  .clockSource = CLOCK_STANDARD },
     { .csPin = PIN_CS_W,  .clockSource = CLOCK_STANDARD },
     { .csPin = PIN_CS_W2, .clockSource = CLOCK_EXPAND  },
+    { .csPin = PIN_CS_E1, .clockSource = CLOCK_EXPAND  },  // icID=5 物镜转换器
 #endif
 };
 

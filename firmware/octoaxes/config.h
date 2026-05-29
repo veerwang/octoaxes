@@ -50,6 +50,10 @@ namespace Commands {
     const int SET_WATCHDOG_TIMEOUT = 40;  // 设置串口看门狗超时（ms），使能后通信中断自动关灯
     const int SET_PIN_LEVEL = 41;
     const int HEARTBEAT = 42;             // 空操作心跳（看门狗靠收包重置，不靠此命令）
+    // 2026-05-29 E1 物镜转换器专属运动命令（octoaxes 扩展，旧 Squid 不发，不破坏 drop-in）。
+    // MOVE_W/MOVETO_W 硬编码到 "W"，无轴索引，无法兼用；故仿 W2 给 E1 独立命令。
+    const int MOVE_E1   = 44;             // E1 相对运动，data[2..5] = int32 微步大端
+    const int MOVETO_E1 = 45;             // E1 绝对运动
     const int INITFILTERWHEEL_W2 = 252;
     const int INITFILTERWHEEL = 253;
     const int INITIALIZE = 254;
@@ -170,7 +174,9 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_Y_mm = 500;
 		const float MAX_ACCELERATION_Z_mm = 20;
 		const float MAX_ACCELERATION_FILTERWHEEL_mm = 400 * SCREW_PITCH_FILTERWHEEL_MM;
-		const float MAX_ACCELERATION_OBJECTIVES_mm = 200 * SCREW_PITCH_OBJECTIVES_MM;
+		// 2026-05-29 objectives 分支：实测 200 mm/s² 配 1A 弱电流丢步严重，
+		// 降到 80 mm/s² 留 margin。配合 EXPAND1_AXIS.currentRange=1 (2A) + motorCurrentMA=1800。
+		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;
 
 		const float HOMING_VELOCITY_X_MM = 10;
 		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 实测确定：256 微步 + 30 mm/s 最安静
@@ -186,7 +192,13 @@ namespace AxisConstDefinition {
 		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
 		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // R=0.43Ω → CS=21, 实际 0.47A
 		const float FILTERWHEEL_MOTOR_PEAK_CURRENT_mA = 3100; // R=0.10Ω → CS=31(满), 实际 3.1A
-		const float OBJECTIVES_MOTOR_PEAK_CURRENT_mA = 1000;  // R=0.22Ω → CS=9, 实际 0.97A
+		// 2026-05-29 objectives 分支：1A 弱电流配齿轮减速物镜丢步。提到 1800mA。
+		// 物镜驱动板 R_sense=0.22Ω（仅 TMC2660 路径生效；TMC2240 用集成电流传感 ICS 忽略此电阻）。
+		// EXPAND1_AXIS.driverType=DRIVER_AUTO 上电自动识别芯片后选路径：
+		//   - TMC2240 (ICS):  currentRange=1 → I_FS=2A, IRUN=(1800/1000)/2×32-1=28 → 1.81A 峰值
+		//   - TMC2660 (R_S):  r_sense=0.22Ω, 1800mA → CS≈16 → ~1.7A 峰值
+		// 两路径电流接近 (~1.7-1.8A)，齿轮减速物镜扭矩够用。换 R_sense≠0.22Ω 驱动板需重算 CS。
+		const float OBJECTIVES_MOTOR_PEAK_CURRENT_mA = 1800;
 
 		const float X_MOTOR_I_HOLD = 0.25;
 		const float Y_MOTOR_I_HOLD = 0.25;
@@ -420,18 +432,22 @@ namespace AxisConfigs {
         .invert_direction = false   // 2026-05-26 回归字节级 drop-in：与旧 Squid firmware 物理方向一致（详见本 struct 上方注释）
     };
 
-    // 扩展轴1配置 (objectives)
+    // 扩展轴1配置 (objectives 物镜转换器)
+    // 2026-05-29 objectives 分支实测移植：本电路板物镜 home sensor 物理接到 TMC4361A 的
+    // RIGHT 输入引脚（dump_axis_state.py 验证：home 位 STOPR_ACTIVE_F=1 / 离开=0）。
+    // 故 homingSwitch=RGHT_SW，enableRight=true、enableLeft=false。
+    // Objectives::performHomingSequence 已改为读 _config.homingSwitch 动态判定（不再硬编码 OBSW_SW）。
     const Axis::AxisConfig EXPAND1_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
-        .homingSwitch = LEFT_SW,
+        .homingSwitch = RGHT_SW,
         .leftSwitchPolarity = 0,
         .rightSwitchPolarity = 0,
         .leftIsInactive = 1,
         .rightIsInactive = 1,
         .leftFlipped = false,
         .rightFlipped = false,
-        .enableLeftLimitSwitch = true,
-        .enableRightLimitSwitch = false,
+        .enableLeftLimitSwitch = false,
+        .enableRightLimitSwitch = true,
         .r_sense = AxisConstDefinition::R_sense_objective,
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_OBJECTIVES_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_OBJECTIVES,
@@ -452,7 +468,7 @@ namespace AxisConfigs {
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
-        .currentRange = 0,
+        .currentRange = 1,         // 2026-05-29 TMC2240 I_FS=2A（原 0=1A 配齿轮减速物镜丢步）
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
         .invertEncoderDir = false,

@@ -27,10 +27,10 @@ extern "C" {
 #define TMC4361A_IC_COUNT   8
 #define TMC2660_IC_COUNT    8
 #else
-// octoaxes 5 轴：Y, X, Z, W, W2（2026-05-26 W2 接管原 E4 硬件 CS=pin 16/CLK=pin 28；
-// 原 E1/E3 不启用，移除以匹配实际实例化轴数）
-#define TMC4361A_IC_COUNT   5
-#define TMC2660_IC_COUNT    5
+// octoaxes 6 轴：Y, X, Z, W, W2, E1（2026-05-26 W2 接管原 E4 硬件 CS=pin 16/CLK=pin 28；
+// 2026-05-29 E1 启用为物镜转换器 Objectives，CS=pin 19/CLK=pin 28；原 E3 不启用）
+#define TMC4361A_IC_COUNT   6
+#define TMC2660_IC_COUNT    6
 #endif
 
 // ============================================================================
@@ -38,13 +38,14 @@ extern "C" {
 // ============================================================================
 
 typedef enum {
+    // 注意：icID 实际由 addAxis() 调用顺序决定（见 TMC_SPI.cpp tmc_ic_configs[]）。
+    // 当前 octoaxes 顺序：X(0) Y(1) Z(2) W(3) W2(4) E1(5)。下列枚举仅作语义参考。
     IC_X  = 0,   // X axis
     IC_Y  = 1,   // Y axis
     IC_Z  = 2,   // Z axis
     IC_W  = 3,   // W axis (Filter wheel 1)
-    IC_E1 = 4,   // Expand 1 (Objectives)
-    IC_E3 = 5,   // Expand 3 (Extended Z)
-    IC_E4 = 6    // Expand 4 (Filter wheel 2)
+    IC_W2 = 4,   // W2 axis (Filter wheel 2，接管原 E4 硬件)
+    IC_E1 = 5    // Expand 1 (Objectives，物镜转换器)
 } TMC_IC_ID;
 
 // ============================================================================
