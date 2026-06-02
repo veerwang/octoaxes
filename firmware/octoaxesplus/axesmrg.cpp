@@ -91,6 +91,14 @@ bool AxisManager::beginAll() {
       if (!success) {
         DEBUG_PRINT("Failed to initialize axis: ");
         DEBUG_PRINTLN(axisName);
+        // 2026-06-02 与 octoaxes 对齐：begin 失败说明 TMC4361A SPI 无响应
+        //（板未插 / chip 损坏 / 接线断）。删除该 Axis 实例并把槽位置 nullptr，
+        // 让后续 findAxisByName 返回 nullptr，所有 handler 的 if (axis) 保护自动
+        // 让命令 silent no-op（响应包 any_moving=false 即时报 COMPLETED，上位机
+        // wait_till_operation_is_completed 立刻唤醒，不卡 5s）。避免后续 SPI 操作
+        // 打到死 chip 浪费总线 + 假阳性 status 拖累整机。
+        delete axes[i];
+        axes[i] = nullptr;
         allSuccess = false;
       } else {
         DEBUG_PRINT("Successfully initialized axis: ");
