@@ -52,8 +52,8 @@ namespace Commands {
     const int HEARTBEAT = 42;             // 空操作心跳（看门狗靠收包重置，不靠此命令）
     // 2026-05-29 E1 物镜转换器专属运动命令（octoaxes 扩展，旧 Squid 不发，不破坏 drop-in）。
     // MOVE_W/MOVETO_W 硬编码到 "W"，无轴索引，无法兼用；故仿 W2 给 E1 独立命令。
-    const int MOVE_E1   = 44;             // E1 相对运动，data[2..5] = int32 微步大端
-    const int MOVETO_E1 = 45;             // E1 绝对运动
+    const int MOVE_TURRET   = 44;             // E1 相对运动，data[2..5] = int32 微步大端
+    const int MOVETO_TURRET = 45;             // E1 绝对运动
     const int INITFILTERWHEEL_W2 = 252;
     const int INITFILTERWHEEL = 253;
     const int INITIALIZE = 254;

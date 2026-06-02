@@ -12,7 +12,7 @@ import time
 DEBUG_HEADER = bytes([0x55, 0xAA])
 
 # 可用的轴名称
-AXIS_NAMES = ['X', 'Y', 'Z', 'W', 'E1', 'E3', 'E4']
+AXIS_NAMES = ['X', 'Y', 'Z', 'W', 'Turret', 'E3', 'E4']
 
 def send_debug_command(ser, command):
     """发送调试协议命令"""

@@ -700,7 +700,7 @@ class TeensyControlGUI(QMainWindow):
             "W": AXIS.W,
             "W1": AXIS.W,    # octoaxesplus 滤光转盘 1 — 协议码 = 5（同 W）
             "W2": AXIS.W2,   # octoaxesplus 滤光转盘 2 — 协议码 = 6
-            "E1": AXIS.E1,   # 2026-05-29 物镜转换器 — 协议码 = 7（firmware protocolAxisToName case 7）
+            "Turret": AXIS.TURRET,   # 2026-05-29 物镜转换器 — 协议码 = 7（firmware protocolAxisToName case 7）
         }
         protocol_axis = _AXIS_PROTOCOL.get(axis)
         if protocol_axis is None:
@@ -1278,7 +1278,7 @@ class TeensyControlGUI(QMainWindow):
         """
         if self._objective_configured or self.serial_thread is None:
             return
-        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W, "E1": AXIS.E1}
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W, "Turret": AXIS.TURRET}
         protocol_axis = _AXIS_PROTOCOL.get(axis_name)
         if protocol_axis is None:
             # 无协议映射的物镜轴，跳过下发，靠固件默认

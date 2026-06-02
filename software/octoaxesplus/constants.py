@@ -88,9 +88,9 @@ AXIS_CONFIG = {
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,
     },
-    "E1": {
+    "Turret": {
         # 2026-06-02 物镜转换器（4 物镜）：物理 R 轴（HC154 ch3），firmware icID=5。
-        # 复用 octoaxes E1 协议 MOVE_E1(44)/MOVETO_E1(45) + HOME_OR_ZERO axis=7。
+        # 复用 octoaxes E1 协议 MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7。
         # GUI widgets.py 渲染物镜控制页；main_window.previous/next → move_objective()。
         "display_name": "Objectives - r_axis",
         "type": "objective",
@@ -99,7 +99,7 @@ AXIS_CONFIG = {
         # movement_sign=-1：翻转显示（pos/steps/状态表乘 sign），让 Next 显正值；
         # 不影响 move_objective 物理方向（它硬编码符号，不用 sign）。
         "movement_sign": -1,
-        "index": 5,             # firmware icID（octoaxesplus.ino: new Objectives(...,5,"E1",4)）
+        "index": 5,             # firmware icID（octoaxesplus.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # 对齐 config.h SCREW_PITCH_OBJECTIVES_MM=1
         "actuator_microstepping": 64,      # 对齐 config.h MICROSTEPPING_OBJECTIVES=64
     },

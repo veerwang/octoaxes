@@ -61,7 +61,7 @@ bool AxisManager::beginAll() {
         success = axes[i]->begin(AxisConfigs::Z_AXIS);
       } else if (axisName.equals("W")) {
         success = axes[i]->begin(AxisConfigs::W_AXIS);
-      } else if (axisName.equals("E1")) {
+      } else if (axisName.equals("Turret")) {
         success = axes[i]->begin(AxisConfigs::EXPAND1_AXIS);
       } else if (axisName.equals("E3")) {
         success = axes[i]->begin(AxisConfigs::EXPAND3_AXIS);

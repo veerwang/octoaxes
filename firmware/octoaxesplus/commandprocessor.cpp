@@ -38,7 +38,7 @@ static const char* protocolAxisToName(uint8_t protocolAxis) {
     case 2: return "Z";
     case 5: return "W";
     case 6: return "W2";
-    case 7: return "E1";   // 2026-06-02 物镜转换器（HOME_OR_ZERO axis=7，复用 octoaxes E1 协议）
+    case 7: return "Turret";   // 2026-06-02 物镜转换器（HOME_OR_ZERO axis=7，复用 octoaxes E1 协议）
     default: return nullptr;
   }
 }
@@ -316,29 +316,29 @@ void CommandProcessor::handleMoveW2(const byte *data) {
   DEBUG_PRINTLN("Get MoveW2 Command");
 }
 
-void CommandProcessor::handleMoveE1(const byte *data) {
-  // 2026-06-02 MOVE_E1 (cmd 44)：物镜转换器相对运动，data[2..5] 为 int32 微步大端序。
+void CommandProcessor::handleMoveTurret(const byte *data) {
+  // 2026-06-02 MOVE_TURRET (cmd 44)：物镜转换器相对运动，data[2..5] 为 int32 微步大端序。
   // E1 板未插时 axesmrg::beginAll 已删除该轴 → findAxisByName 返回 nullptr → silent no-op。
   int32_t relative_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
-  Axis *axis = axisManager.findAxisByName("E1");
+  Axis *axis = axisManager.findAxisByName("Turret");
   if (axis)
     axis->moveAxis(relative_position);
 
-  DEBUG_PRINTLN("Get MoveE1 Command");
+  DEBUG_PRINTLN("Get MoveTurret Command");
 }
 
-void CommandProcessor::handleMoveToE1(const byte *data) {
-  // 2026-06-02 MOVETO_E1 (cmd 45)：物镜转换器绝对运动。
+void CommandProcessor::handleMoveToTurret(const byte *data) {
+  // 2026-06-02 MOVETO_TURRET (cmd 45)：物镜转换器绝对运动。
   int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
-  Axis *axis = axisManager.findAxisByName("E1");
+  Axis *axis = axisManager.findAxisByName("Turret");
   if (axis)
     axis->moveToPositionMicrosteps(absolute_position);
 
-  DEBUG_PRINTLN("Get MoveToE1 Command");
+  DEBUG_PRINTLN("Get MoveToTurret Command");
 }
 
 void CommandProcessor::handleSetTriggerMode(const byte *data) {

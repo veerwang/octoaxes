@@ -51,8 +51,8 @@ namespace Commands {
     const int SET_PIN_LEVEL = 41;
     const int HEARTBEAT = 42;             // 空操作心跳（看门狗靠收包重置，不靠此命令）
     const int MOVETO_W2 = 43;             // octoaxesplus W2 绝对运动命令（MOVE_W2=19 的配套）
-    const int MOVE_E1   = 44;             // E1 物镜转换器相对运动，data[2..5] = int32 微步大端（复用 octoaxes E1 协议）
-    const int MOVETO_E1 = 45;             // E1 物镜转换器绝对运动
+    const int MOVE_TURRET   = 44;             // E1 物镜转换器相对运动，data[2..5] = int32 微步大端（复用 octoaxes E1 协议）
+    const int MOVETO_TURRET = 45;             // E1 物镜转换器绝对运动
     const int INITFILTERWHEEL_W2 = 252;
     const int INITFILTERWHEEL = 253;
     const int INITIALIZE = 254;

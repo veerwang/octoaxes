@@ -108,14 +108,14 @@ bool initializeSystem() {
   Axis *w2Axis = new FilterWheel(Pins::W2_AXIS_CS, 4, "W2");
   // E1 = 物镜转换器（4 物镜），接 EXPAND1 硬件（CS=pin 19, CLK=pin 28 = TMC4361_EXPAND_CLK）。
   // 2026-05-29：本电路板 icID=5 槽位为物镜转换器（不动 W 滤光轮）。
-  // 协议走专属 MOVE_E1/MOVETO_E1 + HOME_OR_ZERO axis=7（protocolAxisToName case 7→"E1"）。
+  // 协议走专属 MOVE_TURRET/MOVETO_TURRET + HOME_OR_ZERO axis=7（protocolAxisToName case 7→"Turret"）。
   // 板可能未插：axesmrg.cpp::beginAll 会在 SPI 无响应时 delete + nullptr 该槽位。
-  Axis *e1Axis = new Objectives (Pins::EXPAND1_AXIS_CS, 5, "E1", 4);
+  Axis *turretAxis = new Objectives (Pins::EXPAND1_AXIS_CS, 5, "Turret", 4);
 
   // 按 axisIndex 顺序添加: X(0), Y(1), Z(2), W(3), W2(4), E1(5)
   if (!axisManager.addAxis(xAxis)  || !axisManager.addAxis(yAxis)  ||
       !axisManager.addAxis(zAxis)  || !axisManager.addAxis(wAxis)  ||
-      !axisManager.addAxis(w2Axis) || !axisManager.addAxis(e1Axis)) {
+      !axisManager.addAxis(w2Axis) || !axisManager.addAxis(turretAxis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");
     return false;
   }

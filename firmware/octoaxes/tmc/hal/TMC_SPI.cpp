@@ -59,7 +59,7 @@ const TMC_IC_Config tmc_ic_configs[TMC4361A_IC_COUNT] = {
     { .csPin = (uint8_t)Pins::HC154_AXIS_Z1, .clockSource = CLOCK_STANDARD },  // icID=2 (axisName="Z")
     { .csPin = (uint8_t)Pins::HC154_AXIS_W1, .clockSource = CLOCK_STANDARD },  // icID=3 (ch6, 占用原 Z2 CS)
     { .csPin = (uint8_t)Pins::HC154_AXIS_W2, .clockSource = CLOCK_STANDARD },  // icID=4 (ch4, 占用原 T  CS)
-    { .csPin = (uint8_t)Pins::HC154_AXIS_R,  .clockSource = CLOCK_STANDARD },  // icID=5 (ch3, 物镜转换器 axisName="E1")
+    { .csPin = (uint8_t)Pins::HC154_AXIS_R,  .clockSource = CLOCK_STANDARD },  // icID=5 (ch3, 物镜转换器 axisName="Turret")
     { .csPin = (uint8_t)Pins::HC154_AXIS_F2, .clockSource = CLOCK_STANDARD },  // icID=6 占位
     { .csPin = (uint8_t)Pins::HC154_AXIS_F1, .clockSource = CLOCK_STANDARD },  // icID=7 占位
 #else
