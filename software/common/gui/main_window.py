@@ -6,7 +6,18 @@ from typing import Optional
 from define import CMD_SET, AXIS, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP, AXIS_LIMIT_CODE_MAP
 
 CMDS = CMD_SET
-from define import OBJECTIVE_RATIO, SCREW_PITCH_W_MM, OBJECTIVE_HOLES
+from define import (
+    OBJECTIVE_RATIO,
+    SCREW_PITCH_W_MM,
+    OBJECTIVE_HOLES,
+    OBJECTIVE_NEXT_SIGN,
+    OBJECTIVE_GEAR_LARGE,
+    OBJECTIVE_BACKLASH_FACTOR_MM,
+    OBJECTIVE_MOTOR_CURRENT_RMS_MA,
+    OBJECTIVE_MOTOR_I_HOLD,
+    OBJECTIVE_MAX_VELOCITY_MM,
+    OBJECTIVE_MAX_ACCELERATION_MM,
+)
 from define import SQUID_FILTERWHEEL_OFFSET
 from utils.helpers import int_to_payload
 
@@ -52,6 +63,12 @@ class TeensyControlGUI(QMainWindow):
 
         # 添加轴使能状态字典（从 AXIS_CONFIG 动态生成，跟随 profile）
         self.axis_enabled_states = {axis: True for axis in AXIS_CONFIG.keys()}
+
+        # 物镜转换器上次换位方向（齿轮回程间隙补偿用，False=previous 基线）；
+        # homing 后重置
+        self._objective_move_direction = False
+        # 物镜 W 轴电机参数是否已下发（懒加载，首次换位/homing 前下发一次）
+        self._objective_configured = False
 
         self.init_ui()
         self.setup_timers()
@@ -707,14 +724,22 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"Axis {axis} homing timeout")
             return
 
-        # Homing 完成后重新设置软限位（homing 过程中固件会禁用虚拟限位）
-        if axis not in ("W", "E4"):
-            self.set_limits()
-        else:
-            # 滤光轮 homing 完成后需要移动 offset
+        # Homing 完成后按轴类型处理（profile-safe：用 AXIS_CONFIG["type"] 判断，
+        # 不硬编码轴名）：
+        #   filter_wheel —— 需要 move offset（从 home 标志到 1 号孔位中心）
+        #   objective    —— 物镜转换器不需要 offset，也无软限位
+        #   其他步进轴    —— 重设软限位（homing 过程中固件会禁用虚拟限位）
+        axis_type = AXIS_CONFIG.get(axis, {}).get("type")
+        if axis_type == "filter_wheel":
             offset_um = int(SQUID_FILTERWHEEL_OFFSET * 1000)  # mm -> μm
             self._move_step_axis_relative_position(axis, offset_um)
             self.log(f"Filter wheel {axis} moving offset: {offset_um} μm")
+        elif axis_type == "objective":
+            # 物镜转换器 homing 后无 offset；重置齿隙补偿方向基线
+            self._objective_move_direction = False
+            self.log(f"Objective {axis} homed (no offset needed)")
+        else:
+            self.set_limits()
 
     def send_reset(self):
         command = format_command(self.get_current_axis(), "RESET")
@@ -1214,14 +1239,155 @@ class TeensyControlGUI(QMainWindow):
         direction = "Next" if is_next else "Previous"
         self.log(f"Filter wheel {axis} move ({direction}): {value} μm")
 
+    def _move_step_axis_relative_usteps(self, axis_name: str, microsteps: int) -> bool:
+        """发送相对移动命令（直接以微步为单位，不经 μm 中转）
+
+        物镜换位用：1 槽 = 0.6875mm，经 μm 整数会被 int(687.5)=687 截断，
+        丢失约 7 微步/槽并累积。直接传微步可避免该精度损失。
+
+        Args:
+            axis_name: 轴名称
+            microsteps: 相对移动微步数（带符号）
+        """
+        if self.serial_thread is None:
+            return False
+
+        move_cmd = AXIS_MOVE_CMD_MAP.get(axis_name)
+        if move_cmd is None:
+            self.log(f"Unknown axis for move command: {axis_name}")
+            return False
+
+        cmd = bytearray(8)
+        payload = int_to_payload(int(microsteps), 4)
+        cmd[1] = move_cmd
+        cmd[2] = payload >> 24
+        cmd[3] = (payload >> 16) & 0xFF
+        cmd[4] = (payload >> 8) & 0xFF
+        cmd[5] = payload & 0xFF
+
+        return self.serial_thread.send_binary_command(cmd)
+
+    def _ensure_objective_configured(self, axis_name: str) -> None:
+        """首次换位前下发物镜 W 轴电机参数（懒加载，仅一次）。
+
+        覆盖固件默认为更柔和的运动（与参考 software_20260601 物镜转换器一致）：
+        螺距/微步取自 AXIS_CONFIG（profile-safe），电流/保持/速度/加速度取自
+        define.py 的 OBJECTIVE_* 常量。电流按 RMS 下发（CONFIGURE_STEPPER_DRIVER
+        协议期望 RMS，非峰值）。仅作用于正常换位；homing 仍用固件默认（homing
+        有独立速度，且更高 homing 扭矩无害）。
+        """
+        if self._objective_configured or self.serial_thread is None:
+            return
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W, "E1": AXIS.E1}
+        protocol_axis = _AXIS_PROTOCOL.get(axis_name)
+        if protocol_axis is None:
+            # 无协议映射的物镜轴，跳过下发，靠固件默认
+            return
+        cfg = AXIS_CONFIG.get(axis_name, {})
+        pitch_mm = cfg.get("actuator_screw_pitch_mm", SCREW_PITCH_W_MM)
+        microstepping = cfg.get("actuator_microstepping", 64)
+
+        # SET_LEAD_SCREW_PITCH (cmd 23): data[3..4]=pitch*1000 (uint16 大端)
+        pitch_x1000 = int(round(pitch_mm * 1000))
+        cmd = bytearray(8)
+        cmd[1] = CMD_SET.SET_LEAD_SCREW_PITCH
+        cmd[2] = protocol_axis
+        cmd[3] = (pitch_x1000 >> 8) & 0xFF
+        cmd[4] = pitch_x1000 & 0xFF
+        self.serial_thread.send_binary_command(cmd)
+
+        # CONFIGURE_STEPPER_DRIVER (cmd 21): microstep 编码 + current(uint16,RMS) + hold*255
+        if microstepping == 1:
+            ms_byte = 0
+        elif microstepping >= 256:
+            ms_byte = 255
+        else:
+            ms_byte = int(microstepping) & 0xFF
+        current_int = int(round(OBJECTIVE_MOTOR_CURRENT_RMS_MA)) & 0xFFFF
+        hold_byte = max(0, min(255, int(round(OBJECTIVE_MOTOR_I_HOLD * 255))))
+        cmd = bytearray(8)
+        cmd[1] = CMD_SET.CONFIGURE_STEPPER_DRIVER
+        cmd[2] = protocol_axis
+        cmd[3] = ms_byte
+        cmd[4] = (current_int >> 8) & 0xFF
+        cmd[5] = current_int & 0xFF
+        cmd[6] = hold_byte
+        self.serial_thread.send_binary_command(cmd)
+
+        # SET_MAX_VELOCITY_ACCELERATION (cmd 22)
+        self._set_max_velocity_acceleration(
+            axis_name, OBJECTIVE_MAX_VELOCITY_MM, OBJECTIVE_MAX_ACCELERATION_MM
+        )
+
+        self._objective_configured = True
+        self.log(
+            f"Objective {axis_name} motor configured: pitch={pitch_mm}mm "
+            f"microstep={microstepping} current={OBJECTIVE_MOTOR_CURRENT_RMS_MA}mA(RMS) "
+            f"hold={OBJECTIVE_MOTOR_I_HOLD} vel={OBJECTIVE_MAX_VELOCITY_MM} "
+            f"acc={OBJECTIVE_MAX_ACCELERATION_MM}"
+        )
+
     def move_objective(self, is_next):
-        distance_mm = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES
-        distance_um = -1 * int(1000 * distance_mm)
-        value = distance_um if is_next else -distance_um
+        """物镜转换器换位（齿轮减速转盘）。
+
+        与 filter wheel 的不同点：
+        1. 直接 mm → 微步一次 round，不经 μm 整数中转，避免 1 槽 0.6875mm
+           被 int(687.5)=687 截断丢失约 7 微步/槽的累积误差。
+        2. 齿轮（132/48）有回程间隙，换向时先走一小段吃掉齿隙再正式换位，
+           否则换向后第一次换位欠转、物镜偏离光轴。补偿移动需等其完成，
+           否则会被随后的正式换位命令 mid-flight 覆盖（firmware STATE_MOVING
+           覆盖 XTARGET）。
+        3. 运动期间确保轴使能（参考实现 enable→move→disable）。本实现记录
+           移动前的使能状态，结束后恢复：若原本禁用则临时使能、移动到位后再
+           禁用；若原本已使能则保持。注意：使能/失能必须包住整段运动，且断电
+           前必须等正式换位到位，否则中途掉电丢步——故正式换位也改为同步等待。
+        """
         axis = self.get_current_axis()
-        self._move_step_axis_relative_position(axis, value)
-        direction = "Next" if is_next else "Previous"
-        self.log(f"Sent objective move ({direction}): {value} μm")
+        mm_per_ustep = AXIS_MM_PER_STEP.get(axis)
+        if not mm_per_ustep:
+            self.log(f"No mm_per_step for axis: {axis}")
+            return
+
+        # 首次换位前下发柔和的物镜电机参数（懒加载，仅一次）
+        self._ensure_objective_configured(axis)
+
+        move_sign = OBJECTIVE_NEXT_SIGN if is_next else -OBJECTIVE_NEXT_SIGN
+
+        # 运动期间确保使能；记录原状态用于结束恢复
+        was_enabled = self.axis_enabled_states.get(axis, True)
+        if not was_enabled:
+            self._set_axis_enable(axis, True)
+            time.sleep(0.2)
+        try:
+            # 齿轮回程间隙补偿：仅在换向时先吃齿隙
+            if is_next != self._objective_move_direction:
+                backlash_mm = (OBJECTIVE_RATIO * OBJECTIVE_BACKLASH_FACTOR_MM) / OBJECTIVE_GEAR_LARGE
+                backlash_usteps = int(round(move_sign * backlash_mm / mm_per_ustep))
+                if backlash_usteps:
+                    self._move_step_axis_relative_usteps(axis, backlash_usteps)
+                    # 手动置 MOVING 后等完成，确保正式换位不覆盖齿隙补偿
+                    self.axis_manager.axis_status[axis]["state"] = "MOVING"
+                    self.wait_until_idle(15)
+                    self.log(
+                        f"Objective backlash takeup: {backlash_usteps} usteps "
+                        f"(-> {'next' if is_next else 'previous'})"
+                    )
+            self._objective_move_direction = is_next
+
+            # 正式换位：1 槽 = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES mm
+            mm_per_slot = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES
+            usteps = int(round(move_sign * mm_per_slot / mm_per_ustep))
+            self._move_step_axis_relative_usteps(axis, usteps)
+            # 断电前必须等到位
+            self.axis_manager.axis_status[axis]["state"] = "MOVING"
+            self.wait_until_idle(15)
+            direction = "Next" if is_next else "Previous"
+            self.log(f"Sent objective move ({direction}): {usteps} usteps")
+        finally:
+            # 恢复移动前的使能状态（原本禁用才回到禁用，避免误改 GUI 跟踪状态）
+            if not was_enabled:
+                self._set_axis_enable(axis, False)
+                time.sleep(0.2)
 
     # ====== 照明命令发送 ======
 
