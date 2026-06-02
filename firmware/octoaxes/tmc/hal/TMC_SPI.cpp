@@ -51,16 +51,16 @@
 const TMC_IC_Config tmc_ic_configs[TMC4361A_IC_COUNT] = {
     // 注意: 顺序必须与 axisManager.addAxis() 调用顺序一致！
 #ifdef USE_HC154_CS
-    // squid++ XYZW1W2 五轴：addAxis 顺序 Y(0), X(1), Z(2), W1(3), W2(4)
+    // squid++ XYZW1W2 + E1 六轴：addAxis 顺序 Y(0), X(1), Z(2), W1(3), W2(4), E1(5)
     // 单套时钟（取消 EXPAND_CLK），全部走 CLOCK_STANDARD
-    // icID 5-7 占位（未实例化，TMC4361A_IC_COUNT 仍为 8 便于未来扩展）
+    // 2026-06-02 E1 物镜转换器启用：icID=5 槽位接 HC154_AXIS_R (ch3)；icID 6-7 仍占位
     { .csPin = (uint8_t)Pins::HC154_AXIS_Y,  .clockSource = CLOCK_STANDARD },  // icID=0
     { .csPin = (uint8_t)Pins::HC154_AXIS_X,  .clockSource = CLOCK_STANDARD },  // icID=1
     { .csPin = (uint8_t)Pins::HC154_AXIS_Z1, .clockSource = CLOCK_STANDARD },  // icID=2 (axisName="Z")
     { .csPin = (uint8_t)Pins::HC154_AXIS_W1, .clockSource = CLOCK_STANDARD },  // icID=3 (ch6, 占用原 Z2 CS)
     { .csPin = (uint8_t)Pins::HC154_AXIS_W2, .clockSource = CLOCK_STANDARD },  // icID=4 (ch4, 占用原 T  CS)
-    { .csPin = (uint8_t)Pins::HC154_AXIS_F2, .clockSource = CLOCK_STANDARD },  // icID=5 占位
-    { .csPin = (uint8_t)Pins::HC154_AXIS_R,  .clockSource = CLOCK_STANDARD },  // icID=6 占位
+    { .csPin = (uint8_t)Pins::HC154_AXIS_R,  .clockSource = CLOCK_STANDARD },  // icID=5 (ch3, 物镜转换器 axisName="E1")
+    { .csPin = (uint8_t)Pins::HC154_AXIS_F2, .clockSource = CLOCK_STANDARD },  // icID=6 占位
     { .csPin = (uint8_t)Pins::HC154_AXIS_F1, .clockSource = CLOCK_STANDARD },  // icID=7 占位
 #else
     // octoaxes 6 轴：添加顺序 Y(0), X(1), Z(2), W(3), W2(4), E1(5)

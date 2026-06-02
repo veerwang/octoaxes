@@ -34,6 +34,8 @@ public:
     void handleSetMultiPortMask(const byte* data);
     void handleTurnOffAllPorts(const byte* data);
     void handleMoveW2(const byte* data);
+    void handleMoveE1(const byte* data);
+    void handleMoveToE1(const byte* data);
     void handleSetTriggerMode(const byte* data);
     void handleMoveToW(const byte* data);
     void handleMoveToW2(const byte* data);

@@ -732,6 +732,14 @@ void SerialProtocolHandler::processSerialStandardCommands() {
       commandProcessor.handleMoveW2(data);
       break;
 
+    case Commands::MOVE_E1:
+      commandProcessor.handleMoveE1(data);
+      break;
+
+    case Commands::MOVETO_E1:
+      commandProcessor.handleMoveToE1(data);
+      break;
+
     case Commands::HOME_OR_ZERO:
       commandProcessor.handleHomeOrZero(data);
       break;

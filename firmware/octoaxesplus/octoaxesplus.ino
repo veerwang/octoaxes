@@ -97,12 +97,15 @@ bool initializeSystem() {
   Axis *zAxis  = new StepAxis    (Pins::Z_AXIS_CS,  2, "Z");    // icID=2, HC154 ch8  = 主焦点 Z
   Axis *w1Axis = new FilterWheel (Pins::W1_AXIS_CS, 3, "W1");   // icID=3, HC154 ch6  = 滤光转盘 1
   Axis *w2Axis = new FilterWheel (Pins::W2_AXIS_CS, 4, "W2");   // icID=4, HC154 ch4  = 滤光转盘 2
+  // 2026-06-02 E1 物镜转换器（4 物镜）：CS=R_AXIS_CS (HC154 ch3)，复用 octoaxes E1 协议
+  // （axisName="E1" + MOVE_E1=44/MOVETO_E1=45 + 协议轴码 7）。beginAll 用 EXPAND1_AXIS 模板。
+  Axis *e1Axis = new Objectives  (Pins::R_AXIS_CS, 5, "E1", 4);  // icID=5, HC154 ch3 = 物镜转换器
 
   // 按 axisIndex 顺序添加；顺序必须与 tmc/hal/TMC_SPI.cpp 的 tmc_ic_configs[] HC154 分支一致
-  // tmc_ic_configs[] 数组保持 8 项（icID 5-7 槽位空置但不被访问，无副作用）
+  // tmc_ic_configs[] 数组保持 8 项（icID 6-7 槽位空置但不被访问，无副作用）
   if (!axisManager.addAxis(yAxis)  || !axisManager.addAxis(xAxis)  ||
       !axisManager.addAxis(zAxis)  || !axisManager.addAxis(w1Axis) ||
-      !axisManager.addAxis(w2Axis)) {
+      !axisManager.addAxis(w2Axis) || !axisManager.addAxis(e1Axis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");
     return false;
   }
