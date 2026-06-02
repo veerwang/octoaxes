@@ -6,6 +6,70 @@
 
 ## 最新会话
 
+**日期**: 2026-06-02
+**分支**: develop（已 push 到 origin/develop = 2607902）
+**位置**: octoaxesplus 物镜转换器端到端打通（AXIS_R 启用 + 增强换位 + 容错）+ 物镜轴 E1→Turret 全局重命名
+
+### 本次完成（5 个 commit，已全部 push）
+
+| commit | 内容 |
+|---|---|
+| `4b0e9f0` | docs: 记录 octoaxes constants.py X/Y index 与固件 icID 不符（潜在坑，暂不修）|
+| `a048c42` | feat: octoaxesplus 启用 AXIS_R 为物镜转换器（复用 E1 协议）|
+| `a8e0599` | feat: 移植 objectives 分支 move_objective 增强到 develop common |
+| `a024996` | fix: octoaxesplus beginAll 死轴容错与 octoaxes 对齐 |
+| `2607902` | refactor: 物镜轴 E1 → Turret 全局重命名（两固件 + 共享 software）|
+
+#### 1. X/Y 序号调查（仅记录，未改代码）
+
+用户连续追问 develop↔objectives、octoaxes↔octoaxesplus 的 X/Y 是否反。结论：
+- **develop↔objectives 的 X/Y 完全相同**（byte-identical），分支唯一差异是 W(objectives 把 W 改物镜) vs E1(develop 物镜另起 E1)。
+- **octoaxes↔octoaxesplus 的 X/Y icID 确实是反的**（octoaxes "X"=icID0/"Y"=icID1；octoaxesplus "X"=icID1/"Y"=icID0），是两套 PCB 接线不同的各自补偿，运动命令按轴名路由不受影响。
+- **遗留隐患**：octoaxes constants.py X index=1/Y index=0，但固件 icID 是 X=0/Y=1 —— **对不上**。当前走 24 字节包不查 index 故无害；**启用 40 字节扩展包前必须改 X→0/Y→1**。详见 TODO.md 2026-06-02 段 + 记忆 octoaxes-xy-icid-index-mismatch。
+
+#### 2. octoaxesplus AXIS_R 启用为物镜转换器（复用 E1 协议）
+
+决策（用户拍板）：**复用 octoaxes E1 协议**（不新建 R 协议）+ **沿用 octoaxes E1 调参**。改 9 处（config.h Commands MOVE_E1/MOVETO_E1 + OBJECTIVES 电流 1000→1800/加速度 200→80 + EXPAND1_AXIS homingSwitch RGHT_SW/enable 对调/currentRange=1；TMC_SPI.cpp HC154 icID=5 槽位 F2→R；.ino new Objectives(R_AXIS_CS,5,...)；commandprocessor handler + protocolAxisToName case7；serial 分发；constants.py 加物镜轴）。beginAll 已有 "E1"/"R" 分支、common 层已 E1-ready、Objectives 类两固件一致 —— 大量白捡。
+
+#### 3. 移植 move_objective 增强到 common（develop 原为基础版）
+
+从 objectives 分支移植到共享 common（两 profile 受益）：齿轮回程间隙补偿、直接微步不经 μm 截断、首次换位懒加载下发柔和电机参数、运动期间使能+同步等待防掉电丢步。define.py 加 6 个 OBJECTIVE_* 常量。homing handler 改 type-based（顺带修正 octoaxesplus W1/W2 漏 offset + E1 误走 set_limits 两个旧 bug）。**比原版多一处**：_ensure_objective_configured 协议映射加 "Turret": AXIS.TURRET，让 develop 物镜轴真正收到柔和参数（objectives 分支物镜叫 W 才跳过）。
+
+#### 4. octoaxesplus beginAll 死轴容错（补 2026-05-26 octoaxes 修复的漏同步）
+
+octoaxesplus beginAll 失败分支补 `delete axes[i]; axes[i]=nullptr;`。修复前：缺驱动板（如 Turret）时指针仍非空，发 move/home → 打死 chip → 卡 moving → any_moving 永真 → 上位机 wait 5s 超时拖累整机。修复后：缺任何板都不影响其他轴，缺板轴命令 silent no-op + 即时 COMPLETED。
+
+#### 5. 物镜轴 E1 → Turret 全局重命名
+
+"E1" 是历史扩展槽位名不直观，物镜转换器改用行业标准名 Turret。**协议值 44/45/轴码 7 不变（串口兼容）**。改名："E1"→"Turret" / MOVE_E1→MOVE_TURRET / handleMoveE1→handleMoveTurret / AXIS.E1→AXIS.TURRET / 局部变量 e1Axis→turretAxis。**保留**硬件槽位名 EXPAND1_AXIS/EXPAND1_AXIS_CS/PIN_CS_E1/R_AXIS_CS/IC_E1，**不动 E3/E4**。覆盖 20 文件（两固件 + 共享 software）。
+
+### 验证状态
+
+- 两固件编译 SUCCESS（octoaxesplus FLASH ~85K，octoaxes 无回归）
+- 两 profile 加载：octoaxes `['E3','E4','Turret','W','X','Y','Z']` / octoaxesplus `['Turret','W1','W2','X','Y','Z']`
+- py_compile 通过；协议 AXIS.TURRET=7 / MOVE_TURRET=44 / MOVETO_TURRET=45
+- 用户已自行烧录 + software 测试（测试结果待用户反馈，未回报具体现象）
+
+### ⚠️ 待用户实测验证（未回报）
+
+1. Turret 物镜：homing（home sensor 接 TMC4361A RIGHT 引脚→RGHT_SW）、previous/next 切 4 物镜方向与位置显示、1800mA + 柔和参数下不丢步
+2. 其他轴（X/Y/Z/W1/W2）不受 Turret 影响
+3. 缺板容错：对缺板轴发命令整机仍流畅、不卡 5s
+4. **注意**：GUI 配置 key 从 "E1" 变 "Turret"，需重烧固件 + 重启 software 后物镜页才以 "Turret" 出现
+
+### ⚠️ 固件/GUI 两层参数关系（Turret）
+
+固件 EXPAND1_AXIS = 1800mA 峰值/accel80（begin 默认 + homing 用）；GUI 首次换位下发"柔和运行参数" 1000mA(RMS≈1414峰值)/accel10/vel0.5 覆盖之 —— objectives 分支设计的两层意图（homing 高扭矩，正常换位柔和）。烧录后需观察是否丢步。
+
+### 下次
+
+1. 收用户 Turret 实测反馈（上述 4 项），按现象调参或修复
+2. 回主线：硬件紧固 W motor↔wheel + 采集 8s 打点
+
+---
+
+## 上次会话
+
 **日期**: 2026-05-29
 **分支**: develop
 **位置**: 把 objectives 分支的物镜转换器代码适配到 develop 的 E1 轴（W 滤光轮完全不动）
