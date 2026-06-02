@@ -42,6 +42,23 @@
 
 ## 待办
 
+### 2026-06-02 记录（暂不修）：octoaxes constants.py X/Y `index` 与固件 icID 不符
+
+- [ ] **（潜在坑，暂不修）octoaxes `software/octoaxes/constants.py` 的 X/Y `index` 反了** —
+  现状 X `index=1` / Y `index=0`，但 octoaxes 固件实际 icID 是 **X=icID0 / Y=icID1**
+  （`octoaxes.ino`：`new StepAxis(Y_AXIS_CS, 0, "X")` + `new StepAxis(X_AXIS_CS, 1, "Y")`，
+  轴名与 CS 引脚名交叉是 2026-05-08 修过的 PCB 接线补偿）。
+  **当前无害**：octoaxes 只走 24 字节位置包（X/Y/Z/W 按硬编码 slot 解析，不查 `index`），
+  `index` 字段在 octoaxes 上是死配置。**移动命令也不受影响**：MOVE_X/MOVE_Y 按轴名
+  `findAxisByName("X")` 路由，与 icID 无关，GUI "X" 永远驱动物理 X 电机。
+  **何时会爆**：若 octoaxes 将来启用 40 字节扩展位置包（`main_window.py:872` 用
+  `AXIS_CONFIG["index"]` 反查 icID→轴名），X/Y 位置会读反。
+  **对照**：octoaxesplus 没这个问题 —— 它 software index(X=1/Y=0) 与固件 icID(X=1/Y=0)
+  一致（`octoaxesplus.ino`：`new StepAxis(Y_AXIS_CS,0,"Y")` + `new StepAxis(X_AXIS_CS,1,"X")`）。
+  即 **X/Y 的 icID 序号在 octoaxes 与 octoaxesplus 之间是反的**，是两套硬件接线不同的
+  各自补偿，运动正确，仅 octoaxes 的 software index 这一处遗留不一致。
+  **修法（启用 40 字节包前必须做）**：octoaxes constants.py X `index` 1→0、Y `index` 0→1。
+
 ### 2026-05-18 joystick ↔ firmware 10 字节协议加 CRC-8-CCITT 校验
 
 - [x] **joystick 固件目录分离**：`firmware/joystick/{octoaxes,octoaxesplus}/`
