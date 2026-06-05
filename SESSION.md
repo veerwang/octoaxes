@@ -6,6 +6,107 @@
 
 ## 最新会话
 
+**日期**: 2026-06-05
+**分支**: develop（本次提交了 config.h LEFT_SW + 双限位禁用 + objectives.cpp homing_direct 重构；**Turret homing 仍故障，根因已定位，修复待下次**）
+**位置**: octoaxesplus Turret 现状 —— Previous/Next 正常，**homing 到零点后来回震荡、停不下来、读数持续往负方向涨**；根因定位 + objectives.cpp 精简
+
+### 用户实测现象（当前代码）
+
+- ✅ **Previous Position / Next Position 正常**：能正反转，符合预期（位置模式，有斜坡 + target，正常停）
+- ❌ **homing 故障**：点 homing 后 Turret 能转回零点，但电机在零点**来回震荡无法停下**，software 读数**持续往负方向变大**（-123, -234, ...）
+
+### 本次代码改动（已提交）
+
+1. **config.h EXPAND1_AXIS（承接 06-04 + 本次演进）**：
+   - `homingSwitch` RGHT_SW → **LEFT_SW**（06-04 实测：本板 home 传感器接 TMC4361A LEFT 输入）
+   - `enableLeftLimitSwitch=false` + `enableRightLimitSwitch=false` —— **两个 chip 限位硬停都禁用**，改用「readLimitSwitches 读原始引脚电平 + objectives.cpp 软件 poll + 软件停车」架构（注释已写明：使能后该位被芯片压住、运动中读不到）
+2. **objectives.cpp 精简（按用户要求）**：
+   - 保留：`performHomingSequence` / `performLeavingHome` 搜索 & 离开方向跟随 `_config.homing_direct`（与 stepaxis 一致；else 分支由「按 RGHT_SW 二选一」改为统一 `-1 * homing_direct`）
+   - **回退**：位与容错（`limit_state & homingSwitch` 退回精确 `==`）+ 软件主动停车（删 `motor_setVelocityInternal(0); delay(100)`）
+
+### ⚠️ homing 故障根因（已定位，修复待下次）
+
+**矛盾配置**：config.h 把 chip 两个限位硬停**都禁用了**（软件 poll 架构），但 objectives.cpp 的**软件停车又被回退了** → 速度模式 homing 撞到限位后**没有任何东西让它停**。
+
+三个同类轴 STATE_HOMING_SEARCH 命中限位后的对比：
+
+| 轴 | 命中限位后处理 | 状态 |
+|---|---|---|
+| StepAxis (X/Y/Z) | `motor_setVelocityInternal(0); delay(100)` → moveTo 安全位 → 设零 | 正常 |
+| FilterWheel (W) | `motor_setVelocityInternal(0); delay(100)` → 设零 → `motor_moveToMicrosteps(0)` 切回位置模式 | 正常 |
+| **Objectives (Turret)** | ❌ 直接 `motor_setCurrentPositionMicrosteps(0)`，**从不停速度、从不切回位置模式** | **故障** |
+
+机理：到限位时速度指令一直挂着 + chip 硬停已禁用 → 电机越过限位继续跑（读数往负涨）→ 限位开关压上/弹开反复触发 + 残留速度指令重驱 → 来回震荡。
+
+**推荐修复（对齐 FilterWheel 已验证范式，下次实施）**：STATE_HOMING_SEARCH 命中限位时补
+```cpp
+motor_setVelocityInternal(_icID, 0);  // 停车
+delay(100);                            // 等待完全停止
+motor_setCurrentPositionMicrosteps(_icID, 0);  // 设零
+motor_moveToMicrosteps(_icID, 0);              // 切回位置模式，保持当前位置
+```
+（== 判定保留，不必加位与 &）。
+
+### 反面教材
+
+「软件 poll + 软件停车」是一套**配套架构**：禁用 chip 硬停（config.h）必须同时保留软件停车（objectives.cpp），缺一不可。本次单独回退软件停车、却留着 chip 硬停禁用，等于两头落空。教训：改 homing 的限位策略要**把 config 与状态机当一个整体**看，不能只动一侧。
+
+### 下次
+
+1. 实施上述 FilterWheel 范式修复，编译 + 用户实测 homing 在零点正确停车
+2. （待定）若改回「chip 硬停」路线则需重新使能 enableLimitSwitch + 验证本通道硬停是否真的不工作
+
+---
+
+## 上次会话
+
+**日期**: 2026-06-04
+**分支**: develop（未提交，工作树有 1 处固件改动 + 文档）
+**位置**: octoaxesplus Turret homing 限位开关方向修复（实测定位 LEFT vs RIGHT）
+
+### 问题报告
+
+用户烧录 2026-06-02 的 octoaxesplus 固件后测 Turret 物镜，homing 到限位点**不停车、冲过去**。
+
+### 诊断（硬件实测 A/B）
+
+用现成脚本 `software/common/tests/dump_axis_state.py Turret --port /dev/ttyACM0` 读 TMC4361A STATUS 寄存器：
+
+| 状态 | STATUS | STOPL_ACTIVE_F (bit7, LEFT) | STOPR_ACTIVE_F (bit8, RIGHT) | readLimitSwitches() |
+|---|---|---|---|---|
+| 用户手工压到限位 | 0x80000083 | **1** | 0 | `0b01 = LEFT_SW` |
+| 用户手工离开限位 | 0x80000003 | **0** | 0 | `0b00 = 无` |
+
+两次读数各自稳定（STOPL 跟随传感器实时电平，非 sticky latch）→ **home 传感器物理接在 TMC4361A LEFT 输入**。
+
+但 `firmware/octoaxesplus/config.h` EXPAND1_AXIS 是 2026-06-02 照搬 octoaxes E1 的"home 接 RIGHT"假设写的 `homingSwitch = RGHT_SW`，导致 `objectives.cpp:85 if(limit_state == _config.homingSwitch)` 比较 `0b01 == 0b10` 永远 false → 到限位不认 → homing 不停。
+
+### 交叉验证（objectives 分支）
+
+用户提示对照 objectives 分支。`git show objectives:firmware/octoaxes/config.h` 的 **W_AXIS**（当年把物镜放 W 轴实测可用的配置）= `homingSwitch=LEFT_SW / enableLeftLimitSwitch=true / enableRightLimitSwitch=false`，与本次硬件实测**完全一致** → 反证 2026-06-02 的 RGHT_SW 是未验证假设。
+
+### 本次完成
+
+**修复（仅 octoaxesplus，按用户要求 octoaxes 暂不动）**：`firmware/octoaxesplus/config.h` EXPAND1_AXIS 三行：
+- `.homingSwitch` RGHT_SW → **LEFT_SW**
+- `.enableLeftLimitSwitch` false → **true**
+- `.enableRightLimitSwitch` true → **false**
+
+objectives.cpp leaving-home 离开方向自动走 else 分支（负速度离左限位），无需另改。编译 **SUCCESS**（FLASH 85212，纯常量无增量）。**未烧录**。
+
+### ⚠️ 待用户实测 + 待办
+
+1. 用户重烧 octoaxesplus 固件，测 Turret homing 是否在限位点正确停车 + 切 4 物镜方向/位置
+2. **octoaxes EXPAND1_AXIS 同款 RGHT_SW 假设暂未改**（用户要求只改 octoaxesplus）——octoaxes 板 Turret 一直未实测；很可能也需 LEFT_SW，但缺该板实测证据（另一连接器 icID=5/pin19）。详见 TODO.md 顶部子项
+
+### 反面教材
+
+2026-06-02 给 Turret 写限位配置时凭"对齐 octoaxes E1：home 接 RIGHT"的注释假设直接写 RGHT_SW，**既没在 octoaxesplus 板实测、也没对照 objectives 分支已验证的 LEFT_SW**。教训：限位开关方向（LEFT/RIGHT）是硬件接线决定的，必须以"该板 dump STATUS 实测"或"已验证分支配置"为准，不能跨板/跨连接器套用假设。
+
+---
+
+## 上次会话
+
 **日期**: 2026-06-02
 **分支**: develop（已 push 到 origin/develop = 2607902）
 **位置**: octoaxesplus 物镜转换器端到端打通（AXIS_R 启用 + 增强换位 + 容错）+ 物镜轴 E1→Turret 全局重命名

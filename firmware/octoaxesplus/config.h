@@ -507,15 +507,15 @@ namespace AxisConfigs {
     // 扩展轴1配置 (objectives)
     const Axis::AxisConfig EXPAND1_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
-        .homingSwitch = RGHT_SW,           // 2026-06-02 对齐 octoaxes E1：home sensor 接 TMC4361A RIGHT 引脚
-        .leftSwitchPolarity = 0,
-        .rightSwitchPolarity = 0,
-        .leftIsInactive = 1,
-        .rightIsInactive = 1,
+        .homingSwitch = LEFT_SW,           // 2026-06-04 照搬本板 X/Y 限位方案：传感器在 TMC4361A LEFT 输入
+        .leftSwitchPolarity = 0,           // 同 X/Y
+        .rightSwitchPolarity = 0,          // 同 X/Y
+        .leftIsInactive = 0,               // 死字段，不影响 chip
+        .rightIsInactive = 0,
         .leftFlipped = false,
         .rightFlipped = false,
-        .enableLeftLimitSwitch = false,    // 2026-06-02 对调：物镜用 RIGHT 作 home
-        .enableRightLimitSwitch = true,
+        .enableLeftLimitSwitch = false,    // 2026-06-04 参考固件方式：禁用 chip 限位硬停，让 readLimitSwitches 读原始引脚电平（使能后这一位被芯片压住、运动中也读不到）。配合 objectives.cpp 软件 poll + 软件停车
+        .enableRightLimitSwitch = false,
         .r_sense = AxisConstDefinition::R_sense_objective,
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_OBJECTIVES_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_OBJECTIVES,

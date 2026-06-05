@@ -75,7 +75,8 @@ void Objectives::performHomingSequence() {
         DEBUG_PRINTLN(":Starting homing process...");
 
         DEBUG_PRINTLN(_config.homingVelocityMM);
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        // 搜索方向跟随 homing_direct（+1 正向 / -1 负向），与 stepaxis 一致
+        int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         motor_setVelocityInternal(_icID, speedInternal);
         setState(STATE_HOMING_SEARCH);
       }
@@ -152,19 +153,13 @@ void Objectives::performLeavingHome() {
       DEBUG_PRINT(_axisName);
       DEBUG_PRINTLN(":Left home position, starting homing...");
 
-      // 开始真正的归位搜索
-      int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+      // 开始真正的归位搜索（方向跟随 homing_direct）
+      int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
       motor_setVelocityInternal(_icID, speedInternal);
       setState(STATE_HOMING_SEARCH);
     } else {
-      // 继续移动离开home位置
-      // 根据限位开关类型设置正确的离开方向
-      int32_t speedInternal;
-      if (_config.homingSwitch == RGHT_SW) {
-        speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM); // 向左移动离开右限位
-      } else {
-        speedInternal = -1 * motor_velocityMMToInternal(_icID, _config.homingVelocityMM); // 向右移动离开左限位
-      }
+      // 继续移动离开 home 位置（与搜索相反方向）
+      int32_t speedInternal = -1 * _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
       motor_setVelocityInternal(_icID, speedInternal);
     }
   }
