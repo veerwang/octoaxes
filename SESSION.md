@@ -6,6 +6,67 @@
 
 ## 最新会话
 
+**日期**: 2026-06-06
+**分支**: develop（Turret homing 深挖，**找到 homing_direct 不生效的真根因**；本次 WIP 已提交以临时保存，**暂停 Turret 转去调新 Z 轴**）
+**位置**: octoaxesplus Turret homing —— 定位"改 config.h homing_direct 无效"的根因 = 上位机每次 HOME 都覆盖；建诊断脚本；现暂存，优先新 Z 轴
+
+### 🔑 决定性根因：homing_direct 被上位机每次 HOME 覆盖
+
+用户实验发现：改 config.h `homing_direct`（1↔-1）homing 方向**不变**，但在 objectives.cpp:80 手改 `-1 * speedInternal` 方向**就变了**（证明 chip 完全能反向）。顺线追出完整因果链：
+
+```
+constants.py: Turret movement_sign = -1
+   │
+   ▼  main_window.py send_homing(715): home_dir = 1 if sign==1 else 0  → sign=-1 → home_dir=0
+   │
+   ▼  发 HOME_OR_ZERO data[3]=0
+commandprocessor.cpp:151: new_direct = (data[3]==HOME_NEGATIVE)? -1 : +1  → data[3]=0 → +1
+   _config.homing_direct = +1     ← 【每次 HOME 都覆盖 config.h 的值!】
+   │
+   ▼  objectives.cpp:79: speedInternal = (+1) * vel  → 永远 +1 方向（逆时针），与 config.h 无关
+```
+
+**结论**：config.h 的 homing_direct 只是上电默认，GUI 一发 HOME 就用 data[3] 冲掉。Turret 实际 homing 方向由 **constants.py 的 movement_sign** 决定（sign=-1→dir=0→firmware homing_direct=+1）。
+- Previous/Next 不受影响：走 move_objective()，符号硬编码、不读 movement_sign（所以一直对）。
+- 这就是"改什么 config 都没反应"的真相。
+
+### 之前几轮（均被本轮根因推翻/解释）
+
+- chip 硬停路线（`enableLeftLimitSwitch=true`）：homing_direct=1/-1 **两个方向都不停、都逆时针**——因为 GUI 把方向锁死成 +1，根本没真正换过方向；不是 chip 不能停，是方向没变过。
+- 验证版 W（objectives 分支 octoaxes，物镜放 W 轴）能停的机理：objectives.cpp 命中限位调 `motor_setCurrentPositionMicrosteps(0)`（内部 VMAX=0）→ 靠**软件读到限位 + VMAX=0** 停，chip 硬停只是保险。
+
+### 硬件确认（看驱动板原理图 ~/TMC4361+TMC2240 SCH.pdf）
+
+- TMC4361A 三个独立开关输入：**pin12 STOPL / pin13 HOME_REF / pin14 STOPR**；STOPL 有 R3 10k 下拉（空闲 LOW、active HIGH）。
+- **J4/J5（本地 2-pin 开关座）未焊接** → home/限位信号经 **J1（10-pin 上主板）** 走：J1 pin1=STOPL、pin2=STOPR。HOME_REF(pin13) 只到 J4/J5 → **现在悬空**（固件 readLimitSwitches 也只读 STOPL/STOPR，不读 HOME_REF）。
+- 06-04 dump 实测 STOPL_ACTIVE_F 跟随 → home 传感器经主板→J1→STOPL→pin12，链路通、chip 静态看得到。
+
+### 电流对比（见记忆 cmd21-current-rms-peak-mismatch）
+
+- 当前 Turret：1800mA 峰值（TMC2240, R=0.22, currentRange=1）；GUI 换位时还会覆盖成 1000mA RMS。homing 时用 1800mA 峰值。
+- 已验证物镜（objectives 分支 W 轴）：3100mA（TMC2660, R=0.1, currentRange=2）。**驱动语义不同（2660=RMS/2240=峰值）不能直接比**，但已验证电流明显更高，Turret 1800mA 峰值可能偏低（独立的扭矩/丢步话题，与"不停"无关）。
+
+### 本次产出
+
+- **新诊断脚本** `software/common/tests/turret_homing_only.py`：纯 homing（只发 INITIALIZE 恢复 config.h 默认 + HOME，不发任何 GUI configure 覆盖），高频轮询 S:DUMPREGS 打 XACTUAL/VACTUAL/STATUS/限位 时间序列 + 自动判读"停没停 / 运动中 STOPL 是否 active"。`--dir 0/1` 控方向。
+- **WIP 暂存（本次提交）**：config.h `enableLeftLimitSwitch=true`、serial.cpp `VERSION=107`、constants.py Turret `movement_sign -1→1`（=用正规通道把 GUI homing 方向翻到 homing_direct=-1 测反向）。
+
+### ⚠️ Turret 未决问题（恢复时第一件事）
+
+**反方向到底停不停？** 还没答。用脚本各跑一次 `--dir 0` 和 `--dir 1`（或对应 movement_sign=−1/1），看：
+1. 哪个方向 VACTUAL 能归 0（停住）
+2. 运动中是否曾读到 STOPL active
+- 若某方向能停 → 根因纯是"方向被 movement_sign 锁错"，正解=**解耦 homing 方向与 movement_sign**（firmware 让 objective 轴 HOME 忽略 data[3] 用 config.h；或 GUI 给 objective 单独 homing 方向配置），不要靠改 movement_sign（会连带翻显示）。
+- 若两方向都不停 → 回软件停车方案（enableLeftLimitSwitch=false + objectives.cpp 命中限位补 setVelocityInternal(0)+delay+setCurrentPos(0)+moveTo(0)）。
+
+### 下一步（本次切换）
+
+**暂停 Turret，优先调新 Z 轴**（newz 分支，MOONS' LE143S-W0601，见记忆 newz-axis-le143s-spec）。Turret WIP 已提交保存，随时可回。
+
+---
+
+## 上次会话
+
 **日期**: 2026-06-05
 **分支**: develop（本次提交了 config.h LEFT_SW + 双限位禁用 + objectives.cpp homing_direct 重构；**Turret homing 仍故障，根因已定位，修复待下次**）
 **位置**: octoaxesplus Turret 现状 —— Previous/Next 正常，**homing 到零点后来回震荡、停不下来、读数持续往负方向涨**；根因定位 + objectives.cpp 精简

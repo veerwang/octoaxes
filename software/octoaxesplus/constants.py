@@ -98,7 +98,7 @@ AXIS_CONFIG = {
         "limits": (0, 3),       # 4 物镜 slot 0..3，与 define.py OBJECTIVE_SWITCH_MAX_INDEX=3 一致
         # movement_sign=-1：翻转显示（pos/steps/状态表乘 sign），让 Next 显正值；
         # 不影响 move_objective 物理方向（它硬编码符号，不用 sign）。
-        "movement_sign": -1,
+        "movement_sign": 1,
         "index": 5,             # firmware icID（octoaxesplus.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # 对齐 config.h SCREW_PITCH_OBJECTIVES_MM=1
         "actuator_microstepping": 64,      # 对齐 config.h MICROSTEPPING_OBJECTIVES=64

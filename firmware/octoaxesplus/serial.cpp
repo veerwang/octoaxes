@@ -48,7 +48,7 @@ static const uint8_t CRC_TABLE[256] = {
 
 SerialProtocolHandler serialProtocol;
 
-static const uint32_t VERSION = 106;
+static const uint32_t VERSION = 107;
 
 SerialProtocolHandler::SerialProtocolHandler()
     : buffer_rx_ptr(0), cmd_id(0), mcu_cmd_execution_in_progress(false),

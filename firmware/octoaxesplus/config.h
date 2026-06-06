@@ -514,7 +514,7 @@ namespace AxisConfigs {
         .rightIsInactive = 0,
         .leftFlipped = false,
         .rightFlipped = false,
-        .enableLeftLimitSwitch = false,    // 2026-06-04 参考固件方式：禁用 chip 限位硬停，让 readLimitSwitches 读原始引脚电平（使能后这一位被芯片压住、运动中也读不到）。配合 objectives.cpp 软件 poll + 软件停车
+        .enableLeftLimitSwitch = true,     // 2026-06-05 对齐 objectives 分支已验证 W_AXIS：启用 chip LEFT 限位硬停，homing 速度模式撞限位时由 TMC4361A 硬件停车（objectives.cpp 只设零、不软件停）。前提：Turret 通道 home 传感器须实际接到该片 REF_L 引脚
         .enableRightLimitSwitch = false,
         .r_sense = AxisConstDefinition::R_sense_objective,
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_OBJECTIVES_MM,
