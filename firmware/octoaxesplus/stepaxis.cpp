@@ -168,11 +168,11 @@ void StepAxis::performHomingSequence() {
         // 计算安全位置（离开限位开关）
         int32_t safePosition = latchedPosition;
         int32_t margin = motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
-        if (_config.homingSwitch == RGHT_SW) {
-          safePosition -= margin;
-        } else {
-          safePosition += margin;
-        }
+        // 退回方向 = 搜索方向(homing_direct)的反方向，永远离开刚撞到的限位。
+        // 比"按 homingSwitch ±margin"鲁棒：当 homingSwitch 与搜索方向不符合常规约定
+        // （如新 Z：LEFT_SW 但 homing_direct=+1 朝物理左，左限位在 firmware 正方向端）
+        // 时，旧逻辑会朝限位更深处退 → 离不开感应区。对常规 X/Y/Z 等价（无回归）。
+        safePosition -= _config.homing_direct * margin;
 
         DEBUG_PRINT(_axisName);
         DEBUG_PRINT(":Moving to safe position: ");

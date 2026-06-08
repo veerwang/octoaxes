@@ -2,6 +2,38 @@
 常量定义
 """
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Z 轴硬件变体开关（2026-06-03 newz 分支）
+# ─────────────────────────────────────────────────────────────────────────────
+# 改这一行即可在新旧 Z 电机间切换，重启 GUI 生效，无需重烧固件：
+#   GUI 启动 _configure_actuators() 把所选变体的 pitch/电流/hold 下发给固件覆盖默认。
+# 固件侧 currentRange=1 对新旧 Z 驱动板都安全（旧 Z=TMC2660 忽略，新 Z=TMC2240 用它），
+# 一个固件通吃；DRIVER_AUTO 上电自动识别在位的驱动板。
+#   "old" = 旧 Z（丝杠导程 0.3mm / TMC2660 板 / 0.47A）
+#   "new" = MOONS' LE143S-W0601-100-AR1-S-150（导程 1mm / TMC2240 ICS 板 / 1.5A 峰值）
+# 注意：此开关仅 octoaxes GUI 有效。旧 Squid software 会下发它自己写死的旧 Z 参数，
+#       配新 Z 硬件会有 3.33× 位置错位（旧 Squid 不可改）。
+Z_AXIS_VARIANT = "new"
+
+_Z_VARIANTS = {
+    "old": {
+        "actuator_screw_pitch_mm": 0.3,
+        "actuator_motor_current_ma": 500,    # 峰值电流
+        "actuator_motor_hold_ratio": 0.5,
+        "encoder_transitions_per_rev": 3000,  # 0.3mm pitch / 0.1μm resolution
+        "has_encoder": False,                  # 旧 Z 编码器禁用（与旧 Squid USE_ENCODER_Z=False 一致）
+        "encoder_flip_direction": True,
+    },
+    "new": {
+        "actuator_screw_pitch_mm": 1.0,       # W0601 导程 1mm
+        "actuator_motor_current_ma": 1500,    # LE143S 额定 1.5A（TMC2240 路径=峰值，IRUN=23）
+        "actuator_motor_hold_ratio": 0.75,    # 竖直 Z 防重力下坠
+        "encoder_transitions_per_rev": 10000,  # 1.0mm pitch / 0.1μm resolution
+        "has_encoder": True,                   # 2026-06-08 新 Z 编码器实测验证通过(ratio≈1/dev有界)，默认启用
+        "encoder_flip_direction": True,        # flip=1：实测 enc 与 xactual 同向需翻转
+    },
+}
+
 # 轴配置
 # 轴索引与固件对应: Y(0), X(1), Z(2), W(3)
 # actuator_* 字段对应 firmware/config.h AxisConstDefinition 默认值，
@@ -51,13 +83,9 @@ AXIS_CONFIG = {
         "index": 2,
         "default_velocity": 3.0,
         "default_acceleration": 20.0,
-        "has_encoder": False,
-        "encoder_transitions_per_rev": 3000,  # 0.3mm pitch / 0.1μm resolution
-        "encoder_flip_direction": True,
-        "actuator_screw_pitch_mm": 0.3,
-        "actuator_microstepping": 256,
-        "actuator_motor_current_ma": 500,
-        "actuator_motor_hold_ratio": 0.5,
+        "actuator_microstepping": 256,  # 新旧 Z 共用
+        # has_encoder / flip / pitch / 电流 / hold / encoder_transitions 由 Z_AXIS_VARIANT 决定（见文件顶部开关）
+        **_Z_VARIANTS[Z_AXIS_VARIANT],
     },
     "W": {
         "display_name": "Filter Wheel 1 - w_axis",

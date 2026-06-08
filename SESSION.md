@@ -6,6 +6,264 @@
 
 ## 最新会话
 
+**日期**: 2026-06-08
+**分支**: newz
+**位置**: 新 Z homing 终极方案 **INVERT_STOP_DIRECTION**（取代 06-06 的 LEFT_SW+软件停车）+ 编码器验证 + 上限位实测 + **新旧 Z 双变体通吃 + 一致性 tripwire** ✅
+
+### 一句话
+
+06-06 用「LEFT_SW + enableLimit=false + 软件停车」勉强让新 Z homing 通过，但根因（坐标翻转）没解决、限位被关、易回归。本次找到**纯固件零改线**根因解法 `INVERT_STOP_DIRECTION`，恢复硬限位，并把 octoaxesplus 做成新旧 Z **一个板通吃**（软件运行时开关 + 固件编译开关 + 启动一致性自检）。
+
+### 根因：坐标翻转（最终定论）
+
+- 本台 **firmware 正方向 = 物理左 = 朝 home**。来源：**丝杠旋向 / 电机安装**，**不是线圈接线**（用户实测 A/B 两相、相内两接头均未调换）。
+- TMC4361A 限位方向是**固定约定**：`STOP_LEFT` 拦 firmware 负方向、`STOP_RIGHT` 拦 firmware 正方向。坐标翻转的轴上，正方向撞 home 开关 → 落到 STOP_RIGHT 域，且退回(负)会被另一侧 chip 锁死 → 06-06 才被迫关硬限位走软件停车。
+
+### 终极解法：INVERT_STOP_DIRECTION（REFCONF bit4）
+
+- `leftFlipped || rightFlipped` → 置 REFERENCE_CONF bit4，**同时**反转「哪个方向被哪个 stop 拦」**和**「哪个开关输入映射到哪个 STATUS 位」。一举把翻转轴的限位语义掰正。
+- 配套：`homingSwitch` 必须用 **RGHT_SW**（INVERT 后 home 开关电平反映在 STOPR 位，软件查 STOPR 才检测得到命中），`Z_SW_POLARITY=1`，`Z_ENABLE_LIMITS=true`（**硬限位恢复开启**）。
+- 实测全链路：撞 home 硬停 → 软件检测到 → 退回 → 离开感应区 → 置零；上限位硬停 → 退回。**上下电子限位都真生效**，且**不用动电机线**。
+
+### 新旧 Z 双变体通吃（octoaxesplus 一个板）
+
+octoaxesplus 这块借调板既可能装新 Z 也可能装旧 Z，做成双开关：
+
+| 层 | 开关 | 作用 |
+|---|---|---|
+| 软件 | `software/octoaxesplus/constants.py` `Z_AXIS_VARIANT="old"/"new"`（运行时，GUI 启动下发 pitch/电流/微步/编码器） | limits/导程/电流/hold/编码器/tpr 整组切换 |
+| 固件 | `firmware/octoaxesplus/config.h` `#define Z_VARIANT_NEW`（编译期，控 homingSwitch/极性/INVERT/enableLimit，**需重烧**） | 限位语义随变体切换 |
+
+两处必须一致；漏改任一处 → 错电流/错限位方向。
+
+### 一致性 tripwire（commit `3ba8938`，方案 1）
+
+- 固件 `serial.cpp` 加 `S:ZVARIANT` → 按 `#ifdef Z_VARIANT_NEW` 回 `new`/`old`（实测回 old ✓，VERSION=119）。
+- GUI `main_window.py` 启动查 `S:ZVARIANT` ↔ 软件 `Z_AXIS_VARIANT` 比对：不一致 → 红字告警 + **拦死 Z 的 home/move/moveto**（`_z_op_blocked`）；一致 → 记「一致性 OK」。
+- 安全降级：profile 无 `Z_AXIS_VARIANT`（→None）或旧固件无响应 → 不误拦。
+- 限制：仅**启动时**比对一次（换硬件须重启 GUI，符合「换变体→重烧→重启」流程）。错配拦截路径为代码逻辑验证（未在 PyQt 跑真错配）。
+
+### 编码器验证（commit 已含）
+
+- 新 Z 编码器 `flip=1` / `tpr=10000`（1.0mm 导程 / 0.1μm 分辨率），ENC_POS↔XACTUAL **ratio≈1.0、偏差有界** → 实测通过，`has_encoder` 默认 True。
+- 编码器方向唯一权威源 = constants.py `encoder_flip_direction`（运行时 CONFIGURE_STAGE_PID 下发覆盖 config.h boot 默认）；config.h boot 默认当前被 `enableEncoder=false` gate 掉。详见 `documents/audit_octoaxesplus_20260608.md`（ENC-2）。
+
+### 上限位实测 + limits
+
+- 实测新 Z 行程上限 ≈ **34.5mm**（STOPR 开关），留 0.5mm 余量 → limits **(-100, 34000)** μm。
+
+### 本次提交链
+
+| commit | 内容 |
+|---|---|
+| `80f4577` | 限位极性/锁存独立于 enable 写入（修软件停车 homing，共享 MotorControl.cpp） |
+| `a60c8a8` | docs: 新 Z homing 全链路通过记录 |
+| `674499c` | 新 Z 编码器默认启用（has_encoder 入变体，flip=1） |
+| `d81b6b9` | 测定新 Z 上限位 34.5mm + limits(-10,34000) + 右限位同左关 chip 硬停 |
+| `a28574b` | **新旧 Z 通吃：软件 + 固件双变体开关** |
+| `45fc96f` | 编码器方向单一权威源 + 脱钩 tripwire（审计 ENC-2） |
+| `e096adb` | docs: audit_octoaxesplus_20260608.md |
+| `3ba8938` | **Z 变体一致性 tripwire（固件上报 + GUI 启动比对拦截）** |
+| `7cc00c9` | **仓库默认变体切回旧 Z**（贴合当前在装硬件） |
+
+### 仓库默认 = 旧 Z（收尾）
+
+当前 octoaxesplus 板实装旧 Z，仓库默认 `config.h` 注释 `Z_VARIANT_NEW` + `constants.py "old"`，两处一致、开箱即用。换新 Z：取消注释 + 改 `"new"` + 重烧，tripwire 兜底漏改。
+
+### 调试工具（AI 直连 /dev/ttyACM0 实测，用户授权）
+
+- `z_limit_monitor.py` 限位实时监视 / `z_homing_safedist.py` 测退回安全距离 / `z_find_upper_limit.py` 找上限位行程 / `turret_homing_only.py` 纯 Turret homing。
+
+### 反面教材
+
+- 06-06 的「关硬限位走软件停车」是**症状级绕过**：根因是坐标翻转下 TMC4361A 固定限位约定与轴方向冲突。先怀疑接线（用户实测排除），再回到 REFCONF 才找到 `INVERT_STOP_DIRECTION` 这个寄存器级正解。教训：限位「方向不对/退不动」先查 REFERENCE_CONF 的方向位，别急着关限位。
+- INVERT 会**同时**换 STATUS 位映射 → 软件检测开关必须跟着从 STOPL 改查 STOPR，否则「硬停了但软件没察觉」怼穿（本次踩过一次）。
+
+### 待办 / 下次
+
+- （可选）方案 2 根治：把 Z 限位配置（homingSwitch/INVERT/enable）做成**可下发**，消除「重烧 + 两处同步」。
+- （可选）`switch_z_variant.py` 一键切两处。
+- 新 Z 闭环 PID 验证（可选）/ 导程 1mm 实测位移核对。
+- claude-code CLI 升级残目录清理后重试（ENOTEMPTY，被打断未完成）。
+- 回主线待办：W motor↔wheel 硬件紧固、采集 8s 打点。
+
+---
+
+## 上次会话
+
+**日期**: 2026-06-06
+**分支**: newz
+**位置**: 新 Z 借 squid++（octoaxesplus）板 bring-up —— **正反转 + 限位 + homing 全链路通过** ✅
+**⚠️ 注**: 本次的 homing 方案（LEFT_SW + enableLimit=false + 软件停车）已被 06-08 的 **INVERT_STOP_DIRECTION** 方案取代，下文保留作攻坚过程记录。
+
+### 背景
+
+手上无 octoaxes 主线板，**借 octoaxesplus（squid++ 双相机）板调试新 Z 电机**（MOONS' LE143S-W0601）。
+把 newz 的新 Z 变体适配从 octoaxes profile 移植到 octoaxesplus profile。
+
+### 本次完成（octoaxesplus profile，多 commit，全部已提交）
+
+| commit | 内容 |
+|---|---|
+| `7ad6b7b` | 新 Z 适配移植到 octoaxesplus：config.h Z_AXIS `currentRange 0→1`（TMC2240 I_FS=2A 撑 1.5A）+ 限位极性 `0→1`；constants.py 加 `Z_AXIS_VARIANT="new"` + `_Z_VARIANTS`（导程1.0/1500mA/hold0.75）；VERSION 110 |
+| `4b0b412` | `z_limit_monitor.py` 限位实时监视脚本 |
+| `15894c0` | Z `homingSwitch RGHT_SW→LEFT_SW`（home 在左限位）+ 新-Z-专用块注释；VERSION 111 |
+| `e23e949` | homing 速度 1→2mm/s（×2）+ 超时 20000→40000（×2）；VERSION 112 |
+| `3cfcf16` | StepAxis 退回方向改 `-homing_direct*margin`；VERSION 113 |
+| `346fe50` | Z `enableLeftLimitSwitch false`（关 chip 硬停改软件停车）+ `z_homing_safedist.py`；VERSION 114 |
+| `80f4577` | **限位极性/锁存独立于 enable 写入**（共享 MotorControl.cpp）；VERSION 115 ← homing 通过 |
+
+### 实测进展
+
+1. ✅ **正反转点动**通过
+2. ✅ **限位极性**：翻转后手动触发左/右限位显示符合预期
+3. ✅ **homing 全链路通过**（VERSION=115，AI 直连串口实测）：撞左限位→软件停→退回 0.7mm→离开感应区(STOPL off)→置零(XACTUAL=0)
+
+### homing 攻坚（关键，多轮定位）
+
+现象：homing 撞左限位后"离不开回零感应区"。逐层定位（commit 顺序）：
+- `3cfcf16` StepAxis 退回方向改 `-homing_direct*margin`（旧逻辑按 homingSwitch ±margin，本台坐标翻转时朝限位更深处退）
+- `346fe50` **真根因①**：enable=true 时 TMC4361A STOP_LEFT 固定拦 firmware 负方向；本台坐标翻转(firmware 正=物理左)、正方向撞左开关 → 退回(负)被 chip **锁死**(XACTUAL 冻结、连 MOVETO 带恢复都退不动)。→ 改 `enableLeftLimitSwitch=false` 走软件停车
+- `80f4577` **真根因②**：enable=false 后又发现 `motor_configLimitSwitches` 把极性/锁存关在 `if(enable)` 里 → 关硬停时极性丢失，STOPL_ACTIVE_F 读未取反原始电平(新 Z active-low → 在限位读成 off)，软件检测不到 → homing 怼穿。→ **极性(POL)+锁存(LATCH)解耦，独立于 enable 写入**（共享文件，对 enable=true 轴无回归）
+- 实测迟滞仅 0.15mm，0.7mm 退回足够，**Z_SAFEPOSITION 不用改**
+
+最终结论链：`enable=true 锁死退回` → `enable=false 又因极性绑定 enable 读反` → `解耦极性/锁存` → 软件停车成立。
+
+### 调试工具（AI 直连 /dev/ttyACM0 实测，用户授权）
+
+- `z_limit_monitor.py`：限位实时监视
+- `z_homing_safedist.py`：自动测退回安全距离（逼近找触发点 A + 退离找释放点 B；read 用 reset+正则+重试免疫二进制帧）
+
+### 已知小问题（非阻塞）
+
+homing 2mm/s 逼近时减速过冲约 1.25mm 越过触发点（仍在感应区内、未撞机械端，退回正常）。若限位预行程紧可降 homing 速度。
+
+### ⚠️ 烧录小坑
+
+`pio run -t upload` **首发常失败**（"Unable to soft reboot"），**重试一次即成功**。Z 竖直，重烧瞬间断电会被重力带离限位（属正常）。
+
+### 关键技术点
+
+### 关键技术点
+
+- **符号链推导**（避免 homing 方向反）：GUI "Forward" 点动 = +dist × movement_sign(-1) = 负微步 → firmware 负 → 用户实测=物理右 ⇒ **firmware 正 = 物理左**。homing 搜索 = homing_direct(+1)×vel = firmware 正 = 物理左 = 朝左限位 ✓。故只需把 home 参考改 LEFT_SW，搜索方向不用动。
+- **homing_direct 实际值由 GUI 覆盖**：constants.py Z movement_sign=-1 → send_homing home_dir=0 → firmware homing_direct=+1（config.h 的 homing_direct 只是默认，会被覆盖；与 Turret 同一套机制）。
+- Z 是 StepAxis，homing 命中限位有**软件停车**（stepaxis.cpp setVelocityInternal(0)+delay），不依赖 chip 硬停方向。
+- z_limit_monitor.py 解析坑：固件持续推二进制位置帧会粘在 ASCII 行前 → 必须容错解码(latin1)+正则抠 STATUS，否则只能读第一帧。
+
+### ⚠️ 旧 Z 兼容性影响（用户确认接受 A 方案，后期再做兼容）
+
+本次改动**只在 octoaxesplus**（firmware/octoaxesplus + software/octoaxesplus），**octoaxes 主线旧 Z 机器完全不受影响**。但在 octoaxesplus 上：
+- `currentRange 0→1`：对旧 Z 安全（旧 Z 接此板也走 TMC2240，500mA 在 I_FS=2A 下 IRUN≈7 正确）
+- **`homingSwitch=LEFT_SW` + 极性翻转 1/1**：⚠️ 新 Z 专属、firmware 独有无下发协议、**不随 Z_AXIS_VARIANT 软件开关切换** → 软件切回 "old" 变体（接旧 Z）时这两项对旧 Z 错（旧 Z home 在右限位、极性 0/0）
+- **决策（用户）**：当前接受（本板借调新 Z），config.h 已加块注释标明"新 Z 专用"。**后期需通吃**（squid++ 板也可能接旧 Z）→ 见 TODO「Z firmware 变体开关」。
+
+### 下次
+
+1. 烧录 VERSION=111，安全测 homing（Z 置中 + 开 z_limit_monitor 盯 + 手放电源旁；预期朝物理左 → 左限位 STOPL 停住置零；若朝右立即断电反馈）
+2. 验证导程：命令 1mm 量实际位移 ≈1mm
+3. （后期）Z firmware 变体开关，让 octoaxesplus 通吃新旧 Z
+
+---
+
+## 上次会话
+
+**日期**: 2026-06-03
+**分支**: newz
+**位置**: 新 Z 轴适配 MOONS' LE143S-W0601 + 新旧 Z「变体开关」（一个固件通吃）
+
+### 背景
+
+`newz` 分支把 octoaxes 主线 Z 轴换成 **MOONS' LE143S-W0601-100-AR1-S-150** 外部驱动式直线步进电机
+（丝杠即电机轴），驱动板换 **TMC2240 ICS**（与物镜分支 EXPAND1 同板型）。
+资料在 `~/Documents/newz/`：型号图 `LE143S-W0601-100-AR1-S-150.png` + `鸣志直线产品综合选型手册.pdf`（LE14 在 p21-25）。
+
+### 型号解码（LE143S-W0601-100-AR1-S-150）
+
+| 段 | 代码 | 含义 |
+|---|---|---|
+| 结构 | LE | 外部驱动式直线步进（中空转子，丝杠贯穿即电机轴） |
+| 机座 | 14 | 35mm（≈NEMA14） |
+| 机身 | 3S | 35mm，**1.8°**（200 整步/转） |
+| 丝杠 | W0601 | 外径 6mm，**导程 1mm/转**，整步行程 5µm |
+| 丝杠长 | 100 | Lx=100mm |
+| 螺母 | AR1 | 圆形标准螺母，Ø25.4 法兰 |
+| 端部 | S | 标准端部加工 |
+| 电流 | 150 | **1.50A/相** |
+
+电气：2 相，1.8°±5%，24V，4 线（BLACK/GREEN/RED/BLUE，JST ZHR-11）。
+
+### 对旧 Z 的关键变化
+
+| 参数 | 旧 Z | 新 Z LE143S-W0601 |
+|---|---|---|
+| 丝杠导程 | 0.3mm | **1.0mm**（×3.33） |
+| 整步行程 | 1.5µm | **5µm** |
+| 256 微步分辨率 | 5.86nm/µstep | 19.5nm/µstep（对焦够用） |
+| 额定电流 | 500mA峰值(R=0.43,实际0.47A) | **1.5A**（TMC2240 ICS） |
+| 驱动板 | TMC2660 R=0.43Ω | TMC2240 ICS currentRange=1 |
+
+### 关键架构发现：Z 运行时参数由 software 下发
+
+GUI 启动 `main_window.py::_configure_actuators()` 给 X/Y/Z 下发 `SET_LEAD_SCREW_PITCH`(cmd23) +
+`CONFIGURE_STEPPER_DRIVER`(cmd21)，pitch/微步/电流/hold **取自 AXIS_CONFIG**，覆盖固件 config.h 默认。
+→ **切换 Z 只需改 software，不用重烧固件**。
+电流语义：固件 `calculateCurrentScale_TMC2240` 把下发的 currentMA 当**峰值**算
+（`commandprocessor.cpp:335` 注释写"RMS"是历史误标），1500mA → IRUN=round(1500/2000×32)-1=23 → 精确 1.5A 峰值。
+
+### 本次完成（变体开关方案，全部编译通过，未烧录/未硬件实测）
+
+**用户拍板「能否新旧 Z 都支持」→ 采用变体开关，一个固件通吃。**
+
+**① software/octoaxes/constants.py — Z_AXIS_VARIANT 开关**
+- 顶部加 `Z_AXIS_VARIANT = "old"/"new"`（默认 `"new"`）+ `_Z_VARIANTS` 两套参数集
+  （`old`: 0.3/500/0.5/3000；`new`: 1.0/1500/0.75/10000）
+- Z 条目改为 `**_Z_VARIANTS[Z_AXIS_VARIANT]` 合入；微步 256 / limits ±6mm / 类型为新旧共用
+- 切换电机：改这一行 + 重启 GUI 生效，无需重烧
+
+**② firmware/octoaxes/config.h — 保守默认 + currentRange=1 通吃**
+- Z 默认**回退保守旧值**：`SCREW_PITCH_Z_MM=0.3` / `Z_MOTOR_PEAK_CURRENT_mA=500` / `Z_MOTOR_I_HOLD=0.5`
+- **保留 `Z_AXIS.currentRange=1`**：无下发协议/固件独有，但对两板都安全
+  （旧 Z=TMC2660 忽略此字段走 R_sense；新 Z=TMC2240 用它 I_FS=2A）
+- `DRIVER_AUTO` 上电自动识别在位板 → 一个固件服务新旧 Z
+- 开机瞬间(GUI 配置前)新电机仅 500mA=弱但安全，避免旧电机被过流
+
+### 决策记录
+
+1. **只改 octoaxes**：octoaxesplus 是 squid++ 独立 Z 硬件，不动（已验证未受影响）
+2. **变体开关放 constants.py**（octoaxes 专属、profile-safe），不放 common/define.py（避免污染共享层）
+3. **firmware 默认取保守旧值**：欠流安全、过流伤电机，开机窗口取低值最安全
+4. **currentRange 烧死=1**：对两板安全，换取「一个固件通吃」
+5. 微步沿用 256 / 编码器保持关闭 / limits 暂不改 / hold ratio 0.75（竖直 Z 防下坠）
+
+### 编译 + 验证
+
+- firmware/octoaxes teensy41: **SUCCESS**
+- `"new"` 变体 → 1.0/1500/0.75/10000；`"old"` → 0.3/500/0.5/3000
+- octoaxes 默认加载 `new`，Z 全字段正确；octoaxesplus 未受影响（仍 5 轴，Z pitch 0.3）
+
+### ⚠️ 已知限制
+
+变体开关仅 **octoaxes GUI** 有效。**旧 Squid software** 会下发它写死的旧 Z 参数（0.3mm pitch），
+配新 Z 硬件会有 **3.33× 位置错位**（旧 Squid 不可改）。若新 Z 只配 octoaxes GUI 用则无影响。
+
+### 待验证（等硬件空闲）
+
+1. 烧 firmware/octoaxes 实测：homing 正常、1.5A 下不丢步平稳、hold 0.75 防 Z 下坠
+2. 导程 1mm 后命令 X µm = 实测 X µm，无比例失配
+3. 视实测决定是否调速度/加速度（导程变大电机转速降，有提速空间）
+4. 行程 limits 实测机械装配后确定（现 ±6mm，丝杠 100mm 可更大）
+
+### 下次
+
+1. 烧录 + 硬件实测上述 4 项
+2. 实测通过后提交（firmware config.h + constants.py + 文档）
+3. 回主线/物镜分支其他待办
+
+---
+
+## 上次会话
+
 **日期**: 2026-06-06
 **分支**: develop（Turret homing 深挖，**找到 homing_direct 不生效的真根因**；本次 WIP 已提交以临时保存，**暂停 Turret 转去调新 Z 轴**）
 **位置**: octoaxesplus Turret homing —— 定位"改 config.h homing_direct 无效"的根因 = 上位机每次 HOME 都覆盖；建诊断脚本；现暂存，优先新 Z 轴

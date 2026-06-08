@@ -137,7 +137,7 @@ namespace AxisConstDefinition {
 
 		const float SCREW_PITCH_X_MM = 2.54;
 		const float SCREW_PITCH_Y_MM = 2.54;
-		const float SCREW_PITCH_Z_MM = 0.3;
+		const float SCREW_PITCH_Z_MM = 0.3;   // 旧 Z 保守默认。新 Z (LE143S-W0601 导程 1mm) 由 GUI 启动 SET_LEAD_SCREW_PITCH 下发覆盖（见 software Z_AXIS_VARIANT）
 		const float SCREW_PITCH_FILTERWHEEL_MM = 1;   // 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1（chip 端微步语义与 GUI 算法一致）
 		const float SCREW_PITCH_OBJECTIVES_MM = 1;
 
@@ -190,7 +190,11 @@ namespace AxisConstDefinition {
 		// 芯片绝对上限: 4A 峰值 (2.8A RMS)
 		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
 		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
-		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // R=0.43Ω → CS=21, 实际 0.47A
+		// 2026-06-03 newz 分支：Z 默认取保守旧值（500mA），新 Z (LE143S-W0601 额定 1.5A) 的电流
+		// 由 GUI 启动 CONFIGURE_STEPPER_DRIVER 下发覆盖（见 software Z_AXIS_VARIANT="new" → 1500mA）。
+		// 这样一个固件同时支持新旧 Z 板：开机瞬间(GUI 配置前)新电机仅 500mA=弱但安全，避免旧电机被过流。
+		// 驱动板自动识别 (DRIVER_AUTO)：旧 Z=TMC2660 走 R_sense；新 Z=TMC2240 走 ICS+currentRange。
+		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // 保守默认 R=0.43Ω → CS=21, 实际 0.47A（新 Z 由 GUI 升到 1500mA）
 		const float FILTERWHEEL_MOTOR_PEAK_CURRENT_mA = 3100; // R=0.10Ω → CS=31(满), 实际 3.1A
 		// 2026-05-29 objectives 分支：1A 弱电流配齿轮减速物镜丢步。提到 1800mA。
 		// 物镜驱动板 R_sense=0.22Ω（仅 TMC2660 路径生效；TMC2240 用集成电流传感 ICS 忽略此电阻）。
@@ -202,7 +206,7 @@ namespace AxisConstDefinition {
 
 		const float X_MOTOR_I_HOLD = 0.25;
 		const float Y_MOTOR_I_HOLD = 0.25;
-		const float Z_MOTOR_I_HOLD = 0.5;
+		const float Z_MOTOR_I_HOLD = 0.5;    // 保守默认（新 Z 由 GUI 升到 0.75，竖直防下坠）
 		const float FILTERWHEEL_MOTOR_I_HOLD = 0.5;
 		const float OBJECTIVES_MOTOR_I_HOLD = 0.5;
 
@@ -379,7 +383,7 @@ namespace AxisConfigs {
         .homing_timeout_ms = 20000,
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
-        .currentRange = 0,
+        .currentRange = 1,         // 2026-06-03 newz：TMC2240 ICS I_FS=2A（新 Z 1.5A 需要）。对新旧 Z 板都安全：旧 Z=TMC2660 忽略此字段（走 R_sense），新 Z=TMC2240 用它 → 一个固件通吃
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Z_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Z),
         .invertEncoderDir = true,

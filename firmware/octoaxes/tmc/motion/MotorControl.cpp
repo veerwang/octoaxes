@@ -585,26 +585,32 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
     uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
     // Left switch configuration
-    if (config->enableLeft) {
+    // 2026-06-06：硬停使能(STOP_LEFT_EN)与"极性/位置锁存"解耦。
+    // 极性(POL_STOP_LEFT)与锁存(LATCH_X_ON_ACTIVE_L)始终按配置写入，与 enable 无关 ——
+    // 这样关掉 chip 硬停(enableLeft=false, 走软件停车)后，STATUS STOPL_ACTIVE_F 仍按极性
+    // 正确反映开关电平(软件 poll 需要它)，且 homing 退回安全位用的 X_LATCH 仍工作。
+    // 旧实现把这两项关在 if(enableLeft) 里 → enable=false 时极性丢失(读反)、锁存失效。
+    // 对 enable=true 的轴行为完全不变(无回归)。
+    if (config->enableLeft)
         refConf |= TMC4361A_STOP_LEFT_EN_MASK;   // bit 0
-        if (config->leftPolarity)
-            refConf |= TMC4361A_POL_STOP_LEFT_MASK;  // bit 2
-        else
-            refConf &= ~TMC4361A_POL_STOP_LEFT_MASK;
-        // Enable position latching on limit switch activation (与旧 API 一致)
-        refConf |= TMC4361A_LATCH_X_ON_ACTIVE_L_MASK;  // bit 11
-    }
+    else
+        refConf &= ~TMC4361A_STOP_LEFT_EN_MASK;
+    if (config->leftPolarity)
+        refConf |= TMC4361A_POL_STOP_LEFT_MASK;  // bit 2
+    else
+        refConf &= ~TMC4361A_POL_STOP_LEFT_MASK;
+    refConf |= TMC4361A_LATCH_X_ON_ACTIVE_L_MASK;  // bit 11
 
-    // Right switch configuration
-    if (config->enableRight) {
+    // Right switch configuration（同上：解耦）
+    if (config->enableRight)
         refConf |= TMC4361A_STOP_RIGHT_EN_MASK;  // bit 1
-        if (config->rightPolarity)
-            refConf |= TMC4361A_POL_STOP_RIGHT_MASK;  // bit 3
-        else
-            refConf &= ~TMC4361A_POL_STOP_RIGHT_MASK;
-        // Enable position latching on limit switch activation (与旧 API 一致)
-        refConf |= TMC4361A_LATCH_X_ON_ACTIVE_R_MASK;  // bit 13
-    }
+    else
+        refConf &= ~TMC4361A_STOP_RIGHT_EN_MASK;
+    if (config->rightPolarity)
+        refConf |= TMC4361A_POL_STOP_RIGHT_MASK;  // bit 3
+    else
+        refConf &= ~TMC4361A_POL_STOP_RIGHT_MASK;
+    refConf |= TMC4361A_LATCH_X_ON_ACTIVE_R_MASK;  // bit 13
 
     // Invert stop direction: 交换左右限位开关的逻辑含义
     // 与 master 分支旧 API (tmc4361A_enableLimitSwitch) 一致:

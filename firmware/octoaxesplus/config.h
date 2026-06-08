@@ -261,7 +261,7 @@ namespace AxisConstDefinition {
 
 		const float HOMING_VELOCITY_X_MM = 10;
 		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 实测确定：256 微步 + 30 mm/s 最安静
-		const float HOMING_VELOCITY_Z_MM = 1;
+		const float HOMING_VELOCITY_Z_MM = 2;   // 2026-06-06 新 Z：1→2 mm/s（提速 +100%）。仅 Z_AXIS 实际使用（EXPAND3 借用但未实例化）
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
 
@@ -427,17 +427,45 @@ namespace AxisConfigs {
     };
 
     // Z轴配置
+    // ───────────────────────────────────────────────────────────────────
+    // 新旧 Z 变体编译开关（与 software constants.py Z_AXIS_VARIANT 配对，需手动保持一致）
+    //   新 Z (MOONS' LE143S-W0601)：坐标翻转(firmware 正=物理左、朝 home 走 XACTUAL 增大)。
+    //     用 INVERT_STOP_DIRECTION(Z_FLIPPED=true) 把 chip 限位拦截方向翻过来 → 两个物理电子
+    //     限位都能正确硬停 + 都能退回（2026-06-08 实测验证：home 撞→硬停→检测→退回→归零；
+    //     上限位负向过冲→硬停→正向退回）。注意 INVERT 同时翻转 STATUS 位，故 homingSwitch 用
+    //     RGHT_SW（home 开关接 STOPL 输入，INVERT 后读作 STOPR 位）。极性 1。
+    //   旧 Z：标准约定，home 在右限位、极性 0、不翻转、chip 硬停启用。
+    // 这 7 个字段随变体切换；pitch/电流/微步由 GUI 下发覆盖、currentRange=1 两者通用。
+    // Z_INVERT_ENCODER：编码器计数方向 boot 默认（ENC-2/ENC-3）。**当前不生效**——
+    //   Z_AXIS.enableEncoder=false 把 begin() 里的编码器初始化 gate 掉，方向唯一由 runtime
+    //   的 CONFIGURE_STAGE_PID(constants.py encoder_flip_direction) 决定（运行时权威）。
+    //   仅当把下方 enableEncoder 改 true 时此 boot 值才生效，那时须与 constants.py 一致
+    //   （configureStagePID 已加不一致告警）。详见 documents/audit_octoaxesplus_20260608.md。
+    //#define Z_VARIANT_NEW    // ← 注释掉此行 = 旧 Z
+    #ifdef Z_VARIANT_NEW
+      #define Z_HOMING_SWITCH  RGHT_SW
+      #define Z_SW_POLARITY    1
+      #define Z_ENABLE_LIMITS  true
+      #define Z_FLIPPED        true     // INVERT_STOP_DIRECTION：翻转 chip 限位拦截方向（坐标翻转轴）
+      #define Z_INVERT_ENCODER true     // 2026-06-08 实测 flip=1：ENC 跟随 XACTUAL(同向)，朝电机读数变小
+    #else
+      #define Z_HOMING_SWITCH  RGHT_SW
+      #define Z_SW_POLARITY    0
+      #define Z_ENABLE_LIMITS  true
+      #define Z_FLIPPED        false
+      #define Z_INVERT_ENCODER true     // 旧 Z 编码器默认禁用(has_encoder=False)，保留历史 true 值
+    #endif
     const Axis::AxisConfig Z_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
-        .homingSwitch = RGHT_SW,
-        .leftSwitchPolarity = 0,
-        .rightSwitchPolarity = 0,
+        .homingSwitch = Z_HOMING_SWITCH,      // 变体开关：新旧 Z 都 RGHT_SW（新 Z 因 INVERT 把 home 开关读成 STOPR 位，见上方 Z_VARIANT_NEW）
+        .leftSwitchPolarity = Z_SW_POLARITY,  // 新 Z=1（极性与旧 Z 相反）/ 旧 Z=0
+        .rightSwitchPolarity = Z_SW_POLARITY,
         .leftIsInactive = 0,
         .rightIsInactive = 0,
-        .leftFlipped = false,
-        .rightFlipped = false,
-        .enableLeftLimitSwitch = true,
-        .enableRightLimitSwitch = true,
+        .leftFlipped = Z_FLIPPED,    // 变体开关：新 Z=true(INVERT_STOP_DIRECTION 翻转 chip 限位方向) / 旧 Z=false
+        .rightFlipped = Z_FLIPPED,   // 同上（INVERT_STOP_DIRECTION 单 bit，leftFlipped||rightFlipped 即置位）
+        .enableLeftLimitSwitch = Z_ENABLE_LIMITS,   // 新旧 Z 都 true（新 Z 靠 Z_FLIPPED 翻转限位方向，chip 硬停正常工作，不再锁死退回）
+        .enableRightLimitSwitch = Z_ENABLE_LIMITS,  // 同上
         .r_sense = AxisConstDefinition::R_sense_z,
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_Z_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_Z,
@@ -455,13 +483,13 @@ namespace AxisConfigs {
         .useSShapedRamp = true,
         .astartMM = 0,
         .dfinalMM = 0,
-        .homing_timeout_ms = 20000,
+        .homing_timeout_ms = 40000,   // 2026-06-06 新 Z：20000→40000（×2，配合 homing 提速 + 行程余量）
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
-        .currentRange = 0,
+        .currentRange = 1,         // 2026-06-06 新 Z（LE143S 1.5A）借 octoaxesplus 板调试：TMC2240 I_FS=2A。currentRange 无下发协议、固件独有，必须在此设对（GUI 只发 currentMA，currentRange=0=I_FS1A 时 1500mA 会饱和算错）。旧 Z TMC2660 忽略此字段，安全
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Z_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Z),
-        .invertEncoderDir = true,
+        .invertEncoderDir = Z_INVERT_ENCODER,   // 变体开关（ENC-3）：boot 默认编码器方向，runtime 被 GUI flip 覆盖
         .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
     };
 
