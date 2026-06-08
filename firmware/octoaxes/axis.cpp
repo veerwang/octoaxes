@@ -876,6 +876,18 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
   // 运行时使能编码器（上位机下发后生效，getCurrentPositionMicrosteps 将读 ENC_POS）
   _config.enableEncoder = true;
 
+  // ENC-2 tripwire：runtime flip 是权威值，应与 config.h boot 默认 invertEncoderDir 一致。
+  // 不一致说明 constants.py 与 config.h 编码器方向脱钩（只改了一边）→ 告警。
+  // 然后把 _config.invertEncoderDir 同步成实际生效值，使该字段始终反映硬件真实方向。
+  if (flip_direction != _config.invertEncoderDir) {
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINT(":WARN encoder flip mismatch boot=");
+    DEBUG_PRINT(_config.invertEncoderDir);
+    DEBUG_PRINT(" runtime=");
+    DEBUG_PRINTLN(flip_direction);
+  }
+  _config.invertEncoderDir = flip_direction;
+
   // ABN 编码器初始化（硬编码参数与旧架构一致）
   motor_initABNEncoder(_icID, transitions_per_rev,
                         32,    // filter_wait_time

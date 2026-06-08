@@ -8,6 +8,14 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
+### 2026-06-08 续 newz→develop 合并 + octoaxes 主线新 Z 适配
+
+- [x] **newz 分支 Z 工作合并进 develop**（a4fdf27..46b30a5，19 提交压成单提交 `714fb32`）— cherry-pick 策略（newz 建在 objectives 路线、develop 走 Turret 路线，共享文件冲突）。冲突解决：serial.cpp VERSION→119；TODO/SESSION markdown 并集（newz Z 记录 + develop Turret/历史全留）。两固件编译 + 两 profile 加载 + py_compile 全通过。
+- [x] **push github/main**（`git push github develop:main` ff 488a1ec..714fb32，本地 github-main 同步）。gitee origin 未动。
+- [x] **octoaxes 主线固件新 Z 适配**（2026-06-08 续）— 缺口仅在 config.h（消费侧 MotorControl 符号链接共享 / axis.cpp 已接 flipped / stepaxis.cpp 与 octoaxesplus 相同）。改 2 文件：① `config.h` 加 `Z_VARIANT_NEW` 变体宏块（homingSwitch/极性/enable/flipped/invertEncoder），Z_AXIS 7 字段改用宏，**默认新 Z**（与 software 一致）+ homing_timeout 20000→40000 + HOMING_VELOCITY_Z 1→2；② `axis.cpp` 移植 ENC-2 编码器 tripwire。octoaxes 新/旧变体 + octoaxesplus 三者编译 SUCCESS。
+  - [ ] **⚠️ 上机实测限位**：`Z_FLIPPED=true`/极性=1/`RGHT_SW` 移植自 octoaxesplus squid++ 板实测，**octoaxes 板（另一连接器/接线）新 Z 限位未实测** — 烧录后用 `z_limit_monitor.py` 验证 STOPL/STOPR 极性 + INVERT 方向，不符则调 `#ifdef Z_VARIANT_NEW` 块 4 宏（参考 Turret LEFT/RIGHT 反面教材）。
+  - [ ] 验证导程 1mm（命令 1mm 量实际位移）+ 编码器 flip 方向收敛（开闭环 PID 前必做）。
+
 ### 2026-06-06 新 Z 借 squid++（octoaxesplus）板 bring-up
 
 - [x] 新 Z 适配移植到 octoaxesplus（config.h currentRange 0→1 + 限位极性 0→1；constants.py Z_AXIS_VARIANT="new"+_Z_VARIANTS）(commit `7ad6b7b`)
