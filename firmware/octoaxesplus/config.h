@@ -608,7 +608,7 @@ namespace AxisConfigs {
         .homing_timeout_ms = 20000,
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
-        .currentRange = 0,
+        .currentRange = 1,         // 审计 F-8：与 Z_AXIS 统一为 1。EXPAND3 复用 Z 模板，若接 1.5A 新 Z（TMC2240 I_FS=2A）需此值才算对电流；旧 Z TMC2660 忽略此字段，安全。EXPAND3 当前未实例化
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
         .invertEncoderDir = false,
