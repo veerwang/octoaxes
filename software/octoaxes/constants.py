@@ -13,7 +13,7 @@
 #   "new" = MOONS' LE143S-W0601-100-AR1-S-150（导程 1mm / TMC2240 ICS 板 / 1.5A 峰值）
 # 注意：此开关仅 octoaxes GUI 有效。旧 Squid software 会下发它自己写死的旧 Z 参数，
 #       配新 Z 硬件会有 3.33× 位置错位（旧 Squid 不可改）。
-Z_AXIS_VARIANT = "new"
+Z_AXIS_VARIANT = "old"
 
 _Z_VARIANTS = {
     "old": {
