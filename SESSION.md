@@ -70,6 +70,20 @@
 - 验证：两固件 SUCCESS；两 profile 加载 Z homing_velocity_mm（old=1/new=2）；py_compile OK。
 - 配套产出：`documents/oldsquid_newz_adaptation.md`（旧 Squid 适配新 Z 清单）+ `Squid/software/configuration_HCS_v2_newZ.ini`（旧 Squid 示例配置，仅改 5 个 Z 值）。
 
+### Z 限位极性回归排查 + 三层根因（2026-06-09 续三，上机实测全通过）
+
+旧 Squid 实测：先旧 Z 动不了、修好后换新 Z 又动不了。AI 直连 `/dev/ttyACM0` dump TMC4361A REFCONF 逐层定位（三个独立 bug）：
+
+1. **回归 A：cmd 20 reapply 误伤 X/Y**（FIX B 修）—— `2ba5343` 的 reapplyLimitSwitches 让 cmd 20 对**所有轴**写芯片；旧 Squid 启动发 `x_home=1/y_home=1`（其硬件 active-high），落到 octoaxes 硬件(active-low) → X/Y 极性翻反 → 限位假触发 → XYZ 卡死。旧 Squid 固件 cmd 20 本就只设软件变量、从不写芯片（实读 `stage_commands.cpp` 证实）。**FIX B**：`AxisConfig.polarityAffectsChip`（仅 Z=true），cmd 20 写芯片只对 Z 生效，X/Y 恢复"只改结构体不碰芯片"= drop-in 等价。
+2. **回归 B：Z 开机默认极性错**（boot default 修）—— newz 合并后 Z 开机默认极性变成新 Z 的 1，但主线实装旧 Z(需 0)。芯片实读 REFCONF POL=1 + state=6 ERROR 佐证。改两固件 Z 开机默认极性 **1→0**（默认支持旧 Z，满足用户要求）；新 Z 由 cmd 20 下发 1 覆盖。**FIX B + boot 0 已 commit `9bd3600`。**
+3. **根因 C：旧 Squid `_def.py` import 顺序 bug**（改旧 Squid 修）—— 新 Z 仍动不了。dump 发现旧 Squid 发的 Z 极性是 **2 (DISABLED)**、不是 .ini 的 1。根因：`_def.py:1203` `Z_HOME_SWITCH_POLARITY = LIMIT_SWITCH_POLARITY.Z_HOME` 在 .ini 加载(行 1292)**之前**求值，捕获类默认 `Z_HOME=2(DISABLED)`；.ini 只更新类属性、不更新已定死的模块变量 → 旧 Squid 给 Z 发 DISABLED → 固件忽略 → 极性停在开机默认。**改 .ini 的 z_home 对旧 Squid 完全无效**。修复：`_def.py` 在 .ini 加载后重新求值 `X/Y/Z_HOME_SWITCH_POLARITY`（约行 1383 后）。
+
+**关键验证手段**：AI 手动发二进制 cmd 20 Z=1（含 CRC-8-CCITT）→ dump 确认芯片 REFCONF POL 0→1 → 证明**固件 reapply 完全正常**，把锅精确甩给旧 Squid `_def.py`。
+
+**结果（上机实测）**：旧 Squid + 旧 Z ✓、旧 Squid + 新 Z ✓、octoaxes GUI + 新/旧 Z ✓ —— 四组合全通。改动落点：octoaxes 仓库（固件 `9bd3600` 已提交）+ 旧 Squid 仓库（`_def.py` 修复 + `configuration_HCS_v2.ini`=新Z配置，未提交，在 Squid 仓库）。
+
+**经验教训**：①旧 Z 测试通过 ≠ reapply 路径验证通过（旧 Z boot 默认与下发值都是 0，掩盖了 reapply 是否生效）；②限位"动不了"先 dump 芯片 REFCONF POL 位，别空想；③drop-in 等价要对照对方固件的**实际行为**（旧 Squid cmd 20 不写芯片），不能想当然。
+
 ### 下次
 
 1. （可选）push develop → github/main

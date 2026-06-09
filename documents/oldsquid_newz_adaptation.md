@@ -74,21 +74,42 @@ set_home_safety_margin(...)                              # cmd 28
 所以新 Z 填 **1500 = 1.5A 峰值**正好对 —— **别**被 "rms" 名字误导去填 1060(=1500/√2)。
 （详见仓库记忆 `cmd21-current-rms-peak-mismatch`）
 
-### 坑 2：限位极性 / homing —— 必须把 z_home 从 0 改 1
+### 坑 2（最深）：限位极性 —— 改 .ini 的 z_home **还不够**，必须连 `_def.py` 一起改
 
-`configuration_HCS_v2.ini` 中 `homing_enabled_z = True` + `[LIMIT_SWITCH_POLARITY] z_home = 0`
-→ 旧 Squid 启动会 `set_limit_switch_polarity(AXIS.Z, 0)`，固件应用极性 0（旧 Z 正确）。
-新 Z 需要极性 **1**，故必须改 `z_home = 1`。
+新 Z 需要限位极性 **1**（active-high），旧 Z 是 0。直觉上把 `.ini` 的 `z_home` 改 1 即可，**但实测无效**——
+新 Z 在旧 Squid 下被限位假触发挡死、动不了。根因是旧 Squid `_def.py` 的 **import 顺序 bug**：
 
-> 注意区分：旧 Squid `_def.py` 默认是 `Z_HOME = 2 (DISABLED)`（固件收到 DISABLED 会
-> 直接 return 不改极性，停在固件开机默认）。**但实际部署 .ini 覆盖成了 0**，所以
-> 部署场景下极性确实会被下发、必须改。这是「看实际 .ini 而非默认值」的典型理由。
+```python
+# control/_def.py 行 ~1201-1203（在 configuration*.ini 加载之前 = 行 1292）
+X_HOME_SWITCH_POLARITY = LIMIT_SWITCH_POLARITY.X_HOME   # 捕获类默认 1
+Y_HOME_SWITCH_POLARITY = LIMIT_SWITCH_POLARITY.Y_HOME   # 捕获类默认 1
+Z_HOME_SWITCH_POLARITY = LIMIT_SWITCH_POLARITY.Z_HOME   # 捕获类默认 2 = DISABLED!
+```
+
+- 这三个**模块变量**在 .ini 加载之前就被定死成 `LIMIT_SWITCH_POLARITY` 的**类默认值**。
+- .ini 之后只更新了**类属性** `LIMIT_SWITCH_POLARITY.Z_HOME=1`，但模块变量 `Z_HOME_SWITCH_POLARITY` 不再重新求值，仍是 **2 (DISABLED)**。
+- `configure_actuators()` 发的是模块变量 → 旧 Squid 给 Z 发 `set_limit_switch_polarity(Z, 2=DISABLED)` → 固件 `if(data[3]==DISABLED) return;` → **忽略，Z 极性停在固件开机默认**。
+- 旧 Z 巧合可用（开机默认 0 = 旧 Z 正确）；新 Z 失效（开机默认 0 ≠ 新 Z 需要的 1）。
+- 所以**改 .ini 的 z_home 对旧 Squid 完全无效**（它根本不读这值）。
+
+**修复（必做）**：在 `control/_def.py` 的 .ini 加载块**之后**（约行 1383，`DEFAULT_TRIGGER_MODE = ...` 后）重新求值：
+
+```python
+X_HOME_SWITCH_POLARITY = LIMIT_SWITCH_POLARITY.X_HOME
+Y_HOME_SWITCH_POLARITY = LIMIT_SWITCH_POLARITY.Y_HOME
+Z_HOME_SWITCH_POLARITY = LIMIT_SWITCH_POLARITY.Z_HOME
+```
+
+修复后 `.ini` 的 `z_home=1` 才真正发给固件 → 固件 cmd 20 应用极性 1 → 新 Z 工作。这是通用 bug，对所有机器有益。
+
+> X/Y 的 `x_home/y_home` 同样有此 bug，但固件 **FIX B** 让 X/Y 的 cmd 20 不写芯片（X/Y 极性固定用固件 init 值），所以 X/Y 不受影响——无论 .ini/_def.py 发什么，X/Y 都用 octoaxes 硬件正确的 active-low(0)。
 
 ## 固件侧
 
 - 烧 **octoaxes 固件**（drop-in 替代旧 Squid 固件），**无需为新 Z 改固件**：
   - `Z_AXIS.currentRange = 1` 已写死（TMC2240 I_FS=2A，对旧 Z 的 TMC2660 也安全——后者忽略此字段走 R_sense）
-  - 限位极性已软件化（2026-06-09）：极性由上位机 cmd 20 下发 + `reapplyLimitSwitches()` 重写芯片
+  - **限位极性软件化 + FIX B（2026-06-09）**：cmd 20 写芯片**只对 Z 生效**（`polarityAffectsChip` 仅 Z=true）；X/Y 等固定硬件极性轴只改结构体不碰芯片，与旧 Squid 固件一致，避免旧 Squid 下发的 X/Y 极性误翻芯片。
+  - **Z 开机默认极性 = 0（旧 Z）**：octoaxes 主线实装旧 Z，固件默认支持旧 Z；新 Z 由上位机 cmd 20 下发 1 覆盖。
   - `DRIVER_AUTO` 上电自动识别 TMC2660 / TMC2240，一个固件通吃新旧 Z
 
 ## 已知限制

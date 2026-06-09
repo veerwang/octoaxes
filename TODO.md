@@ -36,6 +36,18 @@
 - [x] **验证**：两固件 SUCCESS；两 profile Z homing_velocity_mm(old=1/new=2)；py_compile OK。4 组合全稳。
 - [x] **配套文档**：`documents/oldsquid_newz_adaptation.md`（旧 Squid 适配新 Z 清单）+ `Squid/software/configuration_HCS_v2_newZ.ini`（示例配置，仅改 5 Z 值，在旧 Squid 仓库不纳本仓提交）。
 
+### 2026-06-09 续三 Z 限位极性回归排查（三层根因，上机实测全通过）
+
+> 旧 Squid 实测：旧 Z 动不了 → 修好 → 换新 Z 又动不了。AI 直连 dump TMC4361A REFCONF 逐层定位。详见 SESSION.md 2026-06-09 续三 + `documents/oldsquid_newz_adaptation.md` 坑 2。
+
+- [x] **FIX B：cmd 20 写芯片只对 Z 生效**（`AxisConfig.polarityAffectsChip` 仅 Z=true）—— 修 `2ba5343` reapply 误伤 X/Y（旧 Squid 发 x/y_home=1 翻反 octoaxes active-low 硬件 → XYZ 卡死）。X/Y 恢复"只改结构体不碰芯片"= 旧 Squid 固件行为。commit `9bd3600`。
+- [x] **Z 开机默认极性 1→0**（两固件）—— newz 合并后默认成新 Z 的 1，主线实装旧 Z 需 0；芯片实读 REFCONF POL=1+ERROR 佐证。改 0 默认支持旧 Z；新 Z 由 cmd 20 下发 1。commit `9bd3600`。
+- [x] **AxisConfig 加默认成员初始化器后 memset 改 value-init**（消 -Wclass-memaccess）。commit `9bd3600`。
+- [x] **根因 C：旧 Squid `_def.py` import 顺序 bug**（改旧 Squid 修，用户拍板方案 A）—— `Z_HOME_SWITCH_POLARITY` 在 .ini 加载前定死成类默认 `Z_HOME=2(DISABLED)` → 旧 Squid 给 Z 发 DISABLED、固件忽略 → 改 .ini z_home 无效。修复：`_def.py` 在 .ini 加载后(行~1383)重新求值 X/Y/Z_HOME_SWITCH_POLARITY。**改动在旧 Squid 仓库，未提交。**
+- [x] **上机实测**：旧 Squid+旧 Z ✓ / 旧 Squid+新 Z ✓ / octoaxes GUI+新旧 Z ✓ —— 四组合全通（用户实测确认）。
+- [ ] （可选）在旧 Squid 仓库 commit `_def.py` bug 修复（通用 bug，对所有机器有益）。
+- [ ] （提醒）octoaxes 主线板新 Z 限位现已实测通过（本次）；homing 方向/上下限位若要再细验可用 z_limit_monitor.py。
+
 ### 2026-06-08 续 newz→develop 合并 + octoaxes 主线新 Z 适配
 
 - [x] **newz 分支 Z 工作合并进 develop**（a4fdf27..46b30a5，19 提交压成单提交 `714fb32`）— cherry-pick 策略（newz 建在 objectives 路线、develop 走 Turret 路线，共享文件冲突）。冲突解决：serial.cpp VERSION→119；TODO/SESSION markdown 并集（newz Z 记录 + develop Turret/历史全留）。两固件编译 + 两 profile 加载 + py_compile 全通过。
