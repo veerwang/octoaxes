@@ -33,6 +33,11 @@ public:
     uint8_t homingSwitch;
     uint8_t leftSwitchPolarity;
     uint8_t rightSwitchPolarity;
+    // 主机 cmd 20 (SET_LIM_SWITCH_POLARITY) 是否允许把极性写进芯片 REFERENCE_CONF。
+    // 仅 Z=true（极性随新旧 Z 变体变、需软件运行时下发）；X/Y 等固定硬件极性轴=false：
+    // cmd 20 只改结构体不碰芯片，与旧 Squid 固件行为一致（旧 Squid cmd 20 也只设软件变量、
+    // 从不写芯片），避免旧 Squid 下发的 X/Y 极性(active-high)误翻 octoaxes 硬件(active-low)。
+    bool polarityAffectsChip = false;   // 默认 false（省略此字段的轴=不写芯片）；仅 Z_AXIS 显式置 true
     uint8_t leftIsInactive;
     uint8_t rightIsInactive;
     bool leftFlipped;

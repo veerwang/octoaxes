@@ -442,8 +442,9 @@ namespace AxisConfigs {
     const Axis::AxisConfig Z_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = RGHT_SW,         // 开机默认（新旧 Z 都 RGHT_SW；06-09 传感器对调后 home 接 STOPR 引脚不翻转、直接读作 STOPR 位）
-        .leftSwitchPolarity = 1,         // 开机默认=new(1)；运行时由软件 cmd 20 下发覆盖（old=0）
-        .rightSwitchPolarity = 1,
+        .leftSwitchPolarity = 0,         // 开机默认=旧 Z(0, active-low)——与 constants.py Z_AXIS_VARIANT="old" 默认一致；新 Z(1) 由 GUI 启动 cmd 20 下发切换
+        .rightSwitchPolarity = 0,
+        .polarityAffectsChip = true,     // 仅 Z：允许 cmd 20 把极性写芯片（Z 变体软件化，新 Z 下发 1 覆盖开机默认 0）；X/Y 等省略=false 不写芯片，保旧 Squid drop-in
         .leftIsInactive = 0,
         .rightIsInactive = 0,
         .leftFlipped = false,    // 新旧 Z 都 false（06-09 传感器对调抵消坐标翻转，无需 INVERT_STOP_DIRECTION）

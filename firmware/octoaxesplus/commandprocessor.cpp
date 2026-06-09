@@ -381,9 +381,11 @@ void CommandProcessor::handleSetLimSwitchPolarity(const byte *data) {
   uint8_t polarity = data[3];
   axis->getMutableConfig().leftSwitchPolarity = polarity;
   axis->getMutableConfig().rightSwitchPolarity = polarity;
-  // begin() 早已配置完芯片，仅改结构体不生效 → 重写 REFERENCE_CONF 极性位。
-  // 这是「Z 变体软件化」的关键：上位机启动按 Z_AXIS_VARIANT 下发极性，切换无需重烧固件。
-  axis->reapplyLimitSwitches();
+  // 仅对 polarityAffectsChip=true 的轴（=Z）把极性重写进芯片 REFERENCE_CONF——这是「Z 变体软件化」
+  // 的关键（上位机按 Z_AXIS_VARIANT 下发极性，切换无需重烧）。X/Y 等固定硬件极性轴只改结构体不碰芯片，
+  // 与旧 Squid 固件一致（旧 Squid cmd 20 也只设软件变量），避免旧 Squid 下发的 X/Y 极性误翻芯片。
+  if (axis->getConfig().polarityAffectsChip)
+    axis->reapplyLimitSwitches();
 }
 
 void CommandProcessor::handleConfigureStepperDriver(const byte *data) {

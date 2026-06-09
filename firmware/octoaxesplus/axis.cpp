@@ -37,8 +37,9 @@ Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char *axisName)
   _softLimitsEnabled = false;
   _needReenableLimits = false;
 
-  // 初始化配置结构体
-  memset(&_config, 0, sizeof(_config));
+  // 初始化配置结构体（value-init：等同清零 + 尊重成员默认初始化器 polarityAffectsChip=false。
+  // AxisConfig 现含默认成员初始化器为非平凡类型，不能再用 memset，否则 -Wclass-memaccess 告警）
+  _config = AxisConfig{};
 }
 
 // 初始化函数
