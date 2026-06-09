@@ -8,6 +8,23 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
+### 2026-06-09 Z 变体切换软件化（限位极性走 cmd 20 下发）
+
+> 痛点：切换新旧 Z 需同步改两处（固件 `config.h #define Z_VARIANT_NEW` + 软件 `constants.py Z_AXIS_VARIANT`），易漏改。
+> 关键洞察：06-09 传感器对调后固件差异已塌缩为唯一字段=限位极性（new=1/old=0），其余宏全相同；固件早有现成命令 cmd 20 SET_LIM_SWITCH_POLARITY。
+> 范围决策（用户拍板）：**最小方案=只下发极性**（备选「通用化下发整组限位配置」未采用，YAGNI）。详见 SESSION.md 2026-06-09。
+
+- [x] **固件 axis.h/cpp 新增 `reapplyLimitSwitches()`**（octoaxes + octoaxesplus 各一份）— 从 _config 重建 LimitConfig 调 motor_configLimitSwitches + motor_enableHomingLimit，把极性真正写进芯片 REFERENCE_CONF。修 cmd 20 旧实现坑（只改结构体不写芯片，begin() 开机只配一次）。
+- [x] **固件 commandprocessor.cpp handleSetLimSwitchPolarity 末尾调 reapplyLimitSwitches()**（两固件）使下发真生效。
+- [x] **固件 config.h `#define Z_VARIANT_NEW` 退化为开机安全默认**（两固件）+ 注释标明切换无需动此处。
+- [x] **软件 constants.py `_Z_VARIANTS` 加 `switch_polarity`**（两 profile，old=0/new=1）。
+- [x] **GUI main_window.py `_configure_actuators()` 下发 cmd 20**（共享 common，数据驱动 profile-safe，其他轴无此键自动跳过）。
+- [x] **S:ZVARIANT tripwire 降级为信息日志、不再拦截 Z**（极性已是软件单一权威源，固件 #define 不一致合法；否则软件切 old/固件留 new 会被误拦废掉本次统一）。
+- [x] **验证**：两固件编译 SUCCESS；两 profile 加载 Z switch_polarity new=1/old=0；py_compile OK。提交 `afb4dc5`。
+- [x] **⚠️→✅ 上机验证 reapplyLimitSwitches() 芯片重写路径**（2026-06-09 用户实测）— 烧录两固件后**新 Z + 旧 Z 双变体均正常运行**。旧 Z（软件切 "old"/极性 0，物理换装旧硬件）工作正确，而固件开机默认极性是 1(new) → 证明软件下发的极性确实重写进了芯片。**切换全程只改 constants.py 一行 + 重启 GUI、未重烧固件**，软件化目标达成。
+- [x] **收尾：仓库 octoaxesplus 默认切回旧 Z**（`Z_AXIS_VARIANT="old"`，贴合当前在装硬件）。
+- [ ] （可选）push develop → github/main；彻底移除 S:ZVARIANT tripwire 残留代码（现降级为信息日志、无害，可留可删）。
+
 ### 2026-06-08 续 newz→develop 合并 + octoaxes 主线新 Z 适配
 
 - [x] **newz 分支 Z 工作合并进 develop**（a4fdf27..46b30a5，19 提交压成单提交 `714fb32`）— cherry-pick 策略（newz 建在 objectives 路线、develop 走 Turret 路线，共享文件冲突）。冲突解决：serial.cpp VERSION→119；TODO/SESSION markdown 并集（newz Z 记录 + develop Turret/历史全留）。两固件编译 + 两 profile 加载 + py_compile 全通过。

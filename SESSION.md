@@ -6,6 +6,61 @@
 
 ## 最新会话
 
+**日期**: 2026-06-09
+**分支**: develop
+**位置**: **Z 变体切换软件化** —— 限位极性走上位机 cmd 20 下发，消除「切 Z 需同步改 config.h + constants.py 两处」的易错点（commit `afb4dc5`，**新 Z + 旧 Z 均上机实测通过**，仓库默认切回旧 Z）
+
+### 一句话
+
+用户痛点：切换新旧 Z 要改两个地方（固件 `config.h` `#define Z_VARIANT_NEW` + 软件 `constants.py` `Z_AXIS_VARIANT`），容易漏改。本次让固件那一处也由软件下发，**切 Z 只改 constants.py 一行**。
+
+### 关键洞察：06-09 传感器对调后，固件差异已塌缩成「一个字段」
+
+对比 config.h 新旧 Z 变体宏块，现在只剩 `Z_SW_POLARITY`（new=1/old=0）不同——`Z_HOMING_SWITCH`(都 RGHT_SW)/`Z_ENABLE_LIMITS`(都 true)/`Z_FLIPPED`(都 false)/`Z_INVERT_ENCODER`(都 true) 全部相同。所以「软件化」只需让这一个极性位走下发。
+
+而固件早有现成命令 `SET_LIM_SWITCH_POLARITY = 20`（旧 Squid 协议），白捡。
+
+### 改动（11 文件，commit `afb4dc5`）
+
+**固件（octoaxes + octoaxesplus 各一份）**
+- `axis.h/cpp` 新增 `reapplyLimitSwitches()`：从 `_config` 重建 LimitConfig 调 `motor_configLimitSwitches` + `motor_enableHomingLimit`，把极性真正写进芯片 REFERENCE_CONF。**修了 cmd 20 旧实现的坑**——它只改内存结构体、不写芯片（begin() 开机只配一次，之后改结构体不生效）。
+- `commandprocessor.cpp::handleSetLimSwitchPolarity` 末尾调 `axis->reapplyLimitSwitches()` 使下发真生效。
+- `config.h` `#define Z_VARIANT_NEW` 退化为「开机窗口安全默认」，注释标明切换无需动此处。
+
+**软件（两 profile + 共享 GUI）**
+- `constants.py` `_Z_VARIANTS` 加 `switch_polarity`（old=0/new=1）。
+- `main_window.py::_configure_actuators()` 对带 `switch_polarity` 的轴下发 cmd 20（数据驱动、profile-safe，X/Y/W 无此键自动跳过）。
+- **S:ZVARIANT tripwire 降级为信息日志、不再拦截 Z 操作**：极性已是软件单一权威源，固件 `#define` 与软件不一致是合法的（软件下发覆盖）。否则软件切 old、固件留 new 会被误拦 → 正好废掉本次统一。`_z_op_blocked` 现恒返回 False（方法保留无害）。
+
+### 验证
+
+- octoaxes + octoaxesplus 固件均编译 SUCCESS。
+- 两 profile 加载：Z `switch_polarity` new=1 / old=0；py_compile OK。
+
+### ✅ 上机实测通过（验证缺口已闭合）
+
+用户烧录两固件后实测：**新 Z + 旧 Z 双变体均正常运行**。
+- 新 Z（软件 "new"/极性 1）：正常。
+- **旧 Z（软件切 "old"/极性 0，物理换装旧 Z 硬件）：正常** —— 固件开机默认极性 1(new)、软件下发 0(old) 仍工作正确，**证明 `reapplyLimitSwitches()` 芯片重写路径生效**。这是本方案唯一未上机的点，现已闭合。
+- 切换全程**只改 constants.py 一行 + 重启 GUI，未重烧固件** —— 软件化目标达成。
+- 收尾：仓库 octoaxesplus 默认切回旧 Z（`Z_AXIS_VARIANT="old"`，贴合当前在装硬件）。
+
+### 决策记录
+
+- **范围=最小（只下发极性）**（用户拍板，备选「通用化下发整组限位配置」未采用）。理由：当前唯一差异就是极性，YAGNI。若将来 octoaxes 板上机实测发现 flipped/homingSwitch 也需不同（SESSION 反复警告 octoaxes 板限位未实测），再扩成整组下发。
+- config.h `#define` 保留作开机默认（不删），最小改动、不破坏结构。
+
+### 下次
+
+1. （可选）push develop → github/main
+2. （可选）彻底移除 S:ZVARIANT tripwire 残留代码（现已降级为信息日志、不拦截，功能上无害，可留可删）
+3. octoaxes 主线板（非 octoaxesplus 借板）新 Z 限位极性/翻转/导程/编码器上机实测 —— octoaxes config.h 也已有同款变体宏，但 octoaxes 板是另一连接器/接线，限位行为未在该板实测
+4. 新 Z 闭环 PID 验证（ENC-1，竖直 Z 防下坠/对焦精度时再开）
+
+---
+
+## 上次会话
+
 **日期**: 2026-06-08 续
 **分支**: develop
 **位置**: newz 分支 Z 工作合并进 develop（已 push github/main）+ **octoaxes 主线固件新 Z 适配**
