@@ -430,10 +430,15 @@ namespace AxisConfigs {
     // ───────────────────────────────────────────────────────────────────
     // 新旧 Z 变体编译开关（与 software constants.py Z_AXIS_VARIANT 配对，需手动保持一致）
     //   新 Z (MOONS' LE143S-W0601)：坐标翻转(firmware 正=物理左、朝 home 走 XACTUAL 增大)。
-    //     用 INVERT_STOP_DIRECTION(Z_FLIPPED=true) 把 chip 限位拦截方向翻过来 → 两个物理电子
-    //     限位都能正确硬停 + 都能退回（2026-06-08 实测验证：home 撞→硬停→检测→退回→归零；
-    //     上限位负向过冲→硬停→正向退回）。注意 INVERT 同时翻转 STATUS 位，故 homingSwitch 用
-    //     RGHT_SW（home 开关接 STOPL 输入，INVERT 后读作 STOPR 位）。极性 1。
+    //     【2026-06-09 项目把正负限位传感器物理对调】：原负/home 端传感器移到正端、原正端
+    //     传感器移到负/home 端（连线随传感器走）→ 负/home 端现接 TMC4361A STOPR 引脚（原接 STOPL）。
+    //     该物理对调恰好抵消坐标翻转 → INVERT_STOP_DIRECTION 由 true 改 false（Z_FLIPPED=false）：
+    //       · home 逼近=正向内部速度，STOPR(默认)拦正向 → 正确在 home 硬停；
+    //       · 上限位移到 STOPL，拦负向 → 上限位过冲硬停。
+    //     STATUS：home 现接 STOPR 引脚、不翻转 → 直接读作 STOPR 位 → homingSwitch 仍 RGHT_SW（不变）。
+    //     极性 1；homing 仍以负限位为回零点(homing_direct=1)。
+    //     ⚠️ 对调后限位行为须重新上机实测：z_limit_monitor.py 验证 STOPL/STOPR 极性 + 上下硬停方向。
+    //     （对调前历史：home 接 STOPL，Z_FLIPPED=true，06-08 实测通过；见 git 历史）
     //   旧 Z：标准约定，home 在右限位、极性 0、不翻转、chip 硬停启用。
     // 这 7 个字段随变体切换；pitch/电流/微步由 GUI 下发覆盖、currentRange=1 两者通用。
     // Z_INVERT_ENCODER：编码器计数方向 boot 默认（ENC-2/ENC-3）。**当前不生效**——
@@ -441,12 +446,12 @@ namespace AxisConfigs {
     //   的 CONFIGURE_STAGE_PID(constants.py encoder_flip_direction) 决定（运行时权威）。
     //   仅当把下方 enableEncoder 改 true 时此 boot 值才生效，那时须与 constants.py 一致
     //   （configureStagePID 已加不一致告警）。详见 documents/audit_octoaxesplus_20260608.md。
-    //#define Z_VARIANT_NEW    // ← 注释掉此行 = 旧 Z
+    #define Z_VARIANT_NEW    // ← 注释掉此行 = 旧 Z
     #ifdef Z_VARIANT_NEW
       #define Z_HOMING_SWITCH  RGHT_SW
       #define Z_SW_POLARITY    1
       #define Z_ENABLE_LIMITS  true
-      #define Z_FLIPPED        true     // INVERT_STOP_DIRECTION：翻转 chip 限位拦截方向（坐标翻转轴）
+      #define Z_FLIPPED        false    // 2026-06-09 正负限位传感器对调后 home 接 STOPR 引脚，物理对调抵消坐标翻转 → 无需 INVERT_STOP_DIRECTION（对调前为 true，见上方说明）
       #define Z_INVERT_ENCODER true     // 2026-06-08 实测 flip=1：ENC 跟随 XACTUAL(同向)，朝电机读数变小
     #else
       #define Z_HOMING_SWITCH  RGHT_SW
@@ -457,14 +462,14 @@ namespace AxisConfigs {
     #endif
     const Axis::AxisConfig Z_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
-        .homingSwitch = Z_HOMING_SWITCH,      // 变体开关：新旧 Z 都 RGHT_SW（新 Z 因 INVERT 把 home 开关读成 STOPR 位，见上方 Z_VARIANT_NEW）
+        .homingSwitch = Z_HOMING_SWITCH,      // 变体开关：新旧 Z 都 RGHT_SW（新 Z 2026-06-09 传感器对调后 home 接 STOPR 引脚、不翻转，直接读作 STOPR 位，见上方 Z_VARIANT_NEW）
         .leftSwitchPolarity = Z_SW_POLARITY,  // 新 Z=1（极性与旧 Z 相反）/ 旧 Z=0
         .rightSwitchPolarity = Z_SW_POLARITY,
         .leftIsInactive = 0,
         .rightIsInactive = 0,
-        .leftFlipped = Z_FLIPPED,    // 变体开关：新 Z=true(INVERT_STOP_DIRECTION 翻转 chip 限位方向) / 旧 Z=false
+        .leftFlipped = Z_FLIPPED,    // 变体开关：新 Z=false(2026-06-09 传感器对调抵消坐标翻转，无需 INVERT) / 旧 Z=false
         .rightFlipped = Z_FLIPPED,   // 同上（INVERT_STOP_DIRECTION 单 bit，leftFlipped||rightFlipped 即置位）
-        .enableLeftLimitSwitch = Z_ENABLE_LIMITS,   // 新旧 Z 都 true（新 Z 靠 Z_FLIPPED 翻转限位方向，chip 硬停正常工作，不再锁死退回）
+        .enableLeftLimitSwitch = Z_ENABLE_LIMITS,   // 新旧 Z 都 true（新 Z 2026-06-09 传感器对调后 home 接 STOPR / 上限位接 STOPL，无需 INVERT，chip 上下硬停正常）
         .enableRightLimitSwitch = Z_ENABLE_LIMITS,  // 同上
         .r_sense = AxisConstDefinition::R_sense_z,
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_Z_MM,
