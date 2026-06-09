@@ -198,6 +198,10 @@ void set_DAC8050x_config()
 
 void set_DAC8050x_output(int channel, uint16_t value)
 {
+    // 入口校验：DAC80508 仅 8 个 DAC 通道（0-7）。channel 作为寄存器地址偏移
+    // (DAC_DAC_ADDR + channel)，越界会写到 CONFIG/GAIN 等控制寄存器，可能锁死器件。
+    if (channel < 0 || channel > 7)
+        return;
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
     // DAC80508_1 片选走 74HC154 通道 2（Pins::DAC8050x_CS）
     Pins::hc154_select(Pins::DAC8050x_CS);
