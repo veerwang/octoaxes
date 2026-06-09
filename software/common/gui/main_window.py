@@ -46,11 +46,6 @@ from gui.widgets import AxisStatusDisplay, ControlPanel, LogDisplay, Illuminatio
 from gui.test_panel import IntegrationTestPanel
 from hardware.axis_manager import AxisManager
 from utils.constants import AXIS_CONFIG, AXIS_MM_PER_STEP
-try:
-    # Z 变体一致性 tripwire：软件侧变体（profile 有则非 None）
-    from utils.constants import Z_AXIS_VARIANT
-except ImportError:
-    Z_AXIS_VARIANT = None
 from utils.helpers import format_command, find_teensy_port
 
 
@@ -68,11 +63,6 @@ class TeensyControlGUI(QMainWindow):
 
         # 添加轴使能状态字典（从 AXIS_CONFIG 动态生成，跟随 profile）
         self.axis_enabled_states = {axis: True for axis in AXIS_CONFIG.keys()}
-
-        # Z 变体一致性 tripwire：启动查 S:ZVARIANT 与 Z_AXIS_VARIANT 比对，
-        # 不一致置 True → 拦截 Z 的 home/move，防止固件/软件变体错配（如新变体
-        # 1500mA 怼旧 Z、限位方向反）。None=该 profile 无变体或固件未上报，不拦。
-        self._z_variant_mismatch = False
 
         # 物镜转换器上次换位方向（齿轮回程间隙补偿用，False=previous 基线）；
         # homing 后重置
@@ -699,18 +689,9 @@ class TeensyControlGUI(QMainWindow):
         self.log(f"Axis {axis} wait-until-idle timed out after {timeout} s.")
         return False
 
-    def _z_op_blocked(self, axis):
-        """Z 变体不一致时拦截 Z 的 home/move（一致性 tripwire）。"""
-        if axis == "Z" and self._z_variant_mismatch:
-            self.log("⚠️ Z 变体不一致，已拦截 Z 操作。请先对齐固件 #define Z_VARIANT_NEW 与软件 Z_AXIS_VARIANT（改固件需重烧）。")
-            return True
-        return False
-
     def send_homing(self):
         """发送 Homing 命令到当前轴"""
         axis = self.get_current_axis()
-        if self._z_op_blocked(axis):
-            return
 
         # 使用协议轴值（与旧 Squid AXIS 类一致），不是固件内部数组索引
         # octoaxesplus W1/W2 复用 W/W2 协议轴码（firmware 端做 W→W1 兜底）
@@ -845,23 +826,6 @@ class TeensyControlGUI(QMainWindow):
             version = data.split(":")[-1].strip()
             self.version_label.setText(f"Firmware Version: {version}")
             self.log(f"Firmware version: {version}")
-            return
-
-        # Z 变体上报：S:ZVARIANT:new / S:ZVARIANT:old —— 仅信息日志，不再拦截。
-        # 自「Z 变体软件化」后，限位极性由 GUI 启动 cmd 20 按 Z_AXIS_VARIANT 下发，
-        # 软件成为唯一权威源 → 固件 #define Z_VARIANT_NEW 退化为开机安全默认，与软件
-        # 不一致是合法的（软件下发会覆盖），故不再设 _z_variant_mismatch、不拦 Z 操作。
-        if data.startswith("S:ZVARIANT:"):
-            fw_variant = data.split(":")[-1].strip()
-            sw_variant = Z_AXIS_VARIANT
-            self._z_variant_mismatch = False
-            if sw_variant is not None and fw_variant in ("new", "old") and fw_variant != sw_variant:
-                self.log(
-                    f"Z 变体：固件开机默认={fw_variant} / 软件 Z_AXIS_VARIANT={sw_variant}"
-                    "（限位极性已由软件下发覆盖，固件默认仅开机窗口生效，无需重烧）"
-                )
-            else:
-                self.log(f"Z 变体：固件={fw_variant} / 软件={sw_variant}")
             return
 
         # 处理硬件信息响应: S:HWINFO:<axis>:TMC4361A+<driver>
@@ -1229,8 +1193,6 @@ class TeensyControlGUI(QMainWindow):
 
         # 获取当前轴配置并应用移动符号
         axis = self.get_current_axis()
-        if self._z_op_blocked(axis):
-            return
         value = int(AXIS_CONFIG[axis]["movement_sign"]) * value
 
         # 使用二进制命令发送相对移动（传入轴名称而非索引）
@@ -1247,8 +1209,6 @@ class TeensyControlGUI(QMainWindow):
             return
 
         axis = self.get_current_axis()
-        if self._z_op_blocked(axis):
-            return
         value = int(AXIS_CONFIG[axis]["movement_sign"]) * int(pos_um)
 
         # 使用二进制命令发送绝对移动（传入轴名称而非索引）
@@ -1526,9 +1486,6 @@ class TeensyControlGUI(QMainWindow):
         self._configure_actuators()
         # 再为有编码器的轴下发 CONFIGURE_STAGE_PID，使能编码器
         self._configure_encoders()
-        # Z 变体一致性 tripwire：查固件编译的 Z 变体，与软件 Z_AXIS_VARIANT 比对
-        if Z_AXIS_VARIANT is not None:
-            self.send_command("S:ZVARIANT", "Sent Z variant query")
         self.startup_timer.stop()
 
     def _configure_actuators(self):

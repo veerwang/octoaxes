@@ -23,7 +23,8 @@
 - [x] **验证**：两固件编译 SUCCESS；两 profile 加载 Z switch_polarity new=1/old=0；py_compile OK。提交 `afb4dc5`。
 - [x] **⚠️→✅ 上机验证 reapplyLimitSwitches() 芯片重写路径**（2026-06-09 用户实测）— 烧录两固件后**新 Z + 旧 Z 双变体均正常运行**。旧 Z（软件切 "old"/极性 0，物理换装旧硬件）工作正确，而固件开机默认极性是 1(new) → 证明软件下发的极性确实重写进了芯片。**切换全程只改 constants.py 一行 + 重启 GUI、未重烧固件**，软件化目标达成。
 - [x] **收尾：仓库 octoaxesplus 默认切回旧 Z**（`Z_AXIS_VARIANT="old"`，贴合当前在装硬件）。
-- [ ] （可选）push develop → github/main；彻底移除 S:ZVARIANT tripwire 残留代码（现降级为信息日志、无害，可留可删）。
+- [x] **彻底删除 Z_VARIANT_NEW 编译开关 + 死掉的 S:ZVARIANT tripwire**（2026-06-09 续，用户拍板）— 软件化实测通过后，固件 `#define Z_VARIANT_NEW` 已无操作意义（唯一差异极性走软件下发，其余宏新旧全相同），联动的 S:ZVARIANT 上报 + GUI tripwire 全是死代码。改 5 文件净删 ~117 行：2× config.h（删宏开关，Z_AXIS 字段改字面值，极性开机默认 1/运行时软件覆盖）+ 2× serial.cpp（删 S:ZVARIANT 命令）+ 1× main_window.py（删 tripwire 链：import/_z_variant_mismatch/_z_op_blocked+3 调用/响应处理/启动查询）。两固件 SUCCESS、双 profile 加载、py_compile OK、全仓库无残留代码引用。
+- [ ] （可选）push develop → github/main。
 
 ### 2026-06-08 续 newz→develop 合并 + octoaxes 主线新 Z 适配
 

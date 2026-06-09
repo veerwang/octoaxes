@@ -50,12 +50,19 @@
 - **范围=最小（只下发极性）**（用户拍板，备选「通用化下发整组限位配置」未采用）。理由：当前唯一差异就是极性，YAGNI。若将来 octoaxes 板上机实测发现 flipped/homingSwitch 也需不同（SESSION 反复警告 octoaxes 板限位未实测），再扩成整组下发。
 - config.h `#define` 保留作开机默认（不删），最小改动、不破坏结构。
 
+### 后续清理：彻底删除 Z_VARIANT_NEW 编译开关 + 死掉的 S:ZVARIANT tripwire（2026-06-09 续）
+
+软件化落地并实测通过后，固件 `#define Z_VARIANT_NEW` 已无操作意义（06-09 传感器对调后新旧 Z 唯一差异=极性，已走软件下发；其余宏新旧取值全相同），其联动的 `S:ZVARIANT` 上报 + GUI tripwire 也已是死代码 → 用户拍板**一并删除**。改 5 文件、净删 ~117 行：
+- **2× config.h**：删 `#define Z_VARIANT_NEW` + `#ifdef/#else/#endif` + 5 个 Z_* 中间宏，Z_AXIS 字段改回直接字面值（homingSwitch=RGHT_SW / 极性=1（开机默认 new，运行时软件下发覆盖）/ flipped=false / enable=true / invertEncoder=true），注释标明「已删编译开关、变体由软件决定」。
+- **2× serial.cpp**：删 `S:ZVARIANT` 命令分支（config.h include 保留，仍被 Commands::/Pins:: 大量使用，仅修注释）。
+- **1× main_window.py**：删整条 tripwire 链 —— `Z_AXIS_VARIANT` import、`_z_variant_mismatch`、`_z_op_blocked` 方法 + 3 处调用、S:ZVARIANT 响应处理、启动查询发送。
+- 验证：两固件编译 SUCCESS；两 profile 加载（octoaxes new→极性1/导程1.0，octoaxesplus old→极性0/导程0.3）；py_compile OK；全仓库无残留代码引用（只剩 2 行「已删除」历史注释）。
+
 ### 下次
 
 1. （可选）push develop → github/main
-2. （可选）彻底移除 S:ZVARIANT tripwire 残留代码（现已降级为信息日志、不拦截，功能上无害，可留可删）
-3. octoaxes 主线板（非 octoaxesplus 借板）新 Z 限位极性/翻转/导程/编码器上机实测 —— octoaxes config.h 也已有同款变体宏，但 octoaxes 板是另一连接器/接线，限位行为未在该板实测
-4. 新 Z 闭环 PID 验证（ENC-1，竖直 Z 防下坠/对焦精度时再开）
+2. octoaxes 主线板（非 octoaxesplus 借板）新 Z 限位极性/翻转/导程/编码器上机实测 —— config.h 已同款软件化，但 octoaxes 板是另一连接器/接线，限位行为未在该板实测
+3. 新 Z 闭环 PID 验证（ENC-1，竖直 Z 防下坠/对焦精度时再开）
 
 ---
 

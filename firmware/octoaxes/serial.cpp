@@ -2,7 +2,7 @@
 #include "axesmrg.h"
 #include "build_opt.h"
 #include "commandprocessor.h"
-#include "config.h"   // S:ZVARIANT 需要 #define Z_VARIANT_NEW 可见（Z 变体一致性 tripwire）
+#include "config.h"
 #include "illumination.h"
 #include "joystick.h"
 #include "trigger.h"
@@ -294,18 +294,6 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       char vbuf[32];
       snprintf(vbuf, sizeof(vbuf), "S:VERSION:%lu", (unsigned long)VERSION);
       SerialUSB.println(vbuf);
-      return;
-    }
-
-    if (command == "S:ZVARIANT") {
-      // 上报本固件编译的 Z 变体（与 config.h 顶部 #define Z_VARIANT_NEW 联动）。
-      // 上位机启动时查询并与 software Z_AXIS_VARIANT 比对，不一致则告警 + 拦截 Z 操作
-      // （防止把新 Z 的 1500mA/限位翻转套到旧 Z，或反之）。一致性 tripwire。
-#ifdef Z_VARIANT_NEW
-      SerialUSB.println("S:ZVARIANT:new");
-#else
-      SerialUSB.println("S:ZVARIANT:old");
-#endif
       return;
     }
 

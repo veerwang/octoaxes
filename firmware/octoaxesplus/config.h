@@ -428,54 +428,28 @@ namespace AxisConfigs {
 
     // Z轴配置
     // ───────────────────────────────────────────────────────────────────
-    // 新旧 Z 变体编译开关（与 software constants.py Z_AXIS_VARIANT 配对，需手动保持一致）
-    //   新 Z (MOONS' LE143S-W0601)：坐标翻转(firmware 正=物理左、朝 home 走 XACTUAL 增大)。
-    //     【2026-06-09 项目把正负限位传感器物理对调】：原负/home 端传感器移到正端、原正端
-    //     传感器移到负/home 端（连线随传感器走）→ 负/home 端现接 TMC4361A STOPR 引脚（原接 STOPL）。
-    //     该物理对调恰好抵消坐标翻转 → INVERT_STOP_DIRECTION 由 true 改 false（Z_FLIPPED=false）：
-    //       · home 逼近=正向内部速度，STOPR(默认)拦正向 → 正确在 home 硬停；
-    //       · 上限位移到 STOPL，拦负向 → 上限位过冲硬停。
-    //     STATUS：home 现接 STOPR 引脚、不翻转 → 直接读作 STOPR 位 → homingSwitch 仍 RGHT_SW（不变）。
-    //     极性 1；homing 仍以负限位为回零点(homing_direct=1)。
-    //     ⚠️ 对调后限位行为须重新上机实测：z_limit_monitor.py 验证 STOPL/STOPR 极性 + 上下硬停方向。
-    //     （对调前历史：home 接 STOPL，Z_FLIPPED=true，06-08 实测通过；见 git 历史）
-    //   旧 Z：标准约定，home 在右限位、极性 0、不翻转、chip 硬停启用。
-    // 这 7 个字段随变体切换；pitch/电流/微步由 GUI 下发覆盖、currentRange=1 两者通用。
-    // Z_INVERT_ENCODER：编码器计数方向 boot 默认（ENC-2/ENC-3）。**当前不生效**——
-    //   Z_AXIS.enableEncoder=false 把 begin() 里的编码器初始化 gate 掉，方向唯一由 runtime
-    //   的 CONFIGURE_STAGE_PID(constants.py encoder_flip_direction) 决定（运行时权威）。
-    //   仅当把下方 enableEncoder 改 true 时此 boot 值才生效，那时须与 constants.py 一致
-    //   （configureStagePID 已加不一致告警）。详见 documents/audit_octoaxesplus_20260608.md。
-    // ★ Z 变体软件化（2026-06-09）：限位极性现由上位机启动按 constants.py Z_AXIS_VARIANT
-    //    经 cmd 20 (SET_LIM_SWITCH_POLARITY) 下发 + reapplyLimitSwitches() 重写芯片。
-    //    → 切换新旧 Z 只需改 software/octoaxesplus/constants.py 一行 Z_AXIS_VARIANT，【无需重烧固件】。
-    //    下面的 #define 退化为「开机窗口安全默认」（GUI 配置前生效，配置后被下发值覆盖），
-    //    无需与软件保持一致。
-    #define Z_VARIANT_NEW    // 开机默认（注释掉=开机默认旧 Z）；运行时极性以软件下发为准
-    #ifdef Z_VARIANT_NEW
-      #define Z_HOMING_SWITCH  RGHT_SW
-      #define Z_SW_POLARITY    1
-      #define Z_ENABLE_LIMITS  true
-      #define Z_FLIPPED        false    // 2026-06-09 正负限位传感器对调后 home 接 STOPR 引脚，物理对调抵消坐标翻转 → 无需 INVERT_STOP_DIRECTION（对调前为 true，见上方说明）
-      #define Z_INVERT_ENCODER true     // 2026-06-08 实测 flip=1：ENC 跟随 XACTUAL(同向)，朝电机读数变小
-    #else
-      #define Z_HOMING_SWITCH  RGHT_SW
-      #define Z_SW_POLARITY    0
-      #define Z_ENABLE_LIMITS  true
-      #define Z_FLIPPED        false
-      #define Z_INVERT_ENCODER true     // 旧 Z 编码器默认禁用(has_encoder=False)，保留历史 true 值
-    #endif
+    // ★ Z 变体软件化：新旧 Z 切换只改 software/octoaxesplus/constants.py 的 Z_AXIS_VARIANT 一行
+    //   （GUI 启动下发 pitch/电流/微步 + 限位极性 cmd 20），【无需重烧固件、无需编译开关】。
+    //   06-09 正负限位传感器物理对调后，新旧 Z 在固件侧唯一差异 = 限位极性(new=1/old=0)，该极性
+    //   由上位机 cmd 20 (SET_LIM_SWITCH_POLARITY) 下发 + reapplyLimitSwitches() 重写芯片覆盖，
+    //   故已删除原 #define Z_VARIANT_NEW 编译开关（2026-06-09）。下面字段是「开机窗口默认」
+    //   （GUI 配置前生效，配置后被下发覆盖）；homingSwitch/翻转/enable/invertEncoder 新旧 Z 取值
+    //   本就一致，仅极性需软件区分，此处填 new 默认值 1。
+    //   06-09 传感器对调：home 端现接 STOPR 引脚不翻转 → homingSwitch=RGHT_SW、flipped=false、enable=true。
+    //   pitch/电流/微步由 GUI 下发覆盖、currentRange=1 两者通用。
+    //   invertEncoderDir：boot 默认（ENC-2/ENC-3），当前 enableEncoder=false 时不生效，方向由
+    //   runtime CONFIGURE_STAGE_PID(constants.py encoder_flip_direction) 决定（详见 audit_octoaxesplus_20260608.md）。
     const Axis::AxisConfig Z_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
-        .homingSwitch = Z_HOMING_SWITCH,      // 变体开关：新旧 Z 都 RGHT_SW（新 Z 2026-06-09 传感器对调后 home 接 STOPR 引脚、不翻转，直接读作 STOPR 位，见上方 Z_VARIANT_NEW）
-        .leftSwitchPolarity = Z_SW_POLARITY,  // 新 Z=1（极性与旧 Z 相反）/ 旧 Z=0
-        .rightSwitchPolarity = Z_SW_POLARITY,
+        .homingSwitch = RGHT_SW,         // 开机默认（新旧 Z 都 RGHT_SW；06-09 传感器对调后 home 接 STOPR 引脚不翻转、直接读作 STOPR 位）
+        .leftSwitchPolarity = 1,         // 开机默认=new(1)；运行时由软件 cmd 20 下发覆盖（old=0）
+        .rightSwitchPolarity = 1,
         .leftIsInactive = 0,
         .rightIsInactive = 0,
-        .leftFlipped = Z_FLIPPED,    // 变体开关：新 Z=false(2026-06-09 传感器对调抵消坐标翻转，无需 INVERT) / 旧 Z=false
-        .rightFlipped = Z_FLIPPED,   // 同上（INVERT_STOP_DIRECTION 单 bit，leftFlipped||rightFlipped 即置位）
-        .enableLeftLimitSwitch = Z_ENABLE_LIMITS,   // 新旧 Z 都 true（新 Z 2026-06-09 传感器对调后 home 接 STOPR / 上限位接 STOPL，无需 INVERT，chip 上下硬停正常）
-        .enableRightLimitSwitch = Z_ENABLE_LIMITS,  // 同上
+        .leftFlipped = false,    // 新旧 Z 都 false（06-09 传感器对调抵消坐标翻转，无需 INVERT_STOP_DIRECTION）
+        .rightFlipped = false,
+        .enableLeftLimitSwitch = true,   // 新旧 Z 都 true（chip 上下硬停正常）
+        .enableRightLimitSwitch = true,
         .r_sense = AxisConstDefinition::R_sense_z,
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_Z_MM,
         .fullStepsPerRev = AxisConstDefinition::FULLSTEPS_PER_REV_Z,
@@ -499,7 +473,7 @@ namespace AxisConfigs {
         .currentRange = 1,         // 2026-06-06 新 Z（LE143S 1.5A）借 octoaxesplus 板调试：TMC2240 I_FS=2A。currentRange 无下发协议、固件独有，必须在此设对（GUI 只发 currentMA，currentRange=0=I_FS1A 时 1500mA 会饱和算错）。旧 Z TMC2660 忽略此字段，安全
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Z_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Z),
-        .invertEncoderDir = Z_INVERT_ENCODER,   // 变体开关（ENC-3）：boot 默认编码器方向，runtime 被 GUI flip 覆盖
+        .invertEncoderDir = true,   // boot 默认（ENC-3，当前 enableEncoder=false 时不生效）；runtime 由 GUI CONFIGURE_STAGE_PID 按 constants.py encoder_flip_direction 覆盖
         .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
     };
 
