@@ -24,6 +24,7 @@ _Z_VARIANTS = {
         "has_encoder": False,                  # 旧 Z 编码器禁用（与旧 Squid USE_ENCODER_Z=False 一致）
         "encoder_flip_direction": True,
         "switch_polarity": 0,                  # 旧 Z 限位极性=0（GUI 启动 cmd 20 下发，固件无需重烧切换）
+        "homing_velocity_mm": 1.0,             # 旧 Z homing 速度（GUI 启动 S:SET_HOMING_VEL 下发；固件开机默认也是 1）
     },
     "new": {
         "actuator_screw_pitch_mm": 1.0,       # W0601 导程 1mm
@@ -33,6 +34,7 @@ _Z_VARIANTS = {
         "has_encoder": True,                   # 2026-06-08 新 Z 编码器实测验证通过(ratio≈1/dev有界)，默认启用
         "encoder_flip_direction": True,        # flip=1：实测 enc 与 xactual 同向需翻转
         "switch_polarity": 1,                  # 新 Z 限位极性=1（与旧 Z 相反，06-09 传感器对调后唯一固件差异，现走 cmd 20 下发）
+        "homing_velocity_mm": 2.0,             # 新 Z homing 速度（GUI 启动 S:SET_HOMING_VEL 下发提速，避免长行程 ~34.5mm 回零超时；固件开机默认 1）
     },
 }
 

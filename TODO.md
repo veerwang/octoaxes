@@ -26,6 +26,16 @@
 - [x] **彻底删除 Z_VARIANT_NEW 编译开关 + 死掉的 S:ZVARIANT tripwire**（2026-06-09 续，用户拍板）— 软件化实测通过后，固件 `#define Z_VARIANT_NEW` 已无操作意义（唯一差异极性走软件下发，其余宏新旧全相同），联动的 S:ZVARIANT 上报 + GUI tripwire 全是死代码。改 5 文件净删 ~117 行：2× config.h（删宏开关，Z_AXIS 字段改字面值，极性开机默认 1/运行时软件覆盖）+ 2× serial.cpp（删 S:ZVARIANT 命令）+ 1× main_window.py（删 tripwire 链：import/_z_variant_mismatch/_z_op_blocked+3 调用/响应处理/启动查询）。两固件 SUCCESS、双 profile 加载、py_compile OK、全仓库无残留代码引用。
 - [ ] （可选）push develop → github/main。
 
+### 2026-06-09 续二 Z homing 速度软件化（drop-in 等价修复）
+
+> 排查「旧 Z + octoaxes 固件 + 旧 Squid」发现 `HOMING_VELOCITY_Z_MM` 06-08 为新 Z 改 1→2mm/s，但旧 Squid/octoaxes GUI 都无 homing 速度下发通道 → 旧 Z 被迫 2mm/s 回零（破坏 drop-in、过冲 4×）。矛盾：新 Z 行程 34.5mm 需 2mm/s 防超时，旧 Z 行程 6mm 要 1mm/s 防过冲。详见 SESSION.md 2026-06-09 续二 + `documents/oldsquid_newz_adaptation.md`。
+
+- [x] **固件开机默认 `HOMING_VELOCITY_Z_MM` 2→1**（两 config.h）—— 旧 Z + 旧 Squid 恢复历史 1mm/s drop-in 等价。
+- [x] **Z `homing_timeout_ms` 40000→60000**（两 config.h）—— 给「新 Z + 旧 Squid」(只能用默认 1mm/s) 留超时余量。
+- [x] **GUI 启动按变体下发 `S:SET_HOMING_VEL`**（复用固件现成诊断命令）—— `_Z_VARIANTS` 加 `homing_velocity_mm`(old=1/new=2)，`_configure_actuators` profile-safe 下发。新 Z 经 GUI 仍享 2mm/s。
+- [x] **验证**：两固件 SUCCESS；两 profile Z homing_velocity_mm(old=1/new=2)；py_compile OK。4 组合全稳。
+- [x] **配套文档**：`documents/oldsquid_newz_adaptation.md`（旧 Squid 适配新 Z 清单）+ `Squid/software/configuration_HCS_v2_newZ.ini`（示例配置，仅改 5 Z 值，在旧 Squid 仓库不纳本仓提交）。
+
 ### 2026-06-08 续 newz→develop 合并 + octoaxes 主线新 Z 适配
 
 - [x] **newz 分支 Z 工作合并进 develop**（a4fdf27..46b30a5，19 提交压成单提交 `714fb32`）— cherry-pick 策略（newz 建在 objectives 路线、develop 走 Turret 路线，共享文件冲突）。冲突解决：serial.cpp VERSION→119；TODO/SESSION markdown 并集（newz Z 记录 + develop Turret/历史全留）。两固件编译 + 两 profile 加载 + py_compile 全通过。

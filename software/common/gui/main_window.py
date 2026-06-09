@@ -1551,6 +1551,19 @@ class TeensyControlGUI(QMainWindow):
                     f"Limit switch polarity configured: {axis_name} polarity={switch_polarity}"
                 )
 
+            # S:SET_HOMING_VEL <axis> <vel>：仅对带 homing_velocity_mm 的轴下发（目前 = Z 变体）。
+            # 固件开机默认 homing 速度=1mm/s（对旧 Z 安全、旧 Squid 无下发通道只能用默认）；
+            # 新 Z 在此被提到 2mm/s 避免长行程(~34.5mm)回零超时。profile-safe：无此键自动跳过。
+            homing_velocity = config.get("homing_velocity_mm")
+            if homing_velocity is not None:
+                self.send_command(
+                    f"S:SET_HOMING_VEL {axis_name} {float(homing_velocity)}",
+                    "Sent homing velocity",
+                )
+                self.log(
+                    f"Homing velocity configured: {axis_name} vel={homing_velocity}mm/s"
+                )
+
             self.log(
                 f"Actuator configured: {axis_name} pitch={pitch_mm}mm "
                 f"microsteps={microstepping} current={current_ma}mA hold={hold_ratio}"

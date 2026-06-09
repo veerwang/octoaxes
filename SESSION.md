@@ -58,6 +58,18 @@
 - **1× main_window.py**：删整条 tripwire 链 —— `Z_AXIS_VARIANT` import、`_z_variant_mismatch`、`_z_op_blocked` 方法 + 3 处调用、S:ZVARIANT 响应处理、启动查询发送。
 - 验证：两固件编译 SUCCESS；两 profile 加载（octoaxes new→极性1/导程1.0，octoaxesplus old→极性0/导程0.3）；py_compile OK；全仓库无残留代码引用（只剩 2 行「已删除」历史注释）。
 
+### Z homing 速度软件化（2026-06-09 续二）
+
+排查「旧 Z + octoaxes 固件 + 旧 Squid」场景时发现：`HOMING_VELOCITY_Z_MM` 在 06-08 为新 Z 从 1→2mm/s，但**旧 Squid 和 octoaxes GUI 启动都没有下发 homing 速度的通道** → 旧 Z 在旧 Squid 下被迫以 2mm/s 回零（破坏 drop-in 等价、过冲 ~4×）。矛盾：新 Z 行程 ~34.5mm 需 2mm/s 防超时，旧 Z 行程 ~6mm 要 1mm/s 防过冲，单值难两全。
+
+采用推荐三步方案（用户拍板）：
+1. **固件开机默认 `HOMING_VELOCITY_Z_MM` 2→1**（两 config.h）—— 旧 Z + 旧 Squid 恢复历史 1mm/s（drop-in 等价；旧 Squid 无下发通道，只能用此默认）。
+2. **Z `homing_timeout_ms` 40000→60000**（两 config.h）—— 给「新 Z + 旧 Squid」(只能用默认 1mm/s、行程 34.5mm、最坏 34.5s) 留足余量，加大无副作用。
+3. **octoaxes/octoaxesplus GUI 启动按变体下发 `S:SET_HOMING_VEL`**（复用固件现成诊断命令）—— `_Z_VARIANTS` 加 `homing_velocity_mm`(old=1/new=2)，`_configure_actuators` 对带此键的轴发 ASCII 命令（profile-safe）。新 Z 经 octoaxes GUI 仍享 2mm/s。
+- 结果 4 组合全稳：旧 Squid+旧 Z=1✓ / 旧 Squid+新 Z=1+60s✓ / GUI+旧 Z=下发1✓ / GUI+新 Z=下发2✓。
+- 验证：两固件 SUCCESS；两 profile 加载 Z homing_velocity_mm（old=1/new=2）；py_compile OK。
+- 配套产出：`documents/oldsquid_newz_adaptation.md`（旧 Squid 适配新 Z 清单）+ `Squid/software/configuration_HCS_v2_newZ.ini`（旧 Squid 示例配置，仅改 5 个 Z 值）。
+
 ### 下次
 
 1. （可选）push develop → github/main

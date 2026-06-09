@@ -180,7 +180,7 @@ namespace AxisConstDefinition {
 
 		const float HOMING_VELOCITY_X_MM = 10;
 		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 实测确定：256 微步 + 30 mm/s 最安静
-		const float HOMING_VELOCITY_Z_MM = 2;   // 2026-06-08 新 Z（LE143S）：1→2 mm/s（导程 1mm 转速降，提速 +100%）
+		const float HOMING_VELOCITY_Z_MM = 1;   // 开机安全默认=1mm/s（旧 Z 历史值，drop-in 等价；旧 Squid 无 homing 速度下发通道，只能用此默认）。新 Z 由 octoaxes GUI 启动按变体下发 S:SET_HOMING_VEL 提到 2mm/s（避免长行程回零超时）
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
 
@@ -391,7 +391,7 @@ namespace AxisConfigs {
         .useSShapedRamp = true,
         .astartMM = 0,
         .dfinalMM = 0,
-        .homing_timeout_ms = 40000,   // 2026-06-08 新 Z：20000→40000（×2，配合 homing 提速 + 行程余量）
+        .homing_timeout_ms = 60000,   // 60s：给「新 Z + 旧 Squid」(只能用默认 1mm/s、行程 ~34.5mm、最坏 ~34.5s) 留足余量。加大超时无副作用
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
         .currentRange = 1,         // 2026-06-03 newz：TMC2240 ICS I_FS=2A（新 Z 1.5A 需要）。对新旧 Z 板都安全：旧 Z=TMC2660 忽略此字段（走 R_sense），新 Z=TMC2240 用它 → 一个固件通吃
