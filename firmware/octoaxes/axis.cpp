@@ -1016,6 +1016,23 @@ void Axis::setHomeSafetyMargin(float marginMM) {
                           mmToMicrosteps(marginMM));
 }
 
+// 运行时把 _config 限位配置重写进芯片（极性现由上位机 cmd 20 下发，须重应用才生效）
+void Axis::reapplyLimitSwitches() {
+  LimitConfig limitConfig = {
+      .enableLeft = _config.enableLeftLimitSwitch,
+      .enableRight = _config.enableRightLimitSwitch,
+      .leftPolarity = _config.leftSwitchPolarity,
+      .rightPolarity = _config.rightSwitchPolarity,
+      .leftFlipped = _config.leftFlipped,
+      .rightFlipped = _config.rightFlipped,
+      .homingSwitch = _config.homingSwitch,
+      .homeSafetyMarginMM = _config.homeSafetyMarginMM};
+  motor_configLimitSwitches(_icID, &limitConfig);
+  motor_enableHomingLimit(_icID, _config.rightSwitchPolarity,
+                          _config.homingSwitch,
+                          mmToMicrosteps(_config.homeSafetyMarginMM));
+}
+
 // 获取当前状态
 AxisState Axis::getCurrentState() const { return _currentState; }
 

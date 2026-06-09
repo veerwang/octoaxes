@@ -368,7 +368,12 @@ namespace AxisConfigs {
     //   pitch/电流/微步由 GUI 下发覆盖、currentRange=1 两板通用。
     //   Z_INVERT_ENCODER：编码器 boot 默认（ENC-3），当前 enableEncoder=false 时不生效，方向由
     //     runtime CONFIGURE_STAGE_PID(constants.py encoder_flip_direction) 决定。
-    #define Z_VARIANT_NEW    // ← 注释掉此行 = 旧 Z（默认新 Z，与 constants.py Z_AXIS_VARIANT="new" 一致）
+    // ★ Z 变体软件化（2026-06-09）：限位极性现由上位机启动按 constants.py Z_AXIS_VARIANT
+    //    经 cmd 20 (SET_LIM_SWITCH_POLARITY) 下发 + reapplyLimitSwitches() 重写芯片。
+    //    → 切换新旧 Z 只需改 software/octoaxes/constants.py 一行 Z_AXIS_VARIANT，【无需重烧固件】。
+    //    下面的 #define 退化为「开机窗口安全默认」（GUI 配置前生效，配置后被下发值覆盖），
+    //    无需与软件保持一致；保留新 Z 默认贴合当前在装硬件。
+    #define Z_VARIANT_NEW    // 开机默认（注释掉=开机默认旧 Z）；运行时极性以软件下发为准
     #ifdef Z_VARIANT_NEW
       #define Z_HOMING_SWITCH  RGHT_SW
       #define Z_SW_POLARITY    1

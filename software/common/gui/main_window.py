@@ -847,21 +847,21 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"Firmware version: {version}")
             return
 
-        # Z 变体一致性 tripwire：S:ZVARIANT:new / S:ZVARIANT:old
+        # Z 变体上报：S:ZVARIANT:new / S:ZVARIANT:old —— 仅信息日志，不再拦截。
+        # 自「Z 变体软件化」后，限位极性由 GUI 启动 cmd 20 按 Z_AXIS_VARIANT 下发，
+        # 软件成为唯一权威源 → 固件 #define Z_VARIANT_NEW 退化为开机安全默认，与软件
+        # 不一致是合法的（软件下发会覆盖），故不再设 _z_variant_mismatch、不拦 Z 操作。
         if data.startswith("S:ZVARIANT:"):
             fw_variant = data.split(":")[-1].strip()
             sw_variant = Z_AXIS_VARIANT
+            self._z_variant_mismatch = False
             if sw_variant is not None and fw_variant in ("new", "old") and fw_variant != sw_variant:
-                self._z_variant_mismatch = True
-                self.log("=" * 52)
-                self.log(f"⚠️ Z 变体不一致！固件={fw_variant} / 软件 Z_AXIS_VARIANT={sw_variant}")
-                self.log("   已拦截 Z 轴 home/move，防止错配（如新变体 1500mA 怼旧电机/限位方向反）。")
-                self.log("   修正：固件 config.h 的 #define Z_VARIANT_NEW 与软件 constants.py")
-                self.log("   的 Z_AXIS_VARIANT 必须一致（改固件需重烧）。")
-                self.log("=" * 52)
+                self.log(
+                    f"Z 变体：固件开机默认={fw_variant} / 软件 Z_AXIS_VARIANT={sw_variant}"
+                    "（限位极性已由软件下发覆盖，固件默认仅开机窗口生效，无需重烧）"
+                )
             else:
-                self._z_variant_mismatch = False
-                self.log(f"Z 变体一致性 OK（固件={fw_variant} / 软件={sw_variant}）")
+                self.log(f"Z 变体：固件={fw_variant} / 软件={sw_variant}")
             return
 
         # 处理硬件信息响应: S:HWINFO:<axis>:TMC4361A+<driver>
@@ -1578,6 +1578,21 @@ class TeensyControlGUI(QMainWindow):
             cmd[5] = current_int & 0xFF
             cmd[6] = hold_byte
             self.serial_thread.send_binary_command(cmd)
+
+            # SET_LIM_SWITCH_POLARITY (cmd 20): data[2]=axis, data[3]=极性(0/1)
+            # 仅对带 switch_polarity 的轴下发（目前 = Z 变体），profile-safe：
+            # 其他轴 AXIS_CONFIG 无此键自动跳过。这是「Z 变体软件化」的落点 ——
+            # 切换新旧 Z 只改 constants.py Z_AXIS_VARIANT，固件极性随之下发，无需重烧。
+            switch_polarity = config.get("switch_polarity")
+            if switch_polarity is not None:
+                cmd = bytearray(8)
+                cmd[1] = CMD_SET.SET_LIM_SWITCH_POLARITY
+                cmd[2] = protocol_axis
+                cmd[3] = int(switch_polarity) & 0xFF
+                self.serial_thread.send_binary_command(cmd)
+                self.log(
+                    f"Limit switch polarity configured: {axis_name} polarity={switch_polarity}"
+                )
 
             self.log(
                 f"Actuator configured: {axis_name} pitch={pitch_mm}mm "

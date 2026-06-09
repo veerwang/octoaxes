@@ -236,6 +236,9 @@ public:
   void configureDriver(uint16_t microstepping, float currentMA,
                         float holdCurrentRatio);
   void setHomeSafetyMargin(float marginMM);
+  // 运行时把 _config 里的限位极性/翻转/使能/homingSwitch 重新写进芯片 REFERENCE_CONF。
+  // begin() 只在开机配置一次，cmd 20 (SET_LIM_SWITCH_POLARITY) 改完结构体后须调本方法才真正生效。
+  void reapplyLimitSwitches();
 
   // 配置访问
   uint8_t getIcID() const { return _icID; }

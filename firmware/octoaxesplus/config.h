@@ -446,7 +446,12 @@ namespace AxisConfigs {
     //   的 CONFIGURE_STAGE_PID(constants.py encoder_flip_direction) 决定（运行时权威）。
     //   仅当把下方 enableEncoder 改 true 时此 boot 值才生效，那时须与 constants.py 一致
     //   （configureStagePID 已加不一致告警）。详见 documents/audit_octoaxesplus_20260608.md。
-    #define Z_VARIANT_NEW    // ← 注释掉此行 = 旧 Z
+    // ★ Z 变体软件化（2026-06-09）：限位极性现由上位机启动按 constants.py Z_AXIS_VARIANT
+    //    经 cmd 20 (SET_LIM_SWITCH_POLARITY) 下发 + reapplyLimitSwitches() 重写芯片。
+    //    → 切换新旧 Z 只需改 software/octoaxesplus/constants.py 一行 Z_AXIS_VARIANT，【无需重烧固件】。
+    //    下面的 #define 退化为「开机窗口安全默认」（GUI 配置前生效，配置后被下发值覆盖），
+    //    无需与软件保持一致。
+    #define Z_VARIANT_NEW    // 开机默认（注释掉=开机默认旧 Z）；运行时极性以软件下发为准
     #ifdef Z_VARIANT_NEW
       #define Z_HOMING_SWITCH  RGHT_SW
       #define Z_SW_POLARITY    1
