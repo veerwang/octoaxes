@@ -38,7 +38,7 @@ _Z_VARIANTS = {
     },
     "new": {
         "display_name": "Step Motor - new z_axis",
-        "limits": (-100, 34000),   # 2026-06-08 实测新 Z 行程上限位≈34.5mm(STOPR 开关)，留 0.5mm 余量→34mm；下限 -10um 同 X/Y
+        "limits": (-100, 30000),   # 上限 30mm（保守余量，2026-06-08 实测行程上限位≈34.5mm STOPR 开关）；下限 -100um
         "actuator_screw_pitch_mm": 1.0,       # W0601 导程 1mm
         "actuator_motor_current_ma": 1500,    # LE143S 额定 1.5A（TMC2240 路径=峰值，IRUN=23）
         "actuator_motor_hold_ratio": 0.75,    # 竖直 Z 防重力下坠
