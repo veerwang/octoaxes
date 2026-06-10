@@ -17,6 +17,8 @@ Z_AXIS_VARIANT = "old"
 
 _Z_VARIANTS = {
     "old": {
+        "display_name": "Step Motor - old z_axis",
+        "limits": (-100, 6000),
         "actuator_screw_pitch_mm": 0.3,
         "actuator_motor_current_ma": 500,    # 峰值电流
         "actuator_motor_hold_ratio": 0.5,
@@ -27,6 +29,8 @@ _Z_VARIANTS = {
         "homing_velocity_mm": 1.0,             # 旧 Z homing 速度（GUI 启动 S:SET_HOMING_VEL 下发；固件开机默认也是 1）
     },
     "new": {
+        "display_name": "Step Motor - new z_axis",
+        "limits": (-100, 30000),   # 上限 30mm（保守余量，实测行程上限位≈34.5mm STOPR 开关）；下限 -100um。⚠️octoaxes 主线板未实测
         "actuator_screw_pitch_mm": 1.0,       # W0601 导程 1mm
         "actuator_motor_current_ma": 1500,    # LE143S 额定 1.5A（TMC2240 路径=峰值，IRUN=23）
         "actuator_motor_hold_ratio": 0.75,    # 竖直 Z 防重力下坠
@@ -79,16 +83,14 @@ AXIS_CONFIG = {
         "actuator_motor_hold_ratio": 0.25,
     },
     "Z": {
-        "display_name": "Step Motor - z_axis",
         "type": "step_motor",
         "has_limits": True,
-        "limits": (-6000, 6000),
         "movement_sign": -1,
         "index": 2,
         "default_velocity": 3.0,
         "default_acceleration": 20.0,
         "actuator_microstepping": 256,  # 新旧 Z 共用
-        # has_encoder / flip / pitch / 电流 / hold / encoder_transitions 由 Z_AXIS_VARIANT 决定（见文件顶部开关）
+        # display_name / limits / has_encoder / flip / pitch / 电流 / hold / encoder_transitions 由 Z_AXIS_VARIANT 决定（见文件顶部开关）
         **_Z_VARIANTS[Z_AXIS_VARIANT],
     },
     "W": {
