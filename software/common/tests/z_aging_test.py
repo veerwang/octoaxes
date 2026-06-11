@@ -24,6 +24,7 @@
 用法：
   python3 software/common/tests/z_aging_test.py                       # 默认 1 圈
   python3 software/common/tests/z_aging_test.py --cycles 100           # 100 圈老化
+  python3 software/common/tests/z_aging_test.py --cycles 0             # 无限循环到 Ctrl-C
   python3 software/common/tests/z_aging_test.py --step-um 1000 --fwd 26 --bwd 25 --dwell 0.5
   python3 software/common/tests/z_aging_test.py --dry-run              # 只打印参数，不连硬件
 """
@@ -67,7 +68,8 @@ def main():
                     choices=["octoaxes", "octoaxesplus"])
     ap.add_argument("--port", default="/dev/ttyACM0")
     ap.add_argument("--baud", type=int, default=2000000)
-    ap.add_argument("--cycles", type=int, default=1, help="循环圈数（默认 1，先看逻辑）")
+    ap.add_argument("--cycles", type=int, default=1,
+                    help="循环圈数（默认 1；0 = 无限循环直到 Ctrl-C 中断）")
     ap.add_argument("--step-um", type=float, default=1000.0, help="单次点动距离 µm（默认 1000）")
     ap.add_argument("--fwd", type=int, default=26, help="正方向点动次数（默认 26）")
     ap.add_argument("--bwd", type=int, default=25, help="反方向点动次数（默认 25）")
@@ -118,7 +120,7 @@ def main():
     print(f"  预估峰值位置 ≈ GUI +{peak_um/1000:.0f}mm | 单圈结束 ≈ GUI +{end_um/1000:.0f}mm")
     print(f"  单步预期耗时 ≈ {expected_step_t:.2f}s (vel={move_vel}mm/s acc={accel}mm/s²) "
           f"→ deadline {step_deadline:.2f}s（超时即读状态判卡）")
-    print(f"  循环圈数 = {args.cycles}")
+    print(f"  循环圈数 = {'∞（无限，Ctrl-C 停）' if args.cycles <= 0 else args.cycles}")
     print("=" * 66)
     if peak_um > high_um:
         print(f"[WARN] 峰值 +{peak_um/1000:.0f}mm 超过软上限 {high_um/1000:.0f}mm，"
@@ -225,10 +227,14 @@ def main():
 
     stall_min = nominal_us * args.stall_frac
     cycles_ok = 0
+    infinite = args.cycles <= 0           # --cycles 0 = 无限循环到 Ctrl-C
+    total_label = "∞" if infinite else str(args.cycles)
     try:
         abort = False
-        for c in range(1, args.cycles + 1):
-            print(f"\n──── 第 {c}/{args.cycles} 圈 ────")
+        c = 0
+        while infinite or c < args.cycles:
+            c += 1
+            print(f"\n──── 第 {c}/{total_label} 圈 ────")
             print("  [HOME] ...")
             r = wait_home()
             if r is None:
@@ -279,15 +285,17 @@ def main():
                 break
 
             cycles_ok += 1
-            print(f"  [OK] 第 {c} 圈完成（末位 GUI={gui_um(x_prev):.0f}µm）")
+            print(f"  [OK] 第 {c} 圈完成（累计 {cycles_ok} 圈，末位 GUI={gui_um(x_prev):.0f}µm）")
     except KeyboardInterrupt:
         print("\n[INFO] 用户中断 (Ctrl-C)。")
     finally:
         ser.close()
 
     print("\n" + "=" * 66)
-    print(f"老化测试结束：完成 {cycles_ok}/{args.cycles} 圈")
+    print(f"老化测试结束：完成 {cycles_ok}/{total_label} 圈")
     print("=" * 66)
+    if infinite:
+        return 0 if not abort else 1
     return 0 if cycles_ok == args.cycles else 1
 
 

@@ -81,3 +81,26 @@ GUI **+21mm 以上** STATUS 多出 bit14（`0x01001801→0x01005801`），回到
 
 测试时连接固件 **VERSION 106**（旧），X/Y/Z/W 全 TMC2240。本次结论（点动可行、MOVETO 高速失步）
 在该固件下成立；换最新主线固件（118+）后建议复测一遍以确认无差异。
+
+## 6. GUI 集成 + 无限模式（2026-06-11）
+
+### 6.1 命令行脚本无限模式
+
+`z_aging_test.py --cycles 0` = **无限循环直到 Ctrl-C**，用于长期老化；中断/异常汇报累计完成圈数。
+
+### 6.2 集成进 GUI 测试面板（IntegrationTestPanel）
+
+把老化测试做成「集成测试」Tab 的一个**专属测试项**，长时序在后台 QThread 运行、不阻塞 UI：
+
+- **`ZAgingWorker(QThread)`**（`software/common/gui/test_panel.py`）：单圈 HOME→正26→反25，循环
+  N 圈。完成判定同脚本（预期耗时 sleep + 位置稳定 + 单步位移≈标称校验）。位置/状态读
+  `main_window.axis_manager.get_axis_status("Z")`（GUI 持续接收的 24 字节广播包），命令走
+  `serial_thread.send_binary_command`（线程安全）。固件配置已由 GUI 启动 `_configure_actuators`
+  下发，worker 不重复下发。profile-safe（读 AXIS_CONFIG["Z"]，新旧 Z 自动适配）。
+- **轮数输入框（默认 200）**放在**老化测试那一行的 Action 单元格**（`轮数:[200] [Run]`），
+  明确是本测试专属参数，不放顶部全局栏以免误解。
+- **Run/Stop 单项停止**：运行中按钮变**红色 Stop**，点击后 worker 走完当前步安全停下，
+  汇报「已完成 N/M 圈」；Reset Results / 关窗 / 未连接 均安全处理（关窗 `closeEvent` stop+wait
+  防悬挂线程）。该测试**排除在 Run All 批量之外**（长时序）。
+- 实时进度（第几圈/第几步/Z 位置/Δ）显示在该行 Details；失步/卡住立即停并报第几圈第几步。
+- 接线：`main_window` 创建面板后注入 `test_panel.main_window = self`，worker 据此发命令 + 读状态。
