@@ -288,6 +288,7 @@ class TeensyControlGUI(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         self.test_panel = IntegrationTestPanel()
+        self.test_panel.main_window = self   # 老化测试 worker 需发命令 + 读 axis 状态
         self.test_panel.request_send_command.connect(
             lambda cmd: self.send_command(cmd, "Test"))
         self.test_panel.log_message.connect(self.log)
@@ -1599,6 +1600,13 @@ class TeensyControlGUI(QMainWindow):
         # 停止所有定时器
         self.startup_timer.stop()
         self.status_timer.stop()
+
+        # 停止 Z 老化测试后台线程（若在跑）
+        if hasattr(self, "test_panel") and self.test_panel is not None:
+            worker = getattr(self.test_panel, "_aging_worker", None)
+            if worker is not None:
+                worker.stop()
+                worker.wait(2000)
 
         # 关闭串口连接
         if self.serial_thread:
