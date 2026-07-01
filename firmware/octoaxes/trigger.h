@@ -5,20 +5,20 @@
 #include "config.h"
 
 // =============================================================================
-// 触发模式常量
+// Trigger-mode constants
 // =============================================================================
 
-const uint8_t TRIGGER_MODE_NORMAL = 0;  // 固定 50μs 脉冲
-const uint8_t TRIGGER_MODE_LEVEL  = 1;  // 电平触发（strobe_delay + on_time）
+const uint8_t TRIGGER_MODE_NORMAL = 0;  // fixed 50us pulse
+const uint8_t TRIGGER_MODE_LEVEL  = 1;  // level trigger (strobe_delay + on_time)
 
-// 触发脉冲参数
+// Trigger-pulse parameters
 const int TRIGGER_PULSE_LENGTH_us = 50;
 const int NUM_TRIGGER_CHANNELS = 4;
 
-// 频闪定时器间隔
+// Strobe timer interval
 const int STROBE_TIMER_INTERVAL_us = 100;
 
-// 相机触发引脚映射
+// Camera-trigger pin mapping
 const int camera_trigger_pins[NUM_TRIGGER_CHANNELS] = {
     Pins::CAMERA_TRIGGER_1,  // pin 29
     Pins::CAMERA_TRIGGER_2,  // pin 30
@@ -27,7 +27,7 @@ const int camera_trigger_pins[NUM_TRIGGER_CHANNELS] = {
 };
 
 // =============================================================================
-// 状态变量（extern 声明，定义在 trigger.cpp）
+// State variables (extern declarations, defined in trigger.cpp)
 // =============================================================================
 
 extern bool          trigger_output_level[NUM_TRIGGER_CHANNELS];
@@ -39,7 +39,7 @@ extern uint32_t      illumination_on_time_us[NUM_TRIGGER_CHANNELS];
 extern unsigned long timestamp_trigger_rising_edge[NUM_TRIGGER_CHANNELS];
 extern volatile uint8_t trigger_mode;
 
-// Joystick 状态
+// Joystick state
 extern bool          joystick_button_pressed;
 extern unsigned long joystick_button_pressed_timestamp;
 
@@ -47,13 +47,13 @@ extern unsigned long joystick_button_pressed_timestamp;
 // API
 // =============================================================================
 
-// 初始化触发系统：引脚、状态数组、定时器
+// Initialize the trigger system: pins, state arrays, timer
 void trigger_init();
 
-// 主循环调用：管理触发脉冲恢复（HIGH 电平）
+// Called from the main loop: manage trigger-pulse recovery (HIGH level)
 void trigger_update();
 
-// 定时器中断回调：管理频闪照明时序
+// Timer interrupt callback: manage strobe-illumination timing
 void ISR_strobeTimer();
 
 #endif // TRIGGER_H

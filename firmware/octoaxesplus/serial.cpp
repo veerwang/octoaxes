@@ -2,7 +2,7 @@
 #include "axesmrg.h"
 #include "build_opt.h"
 #include "commandprocessor.h"
-#include "config.h"   // squid++：HC154 调试命令需要 hc154_select 与 HC154_Channel
+#include "config.h"   // squid++: the HC154 debug commands need hc154_select and HC154_Channel
 #include "illumination.h"
 #include "joystick.h"
 #include "trigger.h"
@@ -10,16 +10,16 @@
 #include "tmc/ic/TMC4361A/TMC4361A.h"
 #include <stdarg.h>
 
-// 协议状态字节
+// Protocol status bytes
 static const uint8_t STATUS_COMPLETED    = 0;
 static const uint8_t STATUS_IN_PROGRESS  = 1;
 static const uint8_t STATUS_CRC_ERROR    = 2;
 
-// 固件版本（byte[22]：高半字节=主版本，低半字节=次版本）
+// firmware version (byte[22]: high nibble=major, low nibble=minor)
 static const uint8_t FIRMWARE_VERSION_MAJOR = 1;
 static const uint8_t FIRMWARE_VERSION_MINOR = 7;
 
-// 位置上报周期（10ms，与旧 Squid 一致）
+// position-report period (10ms, consistent with legacy Squid)
 static const uint32_t INTERVAL_SEND_POS_US = 10000;
 
 static const uint8_t CRC_TABLE[256] = {
@@ -62,7 +62,7 @@ void SerialProtocolHandler::begin(long baudRate, uint32_t timeout) {
   SerialUSB.setTimeout(timeout);
   buffer_rx_ptr = 0;
   while (!SerialUSB) {
-    ; // 等待串口连接
+    ; // wait for the serial connection
   }
 }
 
@@ -74,7 +74,7 @@ void SerialProtocolHandler::sendDebugInfo(const char *format, ...) {
   vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
 
-  // 发送带协议头的调试信息
+  // send debug info with the protocol header
   DEBUG_PRINTLN(buffer);
 }
 
@@ -94,7 +94,7 @@ uint8_t SerialProtocolHandler::crc8ccitt(byte *data, uint8_t n) {
 bool SerialProtocolHandler::checkForCommand() {
   bool commandReceived = false;
 
-  // 读取串口数据
+  // read serial data
   while (SerialUSB.available()) {
     buffer_rx[buffer_rx_ptr] = SerialUSB.read();
     buffer_rx_ptr = buffer_rx_ptr + 1;
@@ -103,11 +103,11 @@ bool SerialProtocolHandler::checkForCommand() {
       buffer_rx_ptr = 0;
       cmd_id = buffer_rx[0];
 
-      // 校验和检查
+      // checksum check
       uint8_t checksum = crc8ccitt(buffer_rx, CMD_LENGTH - 1);
       if (checksum != buffer_rx[CMD_LENGTH - 1]) {
         checksum_error = true;
-        // 清空串口缓冲区，因为字节级不同步也可能导致此错误
+        // flush the serial buffer, since byte-level desync can also cause this error
         while (SerialUSB.available()) {
           SerialUSB.read();
         }
@@ -117,7 +117,7 @@ bool SerialProtocolHandler::checkForCommand() {
         commandReceived = true;
         watchdog_reset_timer();
       }
-      break; // 一次只处理一个命令
+      break; // process only one command at a time
     }
   }
 
@@ -134,40 +134,40 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
   buffer_tx[0] = cmd_id;
   buffer_tx[1] = status;
 
-  // X 轴位置 (bytes 2-5)
+  // X-axis position (bytes 2-5)
   buffer_tx[2] = byte(x_pos >> 24);
   buffer_tx[3] = byte((x_pos >> 16) & 0xFF);
   buffer_tx[4] = byte((x_pos >> 8) & 0xFF);
   buffer_tx[5] = byte(x_pos & 0xFF);
 
-  // Y 轴位置 (bytes 6-9)
+  // Y-axis position (bytes 6-9)
   buffer_tx[6] = byte(y_pos >> 24);
   buffer_tx[7] = byte((y_pos >> 16) & 0xFF);
   buffer_tx[8] = byte((y_pos >> 8) & 0xFF);
   buffer_tx[9] = byte(y_pos & 0xFF);
 
-  // Z 轴位置 (bytes 10-13)
+  // Z-axis position (bytes 10-13)
   buffer_tx[10] = byte(z_pos >> 24);
   buffer_tx[11] = byte((z_pos >> 16) & 0xFF);
   buffer_tx[12] = byte((z_pos >> 8) & 0xFF);
   buffer_tx[13] = byte(z_pos & 0xFF);
 
-  // W 轴位置 (bytes 14-17)
+  // W-axis position (bytes 14-17)
   buffer_tx[14] = byte(w_pos >> 24);
   buffer_tx[15] = byte((w_pos >> 16) & 0xFF);
   buffer_tx[16] = byte((w_pos >> 8) & 0xFF);
   buffer_tx[17] = byte(w_pos & 0xFF);
 
-  // 状态位 byte[18]：bit0 = 摇杆按钮
+  // status byte byte[18]: bit0 = joystick button
   static const int BIT_POS_JOYSTICK_BUTTON = 0;
   buffer_tx[18] = (joystick_button_pressed ? (1 << BIT_POS_JOYSTICK_BUTTON) : 0);
 
-  // bytes[19-21]: 保留
+  // bytes[19-21]: reserved
 
-  // 固件版本 byte[22]：高半字节=主版本，低半字节=次版本
+  // firmware version byte[22]: high nibble=major, low nibble=minor
   buffer_tx[22] = (FIRMWARE_VERSION_MAJOR << 4) | (FIRMWARE_VERSION_MINOR & 0x0F);
 
-  // CRC-8-CCITT 校验（对 byte[0..22] 计算）
+  // CRC-8-CCITT checksum (computed over byte[0..22])
   uint8_t checksum = crc8ccitt(buffer_tx, MSG_LENGTH - 1);
   buffer_tx[MSG_LENGTH - 1] = checksum;
 
@@ -177,15 +177,15 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
 void SerialProtocolHandler::sendExtendedResponse(byte status,
                                                  const int32_t positions[8],
                                                  bool joystick_button_pressed) {
-  // octoaxesplus 扩展位置广播包（40 字节）
-  // 协议详见 documents/octoaxesplus_protocol_v2_40byte.md
+  // octoaxesplus extended position broadcast packet (40 bytes)
+  // protocol details in documents/octoaxesplus_protocol_v2_40byte.md
   byte buffer_tx[EXTENDED_MSG_LENGTH];
   memset(buffer_tx, 0, EXTENDED_MSG_LENGTH);
 
-  buffer_tx[0] = EXTENDED_POS_CMD_ID;   // 0xFD 标识 40 字节扩展位置包
+  buffer_tx[0] = EXTENDED_POS_CMD_ID;   // 0xFD identifies the 40-byte extended position packet
   buffer_tx[1] = status;
 
-  // 8 个轴位置（按 firmware icID 索引）：bytes[2..33]
+  // 8 axis positions (indexed by firmware icID): bytes[2..33]
   for (int i = 0; i < 8; i++) {
     int32_t p = positions[i];
     buffer_tx[2 + i * 4]     = byte(p >> 24);
@@ -194,16 +194,16 @@ void SerialProtocolHandler::sendExtendedResponse(byte status,
     buffer_tx[2 + i * 4 + 3] = byte(p & 0xFF);
   }
 
-  // 状态位 byte[34]：bit0 = 摇杆按钮
+  // status byte byte[34]: bit0 = joystick button
   static const int BIT_POS_JOYSTICK_BUTTON = 0;
   buffer_tx[34] = (joystick_button_pressed ? (1 << BIT_POS_JOYSTICK_BUTTON) : 0);
 
-  // bytes[35-37]: 保留
+  // bytes[35-37]: reserved
 
-  // 固件版本 byte[38]：高半字节=主版本，低半字节=次版本
+  // firmware version byte[38]: high nibble=major, low nibble=minor
   buffer_tx[38] = (FIRMWARE_VERSION_MAJOR << 4) | (FIRMWARE_VERSION_MINOR & 0x0F);
 
-  // CRC-8-CCITT 校验（对 byte[0..38] 计算）
+  // CRC-8-CCITT checksum (computed over byte[0..38])
   uint8_t checksum = crc8ccitt(buffer_tx, EXTENDED_MSG_LENGTH - 1);
   buffer_tx[EXTENDED_MSG_LENGTH - 1] = checksum;
 
@@ -212,12 +212,12 @@ void SerialProtocolHandler::sendExtendedResponse(byte status,
 
 void SerialProtocolHandler::send_position_update() {
 #ifdef DISABLE_BINARY_POS_UPDATE
-  // build_opt.h 中临时定义的开关：跳过 24 字节二进制位置上报，
-  // 让 SerialUSB 只剩 ASCII 调试输出，方便 Arduino Serial Monitor 看
+  // a switch temporarily defined in build_opt.h: skip the 24-byte binary position reporting,
+  // leaving only ASCII debug output on SerialUSB, convenient for the Arduino Serial Monitor
   return;
 #endif
 
-  // 先算 any_moving，用于检测「移动完成」下降沿（true→false）
+  // compute any_moving first, used to detect the "movement-complete" falling edge (true->false)
   bool any_moving = false;
   uint8_t count = axisManager.getAxisCount();
   for (uint8_t i = 0; i < count; i++) {
@@ -227,9 +227,9 @@ void SerialProtocolHandler::send_position_update() {
       break;
     }
   }
-  // 完成边缘：所有轴刚刚停下。绕过 10ms 心跳节流立即发一帧 COMPLETED，
-  // 让上位机 wait_till_operation_is_completed 在物理停止后 < 1ms 内被唤醒
-  // （平均省 5ms，worst case 省 10ms 心跳延迟）。下降沿每次 transition 只触发一次。
+  // completion edge: all axes just stopped. Bypass the 10ms heartbeat throttle and immediately send a COMPLETED frame,
+  // so the host's wait_till_operation_is_completed is woken within < 1ms after the physical stop
+  // (saves 5ms on average, 10ms heartbeat delay worst case). The falling edge fires only once per transition.
   bool falling_edge = _last_any_moving && !any_moving;
   _last_any_moving = any_moving;
 
@@ -237,16 +237,16 @@ void SerialProtocolHandler::send_position_update() {
     return;
   _us_since_last_pos_update = 0;
 
-  // 读取所有 axis 位置（按 firmware icID 索引，0..7）
-  // octoaxesplus XYZW1W2 五轴：icID 0=Y, 1=X, 2=Z, 3=W1, 4=W2；icID 5-7 占位填 0
-  // count 已在上面 any_moving 检测时拿过，直接复用
+  // read all axis positions (indexed by firmware icID, 0..7)
+  // octoaxesplus XYZW1W2 five axes: icID 0=Y, 1=X, 2=Z, 3=W1, 4=W2; icID 5-7 placeholders filled with 0
+  // count was already obtained above during the any_moving check, reuse it
   int32_t positions[8] = {0};
   for (uint8_t i = 0; i < count && i < 8; i++) {
     Axis *axis = axisManager.getAxis(i);
     if (axis) positions[i] = axis->getCurrentPositionMicrosteps();
   }
 
-  // 摇杆按钮失效安全：超过 1000ms 未 ACK 则自动清除
+  // joystick-button fail-safe: auto-clear if not ACKed within 1000ms
   if (joystick_button_pressed &&
       millis() - joystick_button_pressed_timestamp > 1000) {
     joystick_button_pressed = false;
@@ -258,14 +258,14 @@ void SerialProtocolHandler::send_position_update() {
   else
     status = any_moving ? STATUS_IN_PROGRESS : STATUS_COMPLETED;
 
-  // octoaxesplus 周期性广播用 40 字节扩展包（含全部 8 轴位置 + 摇杆 + 版本）
-  // 命令响应（sendResponse）仍是 24 字节，由各 handler 在收到命令时发出
+  // octoaxesplus periodic broadcast uses the 40-byte extended packet (all 8 axis positions + joystick + version)
+  // command responses (sendResponse) are still 24 bytes, sent by each handler when a command is received
   sendExtendedResponse(status, positions, joystick_button_pressed);
 }
 
 void SerialProtocolHandler::processSerialCommands() {
   static uint32_t lastPrint = 0;
-  if (millis() - lastPrint > 5000) {  // 每5秒打印一次
+  if (millis() - lastPrint > 5000) {  // print once every 5 seconds
     DEBUG_PRINT("LOOP_ALIVE:");
     DEBUG_PRINTLN(SerialUSB.available());
     lastPrint = millis();
@@ -273,48 +273,48 @@ void SerialProtocolHandler::processSerialCommands() {
 
   if (SerialUSB.available() >= 2) {
     DEBUG_PRINT("RX_AVAIL:");
-    DEBUG_PRINTLN(SerialUSB.available());  // 调试：收到数据
+    DEBUG_PRINTLN(SerialUSB.available());  // debug: data received
 
-    // 查看前两个字节但不移除
+    // peek at the first two bytes without removing them
     int firstByte = SerialUSB.peek();
 
     if (firstByte == DEBUG_PROTOCOL_HEADER_1) {
-      // 查看第二个字节（第二个字节在索引1位置）
-      // 我们需要先读取第一个字节才能查看第二个字节
-      SerialUSB.read();                  // 移除第一个字节
-      int secondByte = SerialUSB.peek(); // 查看第二个字节
+      // peek at the second byte (the second byte is at index 1)
+      // we must read the first byte before we can peek at the second byte
+      SerialUSB.read();                  // remove the first byte
+      int secondByte = SerialUSB.peek(); // peek at the second byte
 
       if (secondByte == DEBUG_PROTOCOL_HEADER_2) {
-        // 确认是调试协议，移除第二个字节
-        SerialUSB.read(); // 移除第二个字节
+        // confirmed it is the debug protocol, remove the second byte
+        SerialUSB.read(); // remove the second byte
         processSerialDebugCommands();
       } else {
-        // 不是调试协议，将第一个字节放回缓冲区
-        // 由于我们已经移除了第一个字节，需要将其放回buffer_rx
+        // not the debug protocol, put the first byte back into the buffer
+        // since we already removed the first byte, we need to put it back into buffer_rx
         buffer_rx[0] = DEBUG_PROTOCOL_HEADER_1;
         buffer_rx_ptr = 1;
-        // 继续处理标准命令
-        // 第二个字节还在串口缓冲区中，会在checkForCommand中读取
+        // continue handling the standard command
+        // the second byte is still in the serial buffer and will be read in checkForCommand
         processSerialStandardCommands();
       }
     } else {
-      // 不是调试协议头，处理标准命令
+      // not a debug protocol header, handle the standard command
       processSerialStandardCommands();
     }
   } else if (SerialUSB.available() == 1) {
-    // 只有一个字节可用，直接处理标准命令
+    // only one byte available, handle the standard command directly
     processSerialStandardCommands();
   }
 }
 
 void SerialProtocolHandler::processSerialDebugCommands() {
-  // 读取直到换行符
+  // read until the newline
   String command = SerialUSB.readStringUntil('\n');
-  command.trim(); // 去除首尾空白字符
+  command.trim(); // strip leading and trailing whitespace
 
   if (command.length() > 0) {
     if (command == "S:VERSION") {
-      // 版本回复始终发送（不受 ENABLE_DEBUG 控制）
+      // the version reply is always sent (not gated by ENABLE_DEBUG)
       char vbuf[32];
       snprintf(vbuf, sizeof(vbuf), "S:VERSION:%lu", (unsigned long)VERSION);
       SerialUSB.println(vbuf);
@@ -322,14 +322,14 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     if (command == "S:Engine Start") {
-      // 保留命令兼容性，不再需要启动流程
+      // keep command compatibility; the startup sequence is no longer needed
       sendDebugInfo("System already running (Engine Start is no longer required)");
       return;
     }
 
     if (command == "S:ENCPOS") {
       char buf[120];
-      // 先打印 W 轴编码器寄存器诊断
+      // first print the W-axis encoder register diagnostics
       uint8_t wID = 3;
       uint32_t genConf = tmc4361A_readRegister(wID, TMC4361A_GENERAL_CONF);
       uint32_t encInConf = tmc4361A_readRegister(wID, TMC4361A_ENC_IN_CONF);
@@ -342,7 +342,7 @@ void SerialProtocolHandler::processSerialDebugCommands() {
                (unsigned long)encInConf, (unsigned long)stepConf, (unsigned long)encInRes);
       SerialUSB.println(buf);
 
-      // 打印各轴编码器位置
+      // print each axis's encoder position
       for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
         Axis *axis = axisManager.getAxis(i);
         if (axis) {
@@ -377,17 +377,17 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
-    // S:JOYSTICK_STATS — 打印手控盒协议帧统计
-    //   legacy = byte[9]==0（老 joystick 不带 CRC）
-    //   crc_ok / crc_fail = 新 joystick CRC-8-CCITT 校验结果
+    // S:JOYSTICK_STATS -- print hand-controller protocol-frame statistics
+    // legacy = byte[9]==0 (old joystick has no CRC)
+    // crc_ok / crc_fail = new joystick CRC-8-CCITT verification results
     if (command == "S:JOYSTICK_STATS") {
       joystick_print_stats();
       return;
     }
 
     // S:DUMPREGS [axisName]
-    // 不带参数 → dump 所有轴；带参数（X/Y/Z/W）→ 只 dump 指定轴
-    // 用于卡死现场取证：打印 TMC4361A 关键寄存器，定位 ramp generator 异常根因
+    // no argument -> dump all axes; with an argument (X/Y/Z/W) -> dump only the specified axis
+    // for diagnosing a freeze on-site: print the key TMC4361A registers to locate the ramp-generator-anomaly root cause
     if (command.startsWith("S:DUMPREGS")) {
       String filter = command.length() > 11 ? command.substring(11) : String("");
       filter.trim();
@@ -436,16 +436,16 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     // S:CLKMODE <off|high|low|slow|16m>
-    // squid++ 调试用：切换 pin 37 (TMC4361_STANDARD_CLK) 输出状态，
-    // 用万用表 DC 档静态读电压验证 PWM 是否真的在工作。
-    //   off  : digitalWrite LOW   万用表应读 0V
-    //   high : digitalWrite HIGH  万用表应读 ~3.3V
-    //   low  : 同 off
-    //   slow : 100Hz 50% PWM      万用表应读 ~1.65V（万用表能跟上低频）
-    //   16m  : 恢复 16MHz 50% PWM 万用表应读 ~1.65V（DC 档低通后的平均值）
+    // squid++ debug: toggle the pin 37 (TMC4361_STANDARD_CLK) output state,
+    // use a multimeter (DC) to statically read the voltage and verify the PWM is actually working.
+    //   off  : digitalWrite LOW   multimeter should read 0V
+    //   high : digitalWrite HIGH  multimeter should read ~3.3V
+    //   low  : same as off
+    //   slow : 100Hz 50% PWM      multimeter should read ~1.65V (a multimeter can follow low frequency)
+    //   16m  : restore 16MHz 50% PWM  multimeter should read ~1.65V (average after the DC low-pass)
     //
-    // 比较点：slow 和 16m 万用表读数应该几乎一样（都是 50% PWM 平均）。
-    // 如果 16m 模式读到 0V 或 3.3V 不变 → analogWriteFrequency 16M 失败。
+    // comparison point: the slow and 16m multimeter readings should be nearly identical (both are the 50% PWM average).
+    // if 16m mode reads a constant 0V or 3.3V -> analogWriteFrequency 16M failed.
     if (command.startsWith("S:CLKMODE")) {
       String rest = command.substring(9);
       rest.trim();
@@ -463,7 +463,7 @@ void SerialProtocolHandler::processSerialDebugCommands() {
                  Pins::TMC4361_STANDARD_CLK);
       } else if (rest == "slow") {
         pinMode(Pins::TMC4361_STANDARD_CLK, OUTPUT);
-        analogWriteResolution(4);  // 与 initializeClock 一致，4-bit 50% = 8/16
+        analogWriteResolution(4);  // consistent with initializeClock, 4-bit 50% = 8/16
         analogWriteFrequency(Pins::TMC4361_STANDARD_CLK, 100);
         analogWrite(Pins::TMC4361_STANDARD_CLK, 8);
         snprintf(buf, sizeof(buf),
@@ -471,7 +471,7 @@ void SerialProtocolHandler::processSerialDebugCommands() {
                  Pins::TMC4361_STANDARD_CLK);
       } else if (rest == "16m" || rest.length() == 0) {
         pinMode(Pins::TMC4361_STANDARD_CLK, OUTPUT);
-        analogWriteResolution(4);  // 4-bit 才能跑 16MHz（默认 8-bit 上限 1MHz）
+        analogWriteResolution(4);  // 4-bit is required to run 16MHz (the default 8-bit tops out at 1MHz)
         analogWriteFrequency(Pins::TMC4361_STANDARD_CLK, 16000000);
         analogWrite(Pins::TMC4361_STANDARD_CLK, 8);
         snprintf(buf, sizeof(buf),
@@ -487,10 +487,10 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     // S:CSHOLD <channel>
-    // squid++ 调试用：持续选通 HC154 某通道（不归零）方便万用表实测对应
-    // CS 引脚电平。channel 0-15。无 channel 参数 → 归零到 EXPAND_NSCS1。
-    // 例：S:CSHOLD 10 → 选通 X 轴 CS（HC154_AXIS_X），其他 15 路应 HIGH
-    //     S:CSHOLD     → 归零（恢复 SPI 事务前默认状态）
+    // squid++ debug: continuously select an HC154 channel (without zeroing) to conveniently measure the corresponding
+    // CS pin level with a multimeter. channel 0-15. No channel argument -> return to EXPAND_NSCS1.
+    // e.g.: S:CSHOLD 10 -> select the X-axis CS (HC154_AXIS_X), the other 15 lines should be HIGH
+    //     S:CSHOLD     -> zero (restore the default state before an SPI transaction)
     if (command.startsWith("S:CSHOLD")) {
       String rest = command.substring(8);
       rest.trim();
@@ -517,10 +517,10 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     // S:SPITEST [icID]
-    // squid++ 调试用：主动对指定 icID 跑 TMC4361A SPI 读循环，打印 VERSION_NO
-    // 和 STATUS。不带参数 → 测全部 icID。用于排查 SPI 不通根因。
-    // 与 S:DUMPREGS 区别：DUMPREGS 假设 axis 已正常 begin；SPITEST 绕过
-    // axis 直接走 hal 接口，配合 S:CSHOLD 排查 HC154 / CLK / 5V_AXIS 问题。
+    // squid++ debug: actively run a TMC4361A SPI read loop on the given icID, printing VERSION_NO
+    // and STATUS. No argument -> test all icIDs. Used to diagnose the root cause of a non-working SPI.
+    // difference from S:DUMPREGS: DUMPREGS assumes the axis has begun normally; SPITEST bypasses
+    // the axis and goes directly through the hal interface, use with S:CSHOLD to diagnose HC154 / CLK / 5V_AXIS issues.
     if (command.startsWith("S:SPITEST")) {
       String rest = command.substring(9);
       rest.trim();
@@ -536,7 +536,7 @@ void SerialProtocolHandler::processSerialDebugCommands() {
         end = id + 1;
       }
       for (int i = start; i < end; i++) {
-        // 注意：VERSION_NO 在 TMC4361A 是 0x7F 不是 0x09（0x09 是 ENC_OUT_DATA）
+        // note: VERSION_NO on the TMC4361A is 0x7F, not 0x09 (0x09 is ENC_OUT_DATA)
         uint32_t v = tmc4361A_readRegister(i, 0x7F);  // VERSION_NO
         uint32_t s = tmc4361A_readRegister(i, 0x0F);  // STATUS
         snprintf(buf, sizeof(buf),
@@ -549,8 +549,8 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     // S:SET_HOMING_VEL <axisName> <vel_mm_per_s>
-    // 诊断用：运行时设 homingVelocityMM 不重烧 firmware
-    // 例：S:SET_HOMING_VEL Y 5.0
+    // for diagnostics: set homingVelocityMM at runtime without reflashing firmware
+    // e.g.: S:SET_HOMING_VEL Y 5.0
     if (command.startsWith("S:SET_HOMING_VEL")) {
       String rest = command.substring(16);
       rest.trim();
@@ -583,13 +583,13 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
-    // ── DAC80508 直控 / 读回 / GAIN 切换（ttl_test bring-up 验证） ─────
+    // -- DAC80508 direct control / read-back / GAIN switch (ttl_test bring-up verification) -----
     //
     // S:DAC_SET <ch> <raw>
-    //   直接写 DAC 通道 raw 值（0..65535），绕过 illumination_intensity_factor 缩放，
-    //   bring-up 时所见即所得；不影响 illumination_port_intensity[] 状态镜像。
-    //   ch 范围 0-7；raw 超 65535 截断。
-    //   例：S:DAC_SET 0 32768  → D1 通道输出 ≈ 半量程 (1.25V @ gain=1)
+    //   directly write a DAC channel raw value (0..65535), bypassing the illumination_intensity_factor scaling,
+    //   what-you-see-is-what-you-get during bring-up; does not affect the illumination_port_intensity[] state mirror.
+    //   ch range 0-7; raw above 65535 is truncated.
+    //   e.g.: S:DAC_SET 0 32768  -> D1 channel outputs ~= half scale (1.25V @ gain=1)
     if (command.startsWith("S:DAC_SET")) {
       String rest = command.substring(9);
       rest.trim();
@@ -614,10 +614,10 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     // S:DAC_GAIN <hex>
-    //   直写 DAC80508 GAIN 寄存器（addr 0x04），运行时切换通道 gain。
-    //   ttl_test 默认 0x0080：ch0-6 gain=1（满量程 2.5V），ch7 gain=2（D8 满量程 5V）
-    //   GAIN 0  → 0x0000: 全部 gain=1 (D8 max 2.5V)
-    //   GAIN 80 → 0x0080: 默认，D8 max 5V
+    //   directly write the DAC80508 GAIN register (addr 0x04), switching channel gain at runtime.
+    //   ttl_test default 0x0080: ch0-6 gain=1 (full scale 2.5V), ch7 gain=2 (D8 full scale 5V)
+    //   GAIN 0  -> 0x0000: all gain=1 (D8 max 2.5V)
+    //   GAIN 80 -> 0x0080: default, D8 max 5V
     if (command.startsWith("S:DAC_GAIN")) {
       String arg = command.substring(10);
       arg.trim();
@@ -639,7 +639,7 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
-    // S:DAC_READ_ALL — 回读 CONFIG / GAIN / DAC0..7 寄存器并打印（带解码）
+    // S:DAC_READ_ALL -- read back CONFIG / GAIN / DAC0..7 registers and print them (decoded)
     if (command == "S:DAC_READ_ALL") {
       uint16_t cfg  = read_DAC8050x_reg(IlluminationConfig::DAC_CONFIG_ADDR);
       uint16_t gain = read_DAC8050x_reg(IlluminationConfig::DAC_GAIN_ADDR);
@@ -667,8 +667,8 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
-    // S:DAC_READ <reg_hex> — 回读单个寄存器
-    //   例：S:DAC_READ 04  → 读 GAIN
+    // S:DAC_READ <reg_hex> -- read back a single register
+    //   e.g.: S:DAC_READ 04  -> read GAIN
     if (command.startsWith("S:DAC_READ")) {
       String arg = command.substring(10);
       arg.trim();
@@ -691,9 +691,9 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
-    // 处理其他调试命令
+    // handle other debug commands
     DEBUG_PRINT("Serial:TO_AXISMGR:");
-    DEBUG_PRINTLN(command);  // 调试点 - 发往AxisManager
+    DEBUG_PRINTLN(command);  // debug point - dispatched to AxisManager
 
     bool success = axisManager.processCommand(command);
     if (!success) {

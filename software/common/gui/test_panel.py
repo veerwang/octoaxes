@@ -43,7 +43,7 @@ class ZAgingWorker(QThread):
     serial_thread.send_binary_command（线程安全）。固件配置已由 GUI 启动时下发，无需重发。
     """
 
-    progress = pyqtSignal(str)          # 实时进度文本
+    progress = pyqtSignal(str)          # real-time progress text
     finished_ok = pyqtSignal(bool, str)  # (success, summary)
 
     def __init__(self, main_window, rounds, step_um=1000.0,
@@ -64,8 +64,8 @@ class ZAgingWorker(QThread):
         vel = zc.get("default_velocity", 3.0)
         acc = zc.get("default_acceleration", 20.0)
         step_mm = self.step_um / 1000.0
-        self.expected = step_mm / vel + vel / acc           # 单步预期耗时
-        self.deadline = self.expected * 3.0 + 0.5           # 稳定确认 deadline
+        self.expected = step_mm / vel + vel / acc           # expected duration of a single step
+        self.deadline = self.expected * 3.0 + 0.5           # stability-confirmation deadline
         self.nominal = abs(int(self.sign * self.step_um / 1000.0 / self.mm_per_step))
         self.fwd_delta = int(self.sign * (+self.step_um) / 1000.0 / self.mm_per_step)
         self.bwd_delta = int(self.sign * (-self.step_um) / 1000.0 / self.mm_per_step)
@@ -74,7 +74,7 @@ class ZAgingWorker(QThread):
     def stop(self):
         self._stop = True
 
-    # ── 底层 ─────────────────────────────────────────────────────────────
+    # -- low level --------------------------------
     def _send(self, b1, b2=0, b3=0, b4=0, b5=0, b6=0):
         st = getattr(self.mw, "serial_thread", None)
         if st is None:
@@ -112,7 +112,7 @@ class ZAgingWorker(QThread):
         return False
 
     def _home(self):
-        # Z movement_sign=-1 → home_dir=0（HOME_POSITIVE），与 send_homing 一致
+        # Z movement_sign=-1 -> home_dir=0 (HOME_POSITIVE), consistent with send_homing
         home_dir = 1 if self.sign == 1 else 0
         self._send(CMD_SET.HOME_OR_ZERO, AXIS.Z, home_dir)
         time.sleep(0.3)
@@ -125,7 +125,7 @@ class ZAgingWorker(QThread):
             cur = self._z_steps()
             if cur is not None and cur == prev and abs(cur) < 8000:
                 stable += 1
-                if stable >= 3:     # 位置稳定且近 0 = homing 完成
+                if stable >= 3:     # position stable and near 0 = homing complete
                     return True
             else:
                 stable = 0
@@ -139,7 +139,7 @@ class ZAgingWorker(QThread):
                 return True, f"用户停止于第 {c} 圈 {label}{i}"
             prev = self._z_steps()
             self._send_move(delta)
-            time.sleep(self.expected)            # 等预期耗时让 chip 走完
+            time.sleep(self.expected)            # wait the expected duration to let the chip finish
             settled = self._wait_stable(self.deadline)
             cur = self._z_steps()
             moved = abs(cur - prev) if (cur is not None and prev is not None) else 0
@@ -209,8 +209,8 @@ class IntegrationTestPanel(QWidget):
     request_send_command = pyqtSignal(str)
     log_message = pyqtSignal(str)
 
-    # (test_id, 显示名, runner 方法名)
-    AGING_TEST_ID = "z_aging"   # 长时序后台测试，不纳入 Run All 批量
+    # (test_id, display name, runner method name)
+    AGING_TEST_ID = "z_aging"   # long-running background test, not included in the Run All batch
 
     TESTS = [
         ("firmware_version", "Firmware Version (S:VERSION)", "_test_firmware_version"),
@@ -220,13 +220,13 @@ class IntegrationTestPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.main_window = None   # 由 main_window 创建后注入（发命令 + 读 axis 状态）
+        self.main_window = None   # injected by main_window after creation (send commands + read axis state)
         self._pending = {}   # test_id -> {"timer": QTimer, "handler": callable}
         self._results = {tid: {"status": STATUS_PENDING, "details": ""}
                          for tid, _, _ in self.TESTS}
         self._batch_queue = []
         self._batch_active = False
-        self._aging_worker = None   # ZAgingWorker 运行中实例
+        self._aging_worker = None   # the running ZAgingWorker instance
 
         self._build_ui()
         self._refresh_table()
@@ -282,7 +282,7 @@ class IntegrationTestPanel(QWidget):
             self._row_buttons[tid] = btn
 
             if tid == self.AGING_TEST_ID:
-                # 老化测试行：Action 单元格 = 轮数输入框 + Run/Stop（轮数是本测试专属参数）
+                # aging-test row: the Action cell = rounds input + Run/Stop (rounds is a parameter specific to this test)
                 cell = QWidget()
                 hb = QHBoxLayout(cell)
                 hb.setContentsMargins(4, 2, 4, 2)
@@ -345,7 +345,7 @@ class IntegrationTestPanel(QWidget):
             f"font-size: 16px; font-weight: bold; color: {color}; padding: 8px;"
         )
 
-    # ====== 公共 API ======
+    # ====== public API ======
 
     def reset_results(self):
         self._cancel_pending()
@@ -356,7 +356,7 @@ class IntegrationTestPanel(QWidget):
 
     def run_all_tests(self):
         self.reset_results()
-        # 老化测试是长时序后台任务，不纳入 Run All 批量
+        # the aging test is a long-running background task, not included in the Run All batch
         self._batch_queue = [tid for tid, _, _ in self.TESTS
                              if tid != self.AGING_TEST_ID]
         self._batch_active = True
@@ -364,7 +364,7 @@ class IntegrationTestPanel(QWidget):
         self._run_next_in_batch()
 
     def run_single_test(self, test_id):
-        # 老化测试：运行中点同一按钮 = 停止
+        # aging test: clicking the same button while running = stop
         if test_id == self.AGING_TEST_ID and self._aging_worker is not None:
             self._stop_aging()
             return
@@ -380,7 +380,7 @@ class IntegrationTestPanel(QWidget):
         for tid in list(self._pending.keys()):
             self._pending[tid]["handler"](line)
 
-    # ====== 内部 ======
+    # ====== internal ======
 
     def _start_test(self, test_id):
         if test_id in self._pending:
@@ -425,7 +425,7 @@ class IntegrationTestPanel(QWidget):
             self._batch_active = False
             self.run_all_btn.setEnabled(True)
 
-    # ====== Z 轴老化测试（后台 QThread） ======
+    # ====== Z-axis aging test (background QThread) ======
 
     def _test_z_aging(self):
         """启动 Z 老化测试后台线程（不阻塞 UI）。轮数取自 rounds_spin。"""
@@ -457,7 +457,7 @@ class IntegrationTestPanel(QWidget):
             btn = self._row_buttons.get(self.AGING_TEST_ID)
             if btn is not None:
                 btn.setText("Stopping…")
-                btn.setEnabled(False)   # 停止中禁用，worker 结束后恢复
+                btn.setEnabled(False)   # disabled while stopping, restored after the worker finishes
 
     _STOP_STYLE = (
         "QPushButton { background-color: #d62728; color: white;"
@@ -500,7 +500,7 @@ class IntegrationTestPanel(QWidget):
         prefix = "PASS" if passed else "FAIL"
         self.log_message.emit(f"[Test:{self.AGING_TEST_ID}] {prefix} - {details}")
 
-    # ====== 测试实现 ======
+    # ====== test implementations ======
 
     def _test_firmware_version(self):
         """发 S:VERSION, 2s 内验证收到 'S:VERSION:x.y' 形式响应"""

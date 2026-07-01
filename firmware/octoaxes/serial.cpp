@@ -10,16 +10,16 @@
 #include "tmc/ic/TMC4361A/TMC4361A.h"
 #include <stdarg.h>
 
-// 协议状态字节
+// Protocol status bytes
 static const uint8_t STATUS_COMPLETED    = 0;
 static const uint8_t STATUS_IN_PROGRESS  = 1;
 static const uint8_t STATUS_CRC_ERROR    = 2;
 
-// 固件版本（byte[22]：高半字节=主版本，低半字节=次版本）
+// firmware version (byte[22]: high nibble=major, low nibble=minor)
 static const uint8_t FIRMWARE_VERSION_MAJOR = 1;
 static const uint8_t FIRMWARE_VERSION_MINOR = 7;
 
-// 位置上报周期（10ms，与旧 Squid 一致）
+// position-report period (10ms, consistent with legacy Squid)
 static const uint32_t INTERVAL_SEND_POS_US = 10000;
 
 static const uint8_t CRC_TABLE[256] = {
@@ -62,7 +62,7 @@ void SerialProtocolHandler::begin(long baudRate, uint32_t timeout) {
   SerialUSB.setTimeout(timeout);
   buffer_rx_ptr = 0;
   while (!SerialUSB) {
-    ; // 等待串口连接
+    ; // wait for the serial connection
   }
 }
 
@@ -74,7 +74,7 @@ void SerialProtocolHandler::sendDebugInfo(const char *format, ...) {
   vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
 
-  // 发送带协议头的调试信息
+  // send debug info with the protocol header
   DEBUG_PRINTLN(buffer);
 }
 
@@ -94,7 +94,7 @@ uint8_t SerialProtocolHandler::crc8ccitt(byte *data, uint8_t n) {
 bool SerialProtocolHandler::checkForCommand() {
   bool commandReceived = false;
 
-  // 读取串口数据
+  // read serial data
   while (SerialUSB.available()) {
     buffer_rx[buffer_rx_ptr] = SerialUSB.read();
     buffer_rx_ptr = buffer_rx_ptr + 1;
@@ -103,11 +103,11 @@ bool SerialProtocolHandler::checkForCommand() {
       buffer_rx_ptr = 0;
       cmd_id = buffer_rx[0];
 
-      // 校验和检查
+      // checksum check
       uint8_t checksum = crc8ccitt(buffer_rx, CMD_LENGTH - 1);
       if (checksum != buffer_rx[CMD_LENGTH - 1]) {
         checksum_error = true;
-        // 清空串口缓冲区，因为字节级不同步也可能导致此错误
+        // flush the serial buffer, since byte-level desync can also cause this error
         while (SerialUSB.available()) {
           SerialUSB.read();
         }
@@ -117,7 +117,7 @@ bool SerialProtocolHandler::checkForCommand() {
         commandReceived = true;
         watchdog_reset_timer();
       }
-      break; // 一次只处理一个命令
+      break; // process only one command at a time
     }
   }
 
@@ -134,40 +134,40 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
   buffer_tx[0] = cmd_id;
   buffer_tx[1] = status;
 
-  // X 轴位置 (bytes 2-5)
+  // X-axis position (bytes 2-5)
   buffer_tx[2] = byte(x_pos >> 24);
   buffer_tx[3] = byte((x_pos >> 16) & 0xFF);
   buffer_tx[4] = byte((x_pos >> 8) & 0xFF);
   buffer_tx[5] = byte(x_pos & 0xFF);
 
-  // Y 轴位置 (bytes 6-9)
+  // Y-axis position (bytes 6-9)
   buffer_tx[6] = byte(y_pos >> 24);
   buffer_tx[7] = byte((y_pos >> 16) & 0xFF);
   buffer_tx[8] = byte((y_pos >> 8) & 0xFF);
   buffer_tx[9] = byte(y_pos & 0xFF);
 
-  // Z 轴位置 (bytes 10-13)
+  // Z-axis position (bytes 10-13)
   buffer_tx[10] = byte(z_pos >> 24);
   buffer_tx[11] = byte((z_pos >> 16) & 0xFF);
   buffer_tx[12] = byte((z_pos >> 8) & 0xFF);
   buffer_tx[13] = byte(z_pos & 0xFF);
 
-  // W 轴位置 (bytes 14-17)
+  // W-axis position (bytes 14-17)
   buffer_tx[14] = byte(w_pos >> 24);
   buffer_tx[15] = byte((w_pos >> 16) & 0xFF);
   buffer_tx[16] = byte((w_pos >> 8) & 0xFF);
   buffer_tx[17] = byte(w_pos & 0xFF);
 
-  // 状态位 byte[18]：bit0 = 摇杆按钮
+  // status byte byte[18]: bit0 = joystick button
   static const int BIT_POS_JOYSTICK_BUTTON = 0;
   buffer_tx[18] = (joystick_button_pressed ? (1 << BIT_POS_JOYSTICK_BUTTON) : 0);
 
-  // bytes[19-21]: 保留
+  // bytes[19-21]: reserved
 
-  // 固件版本 byte[22]：高半字节=主版本，低半字节=次版本
+  // firmware version byte[22]: high nibble=major, low nibble=minor
   buffer_tx[22] = (FIRMWARE_VERSION_MAJOR << 4) | (FIRMWARE_VERSION_MINOR & 0x0F);
 
-  // CRC-8-CCITT 校验（对 byte[0..22] 计算）
+  // CRC-8-CCITT checksum (computed over byte[0..22])
   uint8_t checksum = crc8ccitt(buffer_tx, MSG_LENGTH - 1);
   buffer_tx[MSG_LENGTH - 1] = checksum;
 
@@ -176,12 +176,12 @@ void SerialProtocolHandler::sendResponse(byte cmd_id, byte status,
 
 void SerialProtocolHandler::send_position_update() {
 #ifdef DISABLE_BINARY_POS_UPDATE
-  // build_opt.h 中临时定义的开关：跳过 24 字节二进制位置上报，
-  // 让 SerialUSB 只剩 ASCII 调试输出，方便 Arduino Serial Monitor 看
+  // a switch temporarily defined in build_opt.h: skip the 24-byte binary position reporting,
+  // leaving only ASCII debug output on SerialUSB, convenient for the Arduino Serial Monitor
   return;
 #endif
 
-  // 先算 any_moving，用于检测「移动完成」下降沿（true→false）
+  // compute any_moving first, used to detect the "movement-complete" falling edge (true->false)
   bool any_moving = false;
   uint8_t count = axisManager.getAxisCount();
   for (uint8_t i = 0; i < count; i++) {
@@ -191,9 +191,9 @@ void SerialProtocolHandler::send_position_update() {
       break;
     }
   }
-  // 完成边缘：所有轴刚刚停下。绕过 10ms 心跳节流立即发一帧 COMPLETED，
-  // 让上位机 wait_till_operation_is_completed 在物理停止后 < 1ms 内被唤醒
-  // （平均省 5ms，worst case 省 10ms 心跳延迟）。下降沿每次 transition 只触发一次。
+  // completion edge: all axes just stopped. Bypass the 10ms heartbeat throttle and immediately send a COMPLETED frame,
+  // so the host's wait_till_operation_is_completed is woken within < 1ms after the physical stop
+  // (saves 5ms on average, 10ms heartbeat delay worst case). The falling edge fires only once per transition.
   bool falling_edge = _last_any_moving && !any_moving;
   _last_any_moving = any_moving;
 
@@ -201,10 +201,10 @@ void SerialProtocolHandler::send_position_update() {
     return;
   _us_since_last_pos_update = 0;
 
-  // 读取各轴位置（微步，与旧 Squid tmc4361A_currentPosition 一致）
-  // 缓存 axis 指针：findAxisByName 每次构造 4 个 String + 4 次 equals，每 tick 累计
-  // ~40µs × 10000 tick ≈ 400ms 浪费。axis 指针在 axisManager 生命周期内不变，
-  // 静态缓存安全（即使首次为 nullptr 也是真实情况，不必重试）(#4, 2026-05-19)
+  // read each axis position (microsteps, consistent with legacy Squid tmc4361A_currentPosition)
+  // cache the axis pointers: findAxisByName constructs 4 Strings + 4 equals each time, accumulating per tick
+  // ~40us * 10000 ticks ~= 400ms wasted. The axis pointers do not change during the axisManager lifetime,
+  // so static caching is safe (even a first-time nullptr is the real situation, no retry needed) (#4, 2026-05-19)
   static Axis *xAxis = nullptr;
   static Axis *yAxis = nullptr;
   static Axis *zAxis = nullptr;
@@ -223,7 +223,7 @@ void SerialProtocolHandler::send_position_update() {
   int32_t z_pos = zAxis ? zAxis->getCurrentPositionMicrosteps() : 0;
   int32_t w_pos = wAxis ? wAxis->getCurrentPositionMicrosteps() : 0;
 
-  // 摇杆按钮失效安全：超过 1000ms 未 ACK 则自动清除
+  // joystick-button fail-safe: auto-clear if not ACKed within 1000ms
   if (joystick_button_pressed &&
       millis() - joystick_button_pressed_timestamp > 1000) {
     joystick_button_pressed = false;
@@ -241,7 +241,7 @@ void SerialProtocolHandler::send_position_update() {
 
 void SerialProtocolHandler::processSerialCommands() {
   static uint32_t lastPrint = 0;
-  if (millis() - lastPrint > 5000) {  // 每5秒打印一次
+  if (millis() - lastPrint > 5000) {  // print once every 5 seconds
     DEBUG_PRINT("LOOP_ALIVE:");
     DEBUG_PRINTLN(SerialUSB.available());
     lastPrint = millis();
@@ -249,48 +249,48 @@ void SerialProtocolHandler::processSerialCommands() {
 
   if (SerialUSB.available() >= 2) {
     DEBUG_PRINT("RX_AVAIL:");
-    DEBUG_PRINTLN(SerialUSB.available());  // 调试：收到数据
+    DEBUG_PRINTLN(SerialUSB.available());  // debug: data received
 
-    // 查看前两个字节但不移除
+    // peek at the first two bytes without removing them
     int firstByte = SerialUSB.peek();
 
     if (firstByte == DEBUG_PROTOCOL_HEADER_1) {
-      // 查看第二个字节（第二个字节在索引1位置）
-      // 我们需要先读取第一个字节才能查看第二个字节
-      SerialUSB.read();                  // 移除第一个字节
-      int secondByte = SerialUSB.peek(); // 查看第二个字节
+      // peek at the second byte (the second byte is at index 1)
+      // we must read the first byte before we can peek at the second byte
+      SerialUSB.read();                  // remove the first byte
+      int secondByte = SerialUSB.peek(); // peek at the second byte
 
       if (secondByte == DEBUG_PROTOCOL_HEADER_2) {
-        // 确认是调试协议，移除第二个字节
-        SerialUSB.read(); // 移除第二个字节
+        // confirmed it is the debug protocol, remove the second byte
+        SerialUSB.read(); // remove the second byte
         processSerialDebugCommands();
       } else {
-        // 不是调试协议，将第一个字节放回缓冲区
-        // 由于我们已经移除了第一个字节，需要将其放回buffer_rx
+        // not the debug protocol, put the first byte back into the buffer
+        // since we already removed the first byte, we need to put it back into buffer_rx
         buffer_rx[0] = DEBUG_PROTOCOL_HEADER_1;
         buffer_rx_ptr = 1;
-        // 继续处理标准命令
-        // 第二个字节还在串口缓冲区中，会在checkForCommand中读取
+        // continue handling the standard command
+        // the second byte is still in the serial buffer and will be read in checkForCommand
         processSerialStandardCommands();
       }
     } else {
-      // 不是调试协议头，处理标准命令
+      // not a debug protocol header, handle the standard command
       processSerialStandardCommands();
     }
   } else if (SerialUSB.available() == 1) {
-    // 只有一个字节可用，直接处理标准命令
+    // only one byte available, handle the standard command directly
     processSerialStandardCommands();
   }
 }
 
 void SerialProtocolHandler::processSerialDebugCommands() {
-  // 读取直到换行符
+  // read until the newline
   String command = SerialUSB.readStringUntil('\n');
-  command.trim(); // 去除首尾空白字符
+  command.trim(); // strip leading and trailing whitespace
 
   if (command.length() > 0) {
     if (command == "S:VERSION") {
-      // 版本回复始终发送（不受 ENABLE_DEBUG 控制）
+      // the version reply is always sent (not gated by ENABLE_DEBUG)
       char vbuf[32];
       snprintf(vbuf, sizeof(vbuf), "S:VERSION:%lu", (unsigned long)VERSION);
       SerialUSB.println(vbuf);
@@ -298,14 +298,14 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     if (command == "S:Engine Start") {
-      // 保留命令兼容性，不再需要启动流程
+      // keep command compatibility; the startup sequence is no longer needed
       sendDebugInfo("System already running (Engine Start is no longer required)");
       return;
     }
 
     if (command == "S:ENCPOS") {
       char buf[120];
-      // 先打印 W 轴编码器寄存器诊断
+      // first print the W-axis encoder register diagnostics
       uint8_t wID = 3;
       uint32_t genConf = tmc4361A_readRegister(wID, TMC4361A_GENERAL_CONF);
       uint32_t encInConf = tmc4361A_readRegister(wID, TMC4361A_ENC_IN_CONF);
@@ -318,7 +318,7 @@ void SerialProtocolHandler::processSerialDebugCommands() {
                (unsigned long)encInConf, (unsigned long)stepConf, (unsigned long)encInRes);
       SerialUSB.println(buf);
 
-      // 打印各轴编码器位置
+      // print each axis's encoder position
       for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
         Axis *axis = axisManager.getAxis(i);
         if (axis) {
@@ -353,17 +353,17 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
-    // S:JOYSTICK_STATS — 打印手控盒协议帧统计
-    //   legacy = byte[9]==0（老 joystick 不带 CRC）
-    //   crc_ok / crc_fail = 新 joystick CRC-8-CCITT 校验结果
+    // S:JOYSTICK_STATS -- print hand-controller protocol-frame statistics
+    // legacy = byte[9]==0 (old joystick has no CRC)
+    // crc_ok / crc_fail = new joystick CRC-8-CCITT verification results
     if (command == "S:JOYSTICK_STATS") {
       joystick_print_stats();
       return;
     }
 
     // S:DUMPREGS [axisName]
-    // 不带参数 → dump 所有轴；带参数（X/Y/Z/W）→ 只 dump 指定轴
-    // 用于卡死现场取证：打印 TMC4361A 关键寄存器，定位 ramp generator 异常根因
+    // no argument -> dump all axes; with an argument (X/Y/Z/W) -> dump only the specified axis
+    // for diagnosing a freeze on-site: print the key TMC4361A registers to locate the ramp-generator-anomaly root cause
     if (command.startsWith("S:DUMPREGS")) {
       String filter = command.length() > 11 ? command.substring(11) : String("");
       filter.trim();
@@ -412,8 +412,8 @@ void SerialProtocolHandler::processSerialDebugCommands() {
     }
 
     // S:SET_HOMING_VEL <axisName> <vel_mm_per_s>
-    // 诊断用：运行时设 homingVelocityMM 不重烧 firmware
-    // 例：S:SET_HOMING_VEL Y 5.0
+    // for diagnostics: set homingVelocityMM at runtime without reflashing firmware
+    // e.g.: S:SET_HOMING_VEL Y 5.0
     if (command.startsWith("S:SET_HOMING_VEL")) {
       String rest = command.substring(16);
       rest.trim();
@@ -446,9 +446,9 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
-    // 处理其他调试命令
+    // handle other debug commands
     DEBUG_PRINT("Serial:TO_AXISMGR:");
-    DEBUG_PRINTLN(command);  // 调试点 - 发往AxisManager
+    DEBUG_PRINTLN(command);  // debug point - dispatched to AxisManager
 
     bool success = axisManager.processCommand(command);
     if (!success) {

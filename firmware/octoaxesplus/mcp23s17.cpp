@@ -9,7 +9,7 @@ inline void spi_begin_txn() {
 }
 
 inline void spi_end_txn() {
-    // 归零到未挂 SPI 设备的 EXPAND_NSCS1 通道，确保 MCP23S17_1 片选释放
+    // return to the EXPAND_NSCS1 channel (no SPI device attached) to ensure the MCP23S17_1 chip-select is released
     Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
     SPI.endTransaction();
 }
@@ -18,21 +18,21 @@ inline void spi_end_txn() {
 
 void mcp23s17_init()
 {
-    // IOCON：BANK=0（顺序寻址）、MIRROR=0、SEQOP=0（地址自增）、
-    // DISSLW=0、HAEN=0（单片不启用硬件地址）、ODR=0、INTPOL=0
+    // IOCON: BANK=0 (sequential addressing), MIRROR=0, SEQOP=0 (address auto-increment),
+    // DISSLW=0, HAEN=0 (single chip, hardware addressing not enabled), ODR=0, INTPOL=0
     mcp23s17_writeReg(MCP23S17::REG_IOCON, 0x00);
 
-    // 16 路全部输入（TMC4361A INT / TARGET_REACHED 接入）
+    // all 16 lines as inputs (TMC4361A INT / TARGET_REACHED connected)
     mcp23s17_writeReg(MCP23S17::REG_IODIRA, 0xFF);
     mcp23s17_writeReg(MCP23S17::REG_IODIRB, 0xFF);
 
-    // 不反转极性；使能 100kΩ 弱上拉（信号悬空时默认高电平，容错）
+    // do not invert polarity; enable the 100kohm weak pull-ups (floating signals default HIGH, for fault tolerance)
     mcp23s17_writeReg(MCP23S17::REG_IPOLA, 0x00);
     mcp23s17_writeReg(MCP23S17::REG_IPOLB, 0x00);
     mcp23s17_writeReg(MCP23S17::REG_GPPUA, 0xFF);
     mcp23s17_writeReg(MCP23S17::REG_GPPUB, 0xFF);
 
-    // 关闭硬件中断（INTA/INTB 未接 Teensy，轮询模式）
+    // disable hardware interrupts (INTA/INTB not connected to the Teensy, polling mode)
     mcp23s17_writeReg(MCP23S17::REG_GPINTENA, 0x00);
     mcp23s17_writeReg(MCP23S17::REG_GPINTENB, 0x00);
 }
@@ -68,7 +68,7 @@ uint8_t mcp23s17_readPortB()
 
 uint16_t mcp23s17_readGPIO()
 {
-    // 利用 SEQOP=0 的地址自增：一次事务连读 GPIOA/GPIOB
+    // use the SEQOP=0 address auto-increment: read GPIOA/GPIOB back-to-back in one transaction
     spi_begin_txn();
     SPI.transfer(MCP23S17::OPCODE_READ);
     SPI.transfer(MCP23S17::REG_GPIOA);

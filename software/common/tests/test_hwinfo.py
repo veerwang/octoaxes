@@ -60,23 +60,23 @@ def main():
         time.sleep(0.5)
         ser.reset_input_buffer()
 
-        # 1. 发送 Engine Start（轴初始化需要）
+        # 1. send Engine Start (needed for axis initialization)
         print("发送 Engine Start...")
         send_debug_command(ser, "S:Engine Start")
-        # 等待系统初始化完成（TMC SPI 通信 + 驱动检测）
+        # wait for system init to complete (TMC SPI communication + driver detection)
         drain(ser, timeout=3.0)
         print("系统初始化完成")
         print()
 
-        # 2. 查询硬件信息
+        # 2. query hardware info
         send_debug_command(ser, "S:HWINFO")
         lines = read_lines(ser, timeout=3.0)
 
-        # 解析 HWINFO 响应
+        # parse the HWINFO response
         axes = []
         for line in lines:
             if line.startswith("S:HWINFO:") and "END" not in line:
-                # 格式: S:HWINFO:<axis>:TMC4361A+<driver>
+                # format: S:HWINFO:<axis>:TMC4361A+<driver>
                 parts = line.split(":")
                 if len(parts) >= 4:
                     axis_name = parts[2]

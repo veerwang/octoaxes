@@ -221,21 +221,21 @@ void tmc4361A_readWriteCover(uint16_t icID, uint8_t *data, size_t length)
         // data[1..4] = 32-bit data (MSB first)
         // ====================================================================
 
-        // 先写 COVER_HIGH (地址字节)
+        // write COVER_HIGH first (address byte)
         int32_t coverHigh = (int32_t)data[0];
         tmc4361A_writeRegister(icID, TMC4361A_COVER_HIGH, coverHigh);
 
-        // 再写 COVER_LOW (32-bit 数据) — 写 COVER_LOW 触发 SPI 传输
+        // then write COVER_LOW (32-bit data) -- writing COVER_LOW triggers the SPI transfer
         int32_t coverLow = ((int32_t)data[1] << 24) |
                            ((int32_t)data[2] << 16) |
                            ((int32_t)data[3] << 8)  |
                            ((int32_t)data[4]);
         tmc4361A_writeRegister(icID, TMC4361A_COVER_LOW, coverLow);
 
-        // 等待传输完成 (40-bit 比 20-bit 需要更长等待)
+        // wait for the transfer to complete (40-bit needs a longer wait than 20-bit)
         delayMicroseconds(50);
 
-        // 读取响应
+        // read the response
         int32_t responseHigh = tmc4361A_readRegister(icID, TMC4361A_COVER_DRV_HIGH);
         int32_t responseLow  = tmc4361A_readRegister(icID, TMC4361A_COVER_DRV_LOW);
 

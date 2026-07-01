@@ -20,8 +20,8 @@ from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QColor
 
 from utils.constants import AXIS_CONFIG
 
-# 照明端口元数据（profile 决定路数/DAC/GAIN 等）。profile 未定义时给安全默认值
-# 以保留向后兼容（旧 octoaxes constants.py 升级前）
+# illumination port metadata (the profile decides the number of ports/DAC/GAIN etc.). Provide safe defaults when the profile does not define them
+# to keep backward compatibility (before the old octoaxes constants.py is upgraded)
 try:
     from utils.constants import (
         ILLUMINATION_PORTS,
@@ -57,7 +57,7 @@ class AxisStatusDisplay(QGroupBox):
     def init_ui(self):
         layout = QVBoxLayout(self)
 
-        # 状态网格
+        # status grid
         grid_widget = QWidget()
         self.grid = QGridLayout(grid_widget)
         self.create_header()
@@ -65,13 +65,13 @@ class AxisStatusDisplay(QGroupBox):
 
         layout.addWidget(grid_widget)
 
-        # 刷新按钮
+        # refresh button
         refresh_layout = QHBoxLayout()
         refresh_btn = QPushButton("Refresh All Axes")
         refresh_btn.clicked.connect(self.refresh_clicked.emit)
 
         self.auto_poll_check = QCheckBox("Enable auto-poll")
-        self.auto_poll_check.setChecked(False)  # 默认不选
+        self.auto_poll_check.setChecked(False)  # unchecked by default
 
         refresh_layout.addWidget(refresh_btn)
         refresh_layout.addWidget(self.auto_poll_check)
@@ -91,12 +91,12 @@ class AxisStatusDisplay(QGroupBox):
 
     def create_axis_rows(self):
         for row, (axis_id, config) in enumerate(AXIS_CONFIG.items(), start=1):
-            # 轴名称
+            # axis name
             name_label = QLabel(config["display_name"])
             name_label.setStyleSheet("font-weight: bold; padding: 5px;")
             self.grid.addWidget(name_label, row, 0)
 
-            # 状态标签
+            # status label
             self.axis_labels[axis_id] = {
                 "driver": self.create_status_label("-"),
                 "state": self.create_status_label(),
@@ -106,7 +106,7 @@ class AxisStatusDisplay(QGroupBox):
                 "limits": self.create_status_label("0x0"),
             }
 
-            # 添加到网格
+            # add to the grid
             for col, key in enumerate(
                 ["driver", "state", "position", "moving", "enabled", "limits"], start=1
             ):
@@ -124,7 +124,7 @@ class AxisStatusDisplay(QGroupBox):
 
         labels = self.axis_labels[axis]
 
-        # 更新状态
+        # update the status
         if "state" in status:
             labels["state"].setText(status["state"])
             self.set_state_color(labels["state"], status["state"])
@@ -184,9 +184,9 @@ class ControlPanel(QGroupBox):
     previous_clicked = pyqtSignal()
     next_clicked = pyqtSignal()
     test_clicked = pyqtSignal()
-    move_absolute_clicked = pyqtSignal(float)  # 单位 um，无论轴类型都统一为um
+    move_absolute_clicked = pyqtSignal(float)  # unit um; unified to um regardless of axis type
 
-    enable_toggled = pyqtSignal(bool)  # 新增：使能状态切换信号
+    enable_toggled = pyqtSignal(bool)  # added: enable-state toggle signal
     axis_changed = pyqtSignal(str)
     velocity_accel_set = pyqtSignal(float, float)  # vel_mm_s, acc_mm_s2
 
@@ -194,39 +194,39 @@ class ControlPanel(QGroupBox):
         super().__init__("Motor Control")
         self.current_axis = "X"
         self.is_switching = False
-        self.axis_enabled = True  # 默认使能状态为启用
+        self.axis_enabled = True  # default enable state is enabled
 
-        # 存储不同轴类型的移动距离
-        self.um_distance_values = {}  # Z和E3轴的um值
-        self.mm_distance_values = {}  # X和Y轴的mm值
-        # 存储不同轴类型的绝对位置值（um单位）
-        self.abs_um_values = {}  # Z和E3轴的um绝对位置值
-        self.abs_mm_values = {}  # X和Y轴的mm绝对位置值
-        # 存储不同轴的速度/加速度值
+        # store the move distance per axis type
+        self.um_distance_values = {}  # um values for the Z and E3 axes
+        self.mm_distance_values = {}  # mm values for the X and Y axes
+        # store the absolute position per axis type (um)
+        self.abs_um_values = {}  # um absolute positions for the Z and E3 axes
+        self.abs_mm_values = {}  # mm absolute positions for the X and Y axes
+        # store velocity/acceleration per axis
         self.vel_values = {}
         self.acc_values = {}
 
         self.init_ui()
-        # 初始设置，延迟执行以确保UI完全加载
+        # initial setup, deferred to ensure the UI is fully loaded
         QTimer.singleShot(100, lambda: self.set_current_axis(self.current_axis))
 
     def init_ui(self):
         layout = QVBoxLayout(self)
 
-        # 使用堆叠控件
+        # use a stacked widget
         self.stacked_widget = QStackedWidget()
 
-        # 创建两个控制页面
+        # create two control pages
         self.normal_control_page = self.create_normal_control_page()
         self.filter_control_page = self.create_filter_control_page()
 
-        # 添加到堆叠控件
+        # add to the stacked widget
         self.stacked_widget.addWidget(self.normal_control_page)
         self.stacked_widget.addWidget(self.filter_control_page)
 
         layout.addWidget(self.stacked_widget)
 
-        # 连接切换信号
+        # connect the toggle signal
         self.stacked_widget.currentChanged.connect(self.on_page_changed)
 
     def create_normal_control_page(self):
@@ -234,7 +234,7 @@ class ControlPanel(QGroupBox):
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        # 使能/禁用按钮 - 普通轴页面
+        # enable/disable button - normal-axis page
         self.enable_btn_normal = QPushButton("Disable Axis")
         self.enable_btn_normal.setStyleSheet(
             "background-color: orange; font-weight: bold;"
@@ -242,11 +242,11 @@ class ControlPanel(QGroupBox):
         self.enable_btn_normal.clicked.connect(self.toggle_enable)
         layout.addWidget(self.enable_btn_normal)
 
-        # 限位设置
+        # limit settings
         limit_widget = self.create_limit_widget()
         layout.addWidget(limit_widget)
 
-        # 功能按钮
+        # function buttons
         self.home_btn_normal = QPushButton("Homing")
         self.home_btn_normal.clicked.connect(self.emit_homing)
         layout.addWidget(self.home_btn_normal)
@@ -255,8 +255,8 @@ class ControlPanel(QGroupBox):
         self.reset_btn_normal.clicked.connect(self.emit_reset)
         layout.addWidget(self.reset_btn_normal)
 
-        # ====== 移动距离设置 - 为不同轴类型提供不同输入 ======
-        # 1. Z和E3轴使用：Move Distance (um, 1-1000)
+        # ====== move-distance settings - different inputs per axis type ======
+        # 1. Z and E3 axes use: Move Distance (um, 1-1000)
         self.um_distance_widget = QWidget()
         um_layout = QHBoxLayout(self.um_distance_widget)
         um_layout.addWidget(QLabel("Move Distance (um, 1-1000):"))
@@ -267,28 +267,28 @@ class ControlPanel(QGroupBox):
         um_layout.addStretch()
         layout.addWidget(self.um_distance_widget)
 
-        # 2. X和Y轴使用：Move Relative Distance (mm, 1-120)
+        # 2. X and Y axes use: Move Relative Distance (mm, 1-120)
         self.mm_distance_widget = QWidget()
         mm_layout = QHBoxLayout(self.mm_distance_widget)
         mm_layout.addWidget(QLabel("Move Relative Distance (mm, 0.1-120):"))
         self.distance_input_mm = QLineEdit("1.0")
-        # 设置验证器：允许小数，范围0.1-120，小数点后最多1位
+        # set a validator: allow decimals, range 0.1-120, at most 1 decimal place
         validator = QDoubleValidator(0.1, 120.0, 1)
         validator.setNotation(QDoubleValidator.StandardNotation)
         self.distance_input_mm.setValidator(validator)
         self.distance_input_mm.setMaximumWidth(80)
-        # 设置字体，确保数字清晰显示
+        # set the font to ensure digits display clearly
         font = QFont("Arial", 14)
         self.distance_input_mm.setFont(font)
         mm_layout.addWidget(self.distance_input_mm)
         mm_layout.addStretch()
         layout.addWidget(self.mm_distance_widget)
 
-        # 初始时都隐藏，在set_current_axis中根据轴类型显示
+        # hidden initially; shown by axis type in set_current_axis
         self.um_distance_widget.setVisible(False)
         self.mm_distance_widget.setVisible(False)
 
-        # 移动按钮
+        # move buttons
         btn_layout = QHBoxLayout()
         self.forward_btn = QPushButton("Forward")
         self.forward_btn.clicked.connect(self.emit_forward)
@@ -299,10 +299,10 @@ class ControlPanel(QGroupBox):
         btn_layout.addWidget(self.backward_btn)
         layout.addLayout(btn_layout)
 
-        # >>> 绝对位置控件
+        # >>> absolute-position widgets
         self.abs_widget = QWidget()
         abs_layout = QHBoxLayout(self.abs_widget)
-        # 标签和输入框将在set_current_axis中根据轴类型设置
+        # the label and input field are set by axis type in set_current_axis
         self.abs_pos_label = QLabel("Absolute Position:")
         self.abs_pos_edit = QLineEdit("0.0")
         self.abs_pos_edit.setMaximumWidth(100)
@@ -316,7 +316,7 @@ class ControlPanel(QGroupBox):
 
         self.abs_widget.setVisible(True)
 
-        # 速度 / 加速度设置
+        # velocity / acceleration settings
         vel_acc_layout = QHBoxLayout()
         vel_acc_layout.addWidget(QLabel("Vel (mm/s):"))
         self.vel_input = QLineEdit("25.0")
@@ -349,7 +349,7 @@ class ControlPanel(QGroupBox):
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        # 使能/禁用按钮 - FilterWheel页面
+        # enable/disable button - FilterWheel page
         self.enable_btn_filter = QPushButton("Disable Axis")
         self.enable_btn_filter.setStyleSheet(
             "background-color: orange; font-weight: bold;"
@@ -357,7 +357,7 @@ class ControlPanel(QGroupBox):
         self.enable_btn_filter.clicked.connect(self.toggle_enable)
         layout.addWidget(self.enable_btn_filter)
 
-        # 占位空间
+        # spacer
         placeholder = QLabel("Filter Wheel / Objective Control")
         placeholder.setAlignment(Qt.AlignCenter)
         placeholder.setStyleSheet("color: gray; font-style: italic; padding: 10px;")
@@ -365,7 +365,7 @@ class ControlPanel(QGroupBox):
 
         layout.addStretch()
 
-        # 功能按钮
+        # function buttons
         self.home_btn_filter = QPushButton("Homing")
         self.home_btn_filter.clicked.connect(self.emit_homing)
         layout.addWidget(self.home_btn_filter)
@@ -376,7 +376,7 @@ class ControlPanel(QGroupBox):
 
         layout.addStretch()
 
-        # FilterWheel专用按钮
+        # FilterWheel-specific buttons
         filter_btn_layout = QHBoxLayout()
         self.previous_btn = QPushButton("Previous Position")
         self.previous_btn.clicked.connect(self.emit_previous)
@@ -436,10 +436,10 @@ class ControlPanel(QGroupBox):
     def toggle_enable(self):
         """切换使能状态"""
         if not self.is_switching:
-            # 切换状态
+            # toggle the state
             self.axis_enabled = not self.axis_enabled
 
-            # 更新按钮文本和颜色
+            # update the button text and color
             if self.axis_enabled:
                 btn_text = "Disable Axis"
                 btn_color = "orange"
@@ -447,7 +447,7 @@ class ControlPanel(QGroupBox):
                 btn_text = "Enable Axis"
                 btn_color = "green"
 
-            # 更新两个页面上的按钮
+            # update the buttons on both pages
             self.enable_btn_normal.setText(btn_text)
             self.enable_btn_normal.setStyleSheet(
                 f"background-color: {btn_color}; font-weight: bold;"
@@ -458,14 +458,14 @@ class ControlPanel(QGroupBox):
                 f"background-color: {btn_color}; font-weight: bold;"
             )
 
-            # 发射信号
+            # emit the signal
             self.enable_toggled.emit(self.axis_enabled)
 
     def set_enable_state(self, enabled):
         """设置使能状态"""
         self.axis_enabled = enabled
 
-        # 更新按钮文本和颜色
+        # update the button text and color
         if self.axis_enabled:
             btn_text = "Disable Axis"
             btn_color = "orange"
@@ -473,7 +473,7 @@ class ControlPanel(QGroupBox):
             btn_text = "Enable Axis"
             btn_color = "green"
 
-        # 更新按钮
+        # update the button
         self.enable_btn_normal.setText(btn_text)
         self.enable_btn_normal.setStyleSheet(
             f"background-color: {btn_color}; font-weight: bold;"
@@ -527,22 +527,22 @@ class ControlPanel(QGroupBox):
     def emit_absolute_move(self):
         """发射绝对位置移动信号（单位 um）"""
         try:
-            # 读取文本值
+            # read the text value
             text = self.abs_pos_edit.text()
 
-            # 根据当前轴类型转换单位
+            # convert units based on the current axis type
             if self.current_axis in ["Z", "E3"]:
-                # Z和E3轴：单位是um，直接转换为整数
+                # Z and E3 axes: unit is um, convert directly to an integer
                 pos_um = int(float(text))
             elif self.current_axis in ["X", "Y"]:
-                # X和Y轴：单位是mm，需要转换为um
+                # X and Y axes: unit is mm, needs conversion to um
                 pos_mm = float(text)
                 pos_um = int(pos_mm * 1000)
             else:
-                # 其他轴使用默认处理
+                # other axes use default handling
                 pos_um = int(float(text))
 
-            # 发射信号（单位um）
+            # emit the signal (unit um)
             self.move_absolute_clicked.emit(pos_um)
         except ValueError:
             pass
@@ -571,43 +571,43 @@ class ControlPanel(QGroupBox):
         self.is_switching = True
         self.current_axis = axis
 
-        # 用 AXIS_CONFIG 读取限位
+        # read the limits from AXIS_CONFIG
         low, high = AXIS_CONFIG[self.current_axis]["limits"]
         self.set_axis_limits(low, high)
 
         try:
-            # 根据轴类型判断显示哪个控制页面
-            # 用 AXIS_CONFIG[axis]["type"] 动态判断，跟随 profile（octoaxes/octoaxesplus）
+            # decide which control page to show based on axis type
+            # decide dynamically using AXIS_CONFIG[axis]["type"], follows the profile (octoaxes/octoaxesplus)
             axis_type = AXIS_CONFIG.get(axis, {}).get("type", "step_motor")
             if axis_type in ("filter_wheel", "objective"):
-                # FilterWheel / Objectives 轴 - 显示第1页（滤光转盘 / 物镜控制）
+                # FilterWheel / Objectives axes - show page 1 (filter wheel / objective control)
                 target_index = 1
-                # Rounds + Test 按钮原为 filter wheel 自动测试 (Next×7 → Previous×7) × N rounds
-                # （详见 main_window.run_w_test）。objective 是 4 物镜不是 8 槽，不适用，仅 filter_wheel 显示。
+                # the Rounds + Test buttons were originally for the filter-wheel auto-test (Next x7 -> Previous x7) x N rounds
+                # (see main_window.run_w_test). An objective has 4 lenses, not 8 slots, so it does not apply; shown only for filter_wheel.
                 is_filter_wheel = (axis_type == "filter_wheel")
                 self.test_btn.setVisible(is_filter_wheel)
                 self.test_rounds_spin.setVisible(is_filter_wheel)
                 self.rounds_label.setVisible(is_filter_wheel)
             else:
-                # 普通步进电机轴 - 显示第0页
+                # normal stepper-motor axes - show page 0
                 target_index = 0
 
-            # 只有页面需要切换时才执行
+            # only run when the page actually needs to change
             if self.stacked_widget.currentIndex() != target_index:
                 self.stacked_widget.setCurrentIndex(target_index)
-                # 给UI时间更新
+                # give the UI time to update
                 QTimer.singleShot(10, lambda: self.axis_changed.emit(axis))
             else:
                 self.axis_changed.emit(axis)
 
-            # 根据轴类型显示相应的距离输入控件（仅在普通控制页面）
-            if target_index == 0:  # 普通控制页面
+            # show the matching distance-input widget by axis type (only on the normal control page)
+            if target_index == 0:  # normal control page
                 if axis in ["Z", "E3"]:
-                    # Z和E3轴：显示um输入，隐藏mm输入
+                    # Z and E3 axes: show the um input, hide the mm input
                     self.um_distance_widget.setVisible(True)
                     self.mm_distance_widget.setVisible(False)
 
-                    # 恢复之前保存的值或使用默认值
+                    # restore the previously saved value or use the default
                     if axis in self.um_distance_values:
                         self.distance_input_um.setText(
                             str(self.um_distance_values[axis])
@@ -615,7 +615,7 @@ class ControlPanel(QGroupBox):
                     else:
                         self.distance_input_um.setText("500")
 
-                    # 设置绝对位置控件为um单位
+                    # set the absolute-position widget to um units
                     self.abs_pos_label.setText("Absolute Position (μm):")
                     self.abs_pos_edit.setValidator(QIntValidator(-120000, 120000))
                     if axis in self.abs_um_values:
@@ -624,11 +624,11 @@ class ControlPanel(QGroupBox):
                         self.abs_pos_edit.setText("0")
 
                 elif axis in ["X", "Y"]:
-                    # X和Y轴：显示mm输入，隐藏um输入
+                    # X and Y axes: show the mm input, hide the um input
                     self.um_distance_widget.setVisible(False)
                     self.mm_distance_widget.setVisible(True)
 
-                    # 恢复之前保存的值或使用默认值
+                    # restore the previously saved value or use the default
                     if axis in self.mm_distance_values:
                         self.distance_input_mm.setText(
                             str(self.mm_distance_values[axis])
@@ -636,7 +636,7 @@ class ControlPanel(QGroupBox):
                     else:
                         self.distance_input_mm.setText("1.0")
 
-                    # 设置绝对位置控件为mm单位
+                    # set the absolute-position widget to mm units
                     self.abs_pos_label.setText("Absolute Position (mm):")
                     validator = QDoubleValidator(-120.0, 120.0, 3)
                     validator.setNotation(QDoubleValidator.StandardNotation)
@@ -646,7 +646,7 @@ class ControlPanel(QGroupBox):
                     else:
                         self.abs_pos_edit.setText("0.000")
 
-                # 加载该轴的速度/加速度（用缓存值或 AXIS_CONFIG 默认值）
+                # load the axis's velocity/acceleration (from cache or the AXIS_CONFIG default)
                 default_vel = AXIS_CONFIG.get(axis, {}).get("default_velocity", 5.0)
                 default_acc = AXIS_CONFIG.get(axis, {}).get("default_acceleration", 100.0)
                 self.vel_input.setText(str(self.vel_values.get(axis, default_vel)))
@@ -671,27 +671,27 @@ class ControlPanel(QGroupBox):
     def get_move_distance(self):
         """获取移动距离（转换为um单位）"""
         try:
-            # 根据当前轴类型选择相应的输入控件
+            # select the matching input widget based on the current axis type
             if self.current_axis in ["Z", "E3"]:
-                # Z和E3轴：输入的是um，直接返回
+                # Z and E3 axes: input is um, return directly
                 distance = int(self.distance_input_um.text())
                 if 1 <= distance <= 1000:
-                    # 保存当前值
+                    # save the current value
                     self.um_distance_values[self.current_axis] = distance
-                    return distance  # 已经是um单位
+                    return distance  # already in um
                 return None
             elif self.current_axis in ["X", "Y"]:
-                # X和Y轴：输入的是mm，需要转换为um（乘以1000）
+                # X and Y axes: input is mm, needs conversion to um (multiply by 1000)
                 distance_mm = float(self.distance_input_mm.text())
                 if 0 < distance_mm <= 120.0:
-                    # 保存当前值
+                    # save the current value
                     self.mm_distance_values[self.current_axis] = distance_mm
-                    # 转换为um（乘以1000并取整）
+                    # convert to um (multiply by 1000 and round)
                     distance_um = int(distance_mm * 1000)
                     return distance_um
                 return None
             else:
-                # 其他轴类型，使用默认的um输入
+                # other axis types use the default um input
                 distance = int(self.distance_input_um.text())
                 if 1 <= distance <= 1000:
                     return distance
@@ -737,7 +737,7 @@ class IlluminationPanel(QGroupBox):
     port_cmd            = pyqtSignal(int, int, bool)   # port, intensity, on
     turn_off_all        = pyqtSignal()
     led_matrix_cmd      = pyqtSignal(int, int, int, int)  # pattern, r, g, b
-    led_matrix_off_cmd  = pyqtSignal()                  # Clear → 真熄灭矩阵
+    led_matrix_off_cmd  = pyqtSignal()                  # Clear -> actually extinguish the matrix
     intensity_factor_cmd = pyqtSignal(int)             # 0-100
     dac_channel_cmd     = pyqtSignal(int, int)         # ch, raw 0-65535
     dac_gain_cmd        = pyqtSignal(int)              # gain hex 0x00..0xFF
@@ -757,11 +757,11 @@ class IlluminationPanel(QGroupBox):
 
     def __init__(self):
         super().__init__("Illumination")
-        # 只影响标题字体，不传播给子控件
+        # only affects the title font, not propagated to child widgets
         self.setStyleSheet(
             "QGroupBox::title { font-weight: bold; font-size: 13px; }"
         )
-        # profile 元数据快照
+        # profile metadata snapshot
         self._ports         = list(ILLUMINATION_PORTS)
         self._dac_channels  = list(ILLUMINATION_DAC_CHANNELS)
         self._has_gain      = bool(ILLUMINATION_HAS_GAIN_SWITCH)
@@ -769,9 +769,9 @@ class IlluminationPanel(QGroupBox):
         n_ports = len(self._ports)
         self._port_intensity_pct = [50] * n_ports
         self._port_on            = [False] * n_ports
-        # DAC raw 状态镜像（仅 squid++ 用）
+        # DAC raw state mirror (squid++ only)
         self._dac_raw            = [0] * len(self._dac_channels)
-        # D8 (ch7) gain 状态：True=2 (满 5V), False=1 (满 2.5V)，初值与 firmware 默认 0x0080 一致
+        # D8 (ch7) gain state: True=2 (full 5V), False=1 (full 2.5V); initial value matches the firmware default 0x0080
         self._d8_gain2 = True
         self._init_ui()
 
@@ -781,7 +781,7 @@ class IlluminationPanel(QGroupBox):
         root.setSpacing(4)
         root.setContentsMargins(6, 14, 6, 6)
 
-        # ── 全局控制行 ───────────────────────────────────────
+        # -- global control row --------------------------------
         global_layout = QHBoxLayout()
         global_layout.setSpacing(4)
 
@@ -804,7 +804,7 @@ class IlluminationPanel(QGroupBox):
         apply_factor_btn.clicked.connect(self._send_factor)
         global_layout.addWidget(apply_factor_btn)
 
-        # 全部关闭
+        # turn all off
         off_all_btn = QPushButton("All OFF")
         off_all_btn.setStyleSheet(
             "background-color: #c0392b; color: white; font-weight: bold; font-size: 11px;"
@@ -816,7 +816,7 @@ class IlluminationPanel(QGroupBox):
         root.addLayout(global_layout)
         root.addWidget(self._make_divider())
 
-        # ── TTL 端口行（按 ILLUMINATION_PORTS 动态生成） ─────────
+        # -- TTL port rows (generated dynamically from ILLUMINATION_PORTS) --------
         self._port_btns = []
         self._port_sliders = []
         self._port_pct_labels = []
@@ -824,7 +824,7 @@ class IlluminationPanel(QGroupBox):
         ports_grid = QGridLayout()
         ports_grid.setVerticalSpacing(3)
         ports_grid.setHorizontalSpacing(4)
-        ports_grid.setColumnStretch(1, 1)   # 滑条列自动拉伸
+        ports_grid.setColumnStretch(1, 1)   # the slider column stretches automatically
 
         for i, (port_idx, name, _pin) in enumerate(self._ports):
             lbl = QLabel(name)
@@ -858,9 +858,9 @@ class IlluminationPanel(QGroupBox):
         root.addLayout(ports_grid)
         root.addWidget(self._make_divider())
 
-        # ── DAC 直控区（仅 squid++ 有 ILLUMINATION_DAC_CHANNELS） ──
-        # 滑条走 ASCII S:DAC_SET 直控 raw（绕过 firmware intensity_factor），
-        # bring-up 时所见即所得；与 TTL 按钮独立
+        # -- DAC direct-control area (only squid++ has ILLUMINATION_DAC_CHANNELS) --
+        # the slider uses ASCII S:DAC_SET to directly control raw (bypassing the firmware intensity_factor),
+        # what-you-see-is-what-you-get during bring-up; independent of the TTL buttons
         self._dac_sliders   = []
         self._dac_val_labels = []
         self._d8_gain_btn   = None
@@ -896,7 +896,7 @@ class IlluminationPanel(QGroupBox):
                 self._dac_val_labels.append(v_lbl)
             root.addLayout(dac_grid)
 
-            # GAIN + Read 操作行
+            # GAIN + Read action row
             dac_ops = QHBoxLayout()
             dac_ops.setSpacing(4)
             if self._has_gain:
@@ -922,7 +922,7 @@ class IlluminationPanel(QGroupBox):
             root.addLayout(dac_ops)
             root.addWidget(self._make_divider())
 
-        # ── LED 矩阵控制 ──────────────────────────────────────
+        # -- LED matrix control --------------------------------
         matrix_layout = QVBoxLayout()
         matrix_layout.setSpacing(3)
 
@@ -936,7 +936,7 @@ class IlluminationPanel(QGroupBox):
         pat_row.addWidget(self._pattern_combo, stretch=1)
         matrix_layout.addLayout(pat_row)
 
-        # R/G/B 滑条（共用 QGridLayout 对齐）
+        # R/G/B sliders (aligned in a shared QGridLayout)
         rgb_grid = QGridLayout()
         rgb_grid.setVerticalSpacing(3)
         rgb_grid.setHorizontalSpacing(4)
@@ -988,7 +988,7 @@ class IlluminationPanel(QGroupBox):
         root.addLayout(matrix_layout)
         root.addStretch()
 
-    # ── 内部辅助 ──────────────────────────────────────────────
+    # -- internal helpers --------------------------------
 
     @staticmethod
     def _make_divider(text=""):
@@ -1018,7 +1018,7 @@ class IlluminationPanel(QGroupBox):
         self.intensity_factor_cmd.emit(self._factor_slider.value())
 
     def _on_turn_off_all(self):
-        # 重置所有按钮状态（不触发 toggled 信号）
+        # reset all button states (without firing the toggled signal)
         for i, btn in enumerate(self._port_btns):
             btn.blockSignals(True)
             btn.setChecked(False)
@@ -1030,7 +1030,7 @@ class IlluminationPanel(QGroupBox):
     def _on_port_slider(self, ui_row, value):
         self._port_intensity_pct[ui_row] = value
         self._port_pct_labels[ui_row].setText(f"{value}%")
-        # 如果端口当前开启，实时更新强度
+        # if the port is currently on, update the intensity in real time
         if self._port_on[ui_row]:
             intensity = int(value / 100.0 * 65535)
             port_idx = self._ports[ui_row][0]
@@ -1044,10 +1044,10 @@ class IlluminationPanel(QGroupBox):
         port_idx = self._ports[ui_row][0]
         self.port_cmd.emit(port_idx, intensity, checked)
 
-    # ── DAC 直控（仅 squid++） ────────────────────────────────────
+    # -- DAC direct control (squid++ only) --------------------------------
 
     def _on_dac_slider(self, dac_ch, ui_row, pct):
-        # 当前满量程电压（GAIN 切换可改 D8/ch7）
+        # the current full-scale voltage (the GAIN switch can change D8/ch7)
         full_v = self._dac_channels[ui_row][1]
         raw = int(round(pct * 65535 / 100))
         if raw > 65535:
@@ -1060,11 +1060,11 @@ class IlluminationPanel(QGroupBox):
         self.dac_channel_cmd.emit(dac_ch, raw)
 
     def _on_d8_gain_toggle(self):
-        # 切换 D8 (ch7) gain：True=gain2/5V, False=gain1/2.5V
+        # toggle D8 (ch7) gain: True=gain2/5V, False=gain1/2.5V
         self._d8_gain2 = not self._d8_gain2
         gain_hex = 0x80 if self._d8_gain2 else 0x00
         self.dac_gain_cmd.emit(gain_hex)
-        # 同步本地满量程镜像（仅 ch7）+ 刷新显示
+        # sync the local full-scale mirror (ch7 only) + refresh the display
         for i, (ch, full_v) in enumerate(self._dac_channels):
             if ch == 7:
                 new_v = 5.0 if self._d8_gain2 else 2.5
@@ -1096,8 +1096,8 @@ class IlluminationPanel(QGroupBox):
         self.led_matrix_cmd.emit(pattern, r, g, b)
 
     def _clear_led_matrix(self):
-        # firmware cmd 13 只缓存参数不熄灭（2026-05-10 行为变更）；
-        # 必须发 cmd 11 TURN_OFF_ILLUMINATION 才能真熄灭矩阵
+        # firmware cmd 13 only caches parameters and does not extinguish (behavior change on 2026-05-10);
+        # cmd 11 TURN_OFF_ILLUMINATION must be sent to actually extinguish the matrix
         self.led_matrix_off_cmd.emit()
 
 
@@ -1113,7 +1113,7 @@ class LogDisplay(QGroupBox):
     def init_ui(self):
         layout = QVBoxLayout(self)
 
-        # 标题栏
+        # title bar
         title_layout = QHBoxLayout()
         title_layout.addWidget(QLabel(f"{self.title()}:"))
         title_layout.addStretch()
@@ -1124,7 +1124,7 @@ class LogDisplay(QGroupBox):
 
         layout.addLayout(title_layout)
 
-        # 文本显示
+        # text display
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         if "Sent" in self.title():

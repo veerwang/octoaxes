@@ -57,17 +57,17 @@ class TeensyControlGUI(QMainWindow):
         self._query_mutex = QMutex()
         self._query_timer_active = False
 
-        # 日志文件相关
+        # log file related
         self.log_file = None
-        self.log_file_path = os.getcwd()  # 默认当前路径
+        self.log_file_path = os.getcwd()  # default to the current path
 
-        # 添加轴使能状态字典（从 AXIS_CONFIG 动态生成，跟随 profile）
+        # add the axis-enable state dict (generated dynamically from AXIS_CONFIG, follows the profile)
         self.axis_enabled_states = {axis: True for axis in AXIS_CONFIG.keys()}
 
-        # 物镜转换器上次换位方向（齿轮回程间隙补偿用，False=previous 基线）；
-        # homing 后重置
+        # the objective turret's last switch direction (for gear-backlash compensation, False=previous baseline);
+        # reset after homing
         self._objective_move_direction = False
-        # 物镜 W 轴电机参数是否已下发（懒加载，首次换位/homing 前下发一次）
+        # whether the objective W-axis motor parameters have been sent (lazy-loaded, sent once before the first switch/homing)
         self._objective_configured = False
 
         self.init_ui()
@@ -82,10 +82,10 @@ class TeensyControlGUI(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        # 顶部状态栏（常驻）
+        # top status bar (persistent)
         main_layout.addLayout(self.create_top_bar())
 
-        # 标签页
+        # tabs
         self.tab_widget = QTabWidget()
         self.tab_widget.setStyleSheet("""
             QTabBar::tab {
@@ -110,19 +110,19 @@ class TeensyControlGUI(QMainWindow):
             }
         """)
 
-        # Tab 1: Motion — 轴控制 + 全轴状态
+        # Tab 1: Motion — axis control + all-axis status
         motion_tab = self.create_motion_tab()
         self.tab_widget.addTab(motion_tab, "Motion")
 
-        # Tab 2: Illumination — 照明控制
+        # Tab 2: Illumination — illumination control
         illumination_tab = self.create_illumination_tab()
         self.tab_widget.addTab(illumination_tab, "Illumination")
 
-        # Tab 3: Log — 日志
+        # Tab 3: Log — log
         log_tab = self.create_log_tab()
         self.tab_widget.addTab(log_tab, "Log")
 
-        # Tab 4: Integration Test — 集成测试
+        # Tab 4: Integration Test — integration test
         test_tab = self.create_integration_test_tab()
         self.tab_widget.addTab(test_tab, "Integration Test")
 
@@ -131,14 +131,14 @@ class TeensyControlGUI(QMainWindow):
     def create_top_bar(self):
         layout = QHBoxLayout()
 
-        # 连接状态
+        # connection status
         self.status_label = QLabel("Disconnected")
         self.status_label.setStyleSheet("color: red; font-weight: bold;")
         layout.addWidget(self.status_label)
 
         layout.addStretch()
 
-        # 固件版本
+        # firmware version
         self.version_label = QLabel("Firmware Version: Unknown")
         self.version_label.setStyleSheet("color: darkorange; font-weight: bold;")
         layout.addWidget(self.version_label)
@@ -149,16 +149,16 @@ class TeensyControlGUI(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
 
-        # 轴选择
+        # axis selection
         layout.addLayout(self.create_axis_selector())
 
-        # 位置显示
+        # position display
         layout.addLayout(self.create_position_display())
 
-        # 当前轴状态
+        # current axis status
         layout.addWidget(self.create_current_axis_status())
 
-        # 控制面板
+        # control panel
         self.control_panel = ControlPanel()
         self.control_panel.homing_clicked.connect(self.send_homing)
         self.control_panel.reset_clicked.connect(self.send_reset)
@@ -248,11 +248,11 @@ class TeensyControlGUI(QMainWindow):
         tab = QWidget()
         layout = QHBoxLayout(tab)
 
-        # 左侧控制面板
+        # left control panel
         left_panel = self.create_left_panel()
         layout.addWidget(left_panel)
 
-        # 右侧状态显示
+        # right status display
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
 
@@ -275,7 +275,7 @@ class TeensyControlGUI(QMainWindow):
         self.illumination_panel.led_matrix_cmd.connect(self._send_illu_led_matrix)
         self.illumination_panel.led_matrix_off_cmd.connect(self._send_illu_led_matrix_off)
         self.illumination_panel.intensity_factor_cmd.connect(self._send_illu_intensity_factor)
-        # DAC 直控信号（仅 squid++ profile 会发，octoaxes 信号永远不触发）
+        # DAC direct-control signal (only sent by the squid++ profile; the octoaxes signal never fires)
         self.illumination_panel.dac_channel_cmd.connect(self._send_dac_set)
         self.illumination_panel.dac_gain_cmd.connect(self._send_dac_gain)
         self.illumination_panel.dac_readback_cmd.connect(self._send_dac_read_all)
@@ -288,7 +288,7 @@ class TeensyControlGUI(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         self.test_panel = IntegrationTestPanel()
-        self.test_panel.main_window = self   # 老化测试 worker 需发命令 + 读 axis 状态
+        self.test_panel.main_window = self   # the aging-test worker needs to send commands + read axis state
         self.test_panel.request_send_command.connect(
             lambda cmd: self.send_command(cmd, "Test"))
         self.test_panel.log_message.connect(self.log)
@@ -300,7 +300,7 @@ class TeensyControlGUI(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # 调试命令输入
+        # debug command input
         cmd_layout = QHBoxLayout()
         cmd_layout.addWidget(QLabel("Debug Command:"))
         self.debug_cmd_edit = QLineEdit()
@@ -312,13 +312,13 @@ class TeensyControlGUI(QMainWindow):
         cmd_layout.addWidget(send_btn)
         layout.addLayout(cmd_layout)
 
-        # 发送命令显示
+        # sent-command display
         layout.addWidget(self.create_sent_commands_group())
 
-        # 日志显示
+        # log display
         layout.addWidget(self.create_log_group())
 
-        # 重连按钮
+        # reconnect button
         self.connect_btn = QPushButton("Reconnect")
         self.connect_btn.clicked.connect(self.find_and_connect_teensy)
         layout.addWidget(self.connect_btn)
@@ -334,7 +334,7 @@ class TeensyControlGUI(QMainWindow):
         group = QGroupBox("Log")
         layout = QVBoxLayout(group)
 
-        # 标题栏
+        # title bar
         title_layout = QHBoxLayout()
         title_layout.addWidget(QLabel("Log:"))
         title_layout.addStretch()
@@ -345,24 +345,24 @@ class TeensyControlGUI(QMainWindow):
 
         layout.addLayout(title_layout)
 
-        # 日志保存选项
+        # log-save options
         save_layout = QHBoxLayout()
 
-        # 保存到文件复选框
+        # save-to-file checkbox
         self.save_log_checkbox = QCheckBox("Save to file")
         self.save_log_checkbox.stateChanged.connect(self.toggle_log_save)
         save_layout.addWidget(self.save_log_checkbox)
 
-        # 路径标签
+        # path label
         save_layout.addWidget(QLabel("Path:"))
 
-        # 路径输入框
+        # path input field
         self.log_path_edit = QLineEdit(self.log_file_path)
         self.log_path_edit.setMinimumWidth(300)
         self.log_path_edit.textChanged.connect(self.update_log_path)
         save_layout.addWidget(self.log_path_edit)
 
-        # 浏览按钮
+        # browse button
         browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self.browse_log_path)
         save_layout.addWidget(browse_btn)
@@ -370,7 +370,7 @@ class TeensyControlGUI(QMainWindow):
         save_layout.addStretch()
         layout.addLayout(save_layout)
 
-        # 文本显示
+        # text display
         self.log_text_edit = QTextEdit()
         self.log_text_edit.setReadOnly(True)
         layout.addWidget(self.log_text_edit)
@@ -390,7 +390,7 @@ class TeensyControlGUI(QMainWindow):
         new_path = self.log_path_edit.text().strip()
         if os.path.isdir(new_path):
             self.log_file_path = new_path
-            # 如果日志保存已启用，重新打开日志文件
+            # if log saving is enabled, reopen the log file
             if self.save_log_checkbox.isChecked():
                 self.close_log_file()
                 self.open_log_file()
@@ -408,18 +408,18 @@ class TeensyControlGUI(QMainWindow):
     def open_log_file(self):
         """打开日志文件"""
         try:
-            # 确保目录存在
+            # ensure the directory exists
             os.makedirs(self.log_file_path, exist_ok=True)
 
-            # 生成带时间戳的文件名
+            # generate a timestamped file name
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             log_filename = f"motor_control_log_{timestamp}.txt"
             log_file_path = os.path.join(self.log_file_path, log_filename)
 
-            # 打开文件
+            # open the file
             self.log_file = open(log_file_path, "a", encoding="utf-8")
 
-            # 写入文件头
+            # write the file header
             self.log_file.write(f"=== Motor Control Log ===\n")
             self.log_file.write(
                 f"Started at: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -452,16 +452,16 @@ class TeensyControlGUI(QMainWindow):
         """切换轴使能状态"""
         current_axis = self.get_current_axis()
 
-        # 更新本地状态
+        # update the local state
         self.axis_enabled_states[current_axis] = enable_state
 
-        # 发送使能/禁用命令
+        # send the enable/disable command
         if enable_state:
             self.enable_axis()
         else:
             self.disable_axis()
 
-        # 更新按钮显示
+        # update the button display
         self.control_panel.set_enable_state(enable_state)
 
     def enable_axis(self):
@@ -481,12 +481,12 @@ class TeensyControlGUI(QMainWindow):
             self.update_current_axis_display(current_axis)
 
     def setup_timers(self):
-        # 启动定时器
+        # start the timer
         self.startup_timer = QTimer(self)
         self.startup_timer.setInterval(500)
         self.startup_timer.timeout.connect(self.startup_launch)
 
-        # 状态刷新定时器
+        # status-refresh timer
         self.status_timer = QTimer(self)
         self.status_timer.setInterval(2000)
         self.status_timer.timeout.connect(self.safe_refresh_all_axes)
@@ -497,25 +497,25 @@ class TeensyControlGUI(QMainWindow):
         if self.axis_status_display.auto_poll_check.isChecked():
             self.refresh_all_axes_status()
 
-    # ====== 业务函数 ======
+    # ====== business functions ======
     def on_axis_changed(self):
         """当下拉菜单选择改变时更新控件显示状态"""
         current_axis = self.get_current_axis()
 
-        # 更新控件显示（通过ControlPanel自动处理）
+        # update the widget display (handled automatically by ControlPanel)
         self.control_panel.set_current_axis(current_axis)
 
-        # 更新limits的状态
+        # update the limits state
         self.set_limits()
 
-        # 更新当前轴的使能状态显示
+        # update the current axis's enable-state display
         enabled = self.axis_enabled_states.get(current_axis, True)
         self.control_panel.set_enable_state(enabled)
 
-        # 更新当前轴状态显示
+        # update the current axis status display
         self.update_current_axis_display(current_axis)
 
-        # 发送查询命令更新当前轴状态
+        # send a query command to update the current axis status
         if self.is_connected():
             self.query_axis_status()
 
@@ -530,7 +530,7 @@ class TeensyControlGUI(QMainWindow):
         self.axis_enabled_label.setText(f"Enabled: {status['enabled']}")
         self.axis_limits_label.setText(f"Limits: {status['limits']}")
 
-        # 设置颜色
+        # set the color
         color_map = {"IDLE": "green", "MOVING": "blue", "ERROR": "red"}
         state_color = color_map.get(status["state"], "orange")
         self.axis_state_label.setStyleSheet(f"color: {state_color}; font-weight: bold;")
@@ -555,25 +555,25 @@ class TeensyControlGUI(QMainWindow):
         if not self.serial_thread:
             return False
 
-        # 使用新的状态检查方法
+        # use the new status-check method
         return self.serial_thread.is_connected()
 
     def find_and_connect_teensy(self):
         """查找并连接Teensy"""
-        # 停止现有连接
+        # stop the existing connection
         if self.serial_thread:
             self.serial_thread.stop()
             self.serial_thread.wait()
             self.serial_thread = None
 
-        # 查找端口
+        # find the port
         teensy_port = find_teensy_port()
         if teensy_port is None:
             self.update_connection_status(False, "Teensy not found")
             self.log("Teensy not found. Please check your connection.")
             return
 
-        # 创建新连接
+        # create a new connection
         try:
             self.serial_thread = SerialThread(teensy_port)
             self.serial_thread.data_received.connect(self.handle_received_data)
@@ -585,7 +585,7 @@ class TeensyControlGUI(QMainWindow):
             self.update_connection_status(True, f"Connecting to {teensy_port}...")
             self.log(f"Connecting to Teensy on {teensy_port}")
 
-            # 延迟检查连接状态
+            # check the connection status after a delay
             QTimer.singleShot(2000, self.check_connection_status)
 
         except Exception as e:
@@ -600,7 +600,7 @@ class TeensyControlGUI(QMainWindow):
                 True, f"Connected to {self.serial_thread.port}"
             )
 
-            # 延迟执行初始化命令
+            # run the initialization commands after a delay
             QTimer.singleShot(500, self.query_firmware_version)
             QTimer.singleShot(800, self.query_hardware_info)
             QTimer.singleShot(1000, self.refresh_all_axes_status)
@@ -612,7 +612,7 @@ class TeensyControlGUI(QMainWindow):
         """处理串口错误"""
         self.log(f"Serial Error: {error_message}")
 
-        # 如果错误表明连接断开，更新状态
+        # if the error indicates a lost connection, update the status
         if any(
             keyword in error_message.lower()
             for keyword in ["failed", "closed", "not open", "disconnected", "error"]
@@ -630,7 +630,7 @@ class TeensyControlGUI(QMainWindow):
 
     def handle_debug_info(self, debug_message):
         """处理调试信息"""
-        # 可选：记录到调试日志
+        # optional: log to the debug log
         if hasattr(self, "log_display"):
             self.log(f"[DEBUG] {debug_message}")
 
@@ -638,11 +638,11 @@ class TeensyControlGUI(QMainWindow):
         """处理错误信号"""
         self.log(f"Error: {error_message}")
 
-        # 如果是连接错误，更新状态
+        # if it is a connection error, update the status
         if "not open" in error_message or "Failed to connect" in error_message:
             self.update_connection_status(False, "Connection Error")
 
-    # ====== 命令发送相关 ======
+    # ====== command sending ======
     def send_debug_command(self):
         """发送调试命令"""
         cmd = self.debug_cmd_edit.text().strip()
@@ -656,7 +656,7 @@ class TeensyControlGUI(QMainWindow):
             self.log("Not connected to Teensy")
             return False
 
-        # 使用互斥锁防止并发发送
+        # use a mutex to prevent concurrent sends
         if not self._query_mutex.tryLock():
             self.log("Warning: Command skipped due to busy state")
             return False
@@ -679,7 +679,7 @@ class TeensyControlGUI(QMainWindow):
         start = time.time()
 
         while time.time() - start < timeout:
-            # 使用 get_axis_status 获取状态副本，避免竞态条件
+            # use get_axis_status to get a status copy, avoiding race conditions
             status = self.axis_manager.get_axis_status(axis)
             if status and status.get("state") == "IDLE":
                 return True
@@ -694,49 +694,49 @@ class TeensyControlGUI(QMainWindow):
         """发送 Homing 命令到当前轴"""
         axis = self.get_current_axis()
 
-        # 使用协议轴值（与旧 Squid AXIS 类一致），不是固件内部数组索引
-        # octoaxesplus W1/W2 复用 W/W2 协议轴码（firmware 端做 W→W1 兜底）
+        # use the protocol axis value (consistent with the legacy Squid AXIS class), not the firmware internal array index
+        # octoaxesplus W1/W2 reuse the W/W2 protocol axis codes (the firmware does a W->W1 fallback)
         _AXIS_PROTOCOL = {
             "X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z,
             "W": AXIS.W,
-            "W1": AXIS.W,    # octoaxesplus 滤光转盘 1 — 协议码 = 5（同 W）
-            "W2": AXIS.W2,   # octoaxesplus 滤光转盘 2 — 协议码 = 6
-            "Turret": AXIS.TURRET,   # 2026-05-29 物镜转换器 — 协议码 = 7（firmware protocolAxisToName case 7）
+            "W1": AXIS.W,    # octoaxesplus filter wheel 1 — protocol code = 5 (same as W)
+            "W2": AXIS.W2,   # octoaxesplus filter wheel 2 — protocol code = 6
+            "Turret": AXIS.TURRET,   # 2026-05-29 objective turret — protocol code = 7 (firmware protocolAxisToName case 7)
         }
         protocol_axis = _AXIS_PROTOCOL.get(axis)
         if protocol_axis is None:
             self.log(f"Axis {axis} does not support homing")
             return
 
-        # 使用二进制命令发送 Homing
-        # 2026-05-11：按 movement_sign 派生 data[3]（与老 Squid microcontroller.py:88 一致）
-        # firmware 收 data[3] 后用它覆盖 _config.homing_direct
-        #   X/Y sign=+1 → data[3]=1 (HOME_NEGATIVE=朝-方向)
-        #   Z   sign=-1 → data[3]=0 (HOME_POSITIVE=朝+方向)
+        # send Homing using a binary command
+        # 2026-05-11: derive data[3] from movement_sign (consistent with legacy Squid microcontroller.py:88)
+        # after receiving data[3], the firmware uses it to override _config.homing_direct
+        # X/Y sign=+1 -> data[3]=1 (HOME_NEGATIVE = toward -)
+        # Z   sign=-1 -> data[3]=0 (HOME_POSITIVE = toward +)
         sign = AXIS_CONFIG.get(axis, {}).get("movement_sign", 1)
         home_dir = 1 if sign == 1 else 0
         self._home_or_zero(protocol_axis, home_dir)
 
-        # 更新状态
+        # update the status
         self.axis_manager.axis_status[axis]["state"] = "HOMING_INIT"
 
-        # 等待轴回到 IDLE（成功或超时）
+        # wait for the axis to return to IDLE (success or timeout)
         if not self.wait_until_idle(15):
             self.log(f"Axis {axis} homing timeout")
             return
 
-        # Homing 完成后按轴类型处理（profile-safe：用 AXIS_CONFIG["type"] 判断，
-        # 不硬编码轴名）：
-        #   filter_wheel —— 需要 move offset（从 home 标志到 1 号孔位中心）
-        #   objective    —— 物镜转换器不需要 offset，也无软限位
-        #   其他步进轴    —— 重设软限位（homing 过程中固件会禁用虚拟限位）
+        # after homing completes, handle by axis type (profile-safe: decide using AXIS_CONFIG["type"],
+        # not hardcoding axis names):
+        # filter_wheel — needs a move offset (from the home flag to the center of slot 1)
+        # objective    — the objective turret needs no offset and has no soft limits
+        # other stepper axes — reset the soft limits (the firmware disables the virtual limits during homing)
         axis_type = AXIS_CONFIG.get(axis, {}).get("type")
         if axis_type == "filter_wheel":
             offset_um = int(SQUID_FILTERWHEEL_OFFSET * 1000)  # mm -> μm
             self._move_step_axis_relative_position(axis, offset_um)
             self.log(f"Filter wheel {axis} moving offset: {offset_um} μm")
         elif axis_type == "objective":
-            # 物镜转换器 homing 后无 offset；重置齿隙补偿方向基线
+            # no offset after objective turret homing; reset the backlash-compensation direction baseline
             self._objective_move_direction = False
             self.log(f"Objective {axis} homed (no offset needed)")
         else:
@@ -755,7 +755,7 @@ class TeensyControlGUI(QMainWindow):
     def previous_position(self):
         """移动到上一个位置（滤光轮/物镜）"""
         axis = self.get_current_axis()
-        # 用 AXIS_CONFIG[axis]["type"] 动态判断（profile-safe）
+        # decide dynamically using AXIS_CONFIG[axis]["type"] (profile-safe)
         axis_type = AXIS_CONFIG.get(axis, {}).get("type")
         if axis_type == "filter_wheel":
             self.move_filterwheel(False)
@@ -784,13 +784,13 @@ class TeensyControlGUI(QMainWindow):
             self.log("W Test: Homing...")
             self.send_homing()
 
-            # 等待 homing + offset 完成
+            # wait for homing + offset to complete
             time.sleep(1.0)
             if not self.wait_until_idle(15):
                 self.log("W Test: Homing timeout, abort.")
                 return
 
-            # 2. 正转+反转 × N 回合
+            # 2. forward + reverse x N rounds
             for r in range(rounds):
                 self.log(f"W Test: Round {r+1}/{rounds}")
 
@@ -814,12 +814,12 @@ class TeensyControlGUI(QMainWindow):
 
         threading.Thread(target=_test_worker, daemon=True).start()
 
-    # ====== 数据处理相关 ======
+    # ====== data processing ======
     def handle_received_data(self, data):
         if data is None:
             return
 
-        # 转发给集成测试面板，让 pending 的测试有机会捕获响应
+        # forward to the integration-test panel so a pending test can capture the response
         if hasattr(self, "test_panel") and self.test_panel is not None:
             self.test_panel.on_response(data)
 
@@ -829,7 +829,7 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"Firmware version: {version}")
             return
 
-        # 处理硬件信息响应: S:HWINFO:<axis>:TMC4361A+<driver>
+        # handle the hardware-info response: S:HWINFO:<axis>:TMC4361A+<driver>
         if data.startswith("S:HWINFO:") and "END" not in data:
             parts = data.split(":")
             if len(parts) >= 4:
@@ -840,13 +840,13 @@ class TeensyControlGUI(QMainWindow):
                     axis, self.axis_manager.get_axis_status(axis))
             return
 
-        # DAC 调试响应（S:DAC_SET / S:DAC_GAIN / S:DAC_READ:*）
-        # 全部直接打到 Log，方便 bring-up 时阅读
+        # DAC debug responses (S:DAC_SET / S:DAC_GAIN / S:DAC_READ:*)
+        # print all directly to the Log for easy reading during bring-up
         if data.startswith("S:DAC_"):
             self.log(f"← {data}")
             return
 
-        # 处理轴数据（parse_axis_data 只调用一次，用 parsed 缓存结果）
+        # handle axis data (parse_axis_data is called only once, caching the parsed result)
         parsed = self.axis_manager.parse_axis_data(data)
         if parsed:
             axis = self.axis_manager.last_parsed_axis
@@ -874,7 +874,7 @@ class TeensyControlGUI(QMainWindow):
                     self.axis_enabled_states[axis] = enabled
                     self.control_panel.set_enable_state(enabled)
 
-        # 未识别的固件 ASCII 响应显示到日志
+        # show unrecognized firmware ASCII responses in the log
         self.log(data)
 
     def handle_binary_response(self, data: bytes):
@@ -891,18 +891,18 @@ class TeensyControlGUI(QMainWindow):
         import struct
         EXTENDED_POS_CMD_ID = 0xFD
 
-        # 根据包长度 + cmd_id 选择解析方式
+        # choose the parse method based on packet length + cmd_id
         if len(data) == 40 and data[0] == EXTENDED_POS_CMD_ID:
-            # 40 字节扩展位置包：按 firmware icID 索引提取 8 个 int32
+            # 40-byte extended position packet: extract 8 int32 values by firmware icID index
             positions_by_icid = struct.unpack('>8i', data[2:34])
-            # 通过 AXIS_CONFIG[axis]["index"] 反查 icID → 上位机 axis 名
+            # look up icID -> host axis name via AXIS_CONFIG[axis]['index']
             steps = {}
             for axis_name, cfg in AXIS_CONFIG.items():
                 ic = cfg.get("index", -1)
                 if 0 <= ic < 8:
                     steps[axis_name] = positions_by_icid[ic]
         else:
-            # 24 字节包：按硬编码 slot 顺序
+            # 24-byte packet: by hardcoded slot order
             steps = {
                 "X": struct.unpack('>i', data[2:6])[0],
                 "Y": struct.unpack('>i', data[6:10])[0],
@@ -913,8 +913,8 @@ class TeensyControlGUI(QMainWindow):
         moving_str = "YES" if fw_status == 1 else "NO"
         state_str  = "MOVING" if fw_status == 1 else "IDLE"
 
-        # 更新 axis_manager 中所有轴的位置 + 运动状态
-        # 位置值来源由固件决定：编码器使能返回 ENC_POS，否则返回 XACTUAL
+        # update the position + motion state of all axes in axis_manager
+        # the position value source is decided by the firmware: returns ENC_POS if the encoder is enabled, otherwise XACTUAL
         for axis, s in steps.items():
             mm_per_step = AXIS_MM_PER_STEP.get(axis, 0.0)
             position_mm = s * mm_per_step
@@ -929,7 +929,7 @@ class TeensyControlGUI(QMainWindow):
                 axis, self.axis_manager.get_axis_status(axis)
             )
 
-        # 更新当前轴详细显示（pos_label / steps_label / state labels）
+        # update the current axis's detailed display (pos_label / steps_label / state labels)
         current_axis = self.get_current_axis()
         if current_axis in steps:
             s    = steps[current_axis]
@@ -947,20 +947,20 @@ class TeensyControlGUI(QMainWindow):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         log_message = f"[{timestamp}] {message}"
 
-        # 输出到GUI界面
+        # output to the GUI
         self.log_text_edit.append(log_message)
 
-        # 如果保存到文件功能已启用，写入文件
+        # if save-to-file is enabled, write to the file
         if self.save_log_checkbox.isChecked() and self.log_file:
             try:
                 self.log_file.write(log_message + "\n")
-                self.log_file.flush()  # 确保数据写入磁盘
+                self.log_file.flush()  # ensure the data is flushed to disk
             except Exception as e:
                 self.log_text_edit.append(
                     f"[ERROR] Failed to write to log file: {str(e)}"
                 )
 
-    # ====== 查询相关 ======
+    # ====== queries ======
     def query_firmware_version(self):
         self.send_command("S:VERSION", "Sent firmware version query")
 
@@ -968,8 +968,8 @@ class TeensyControlGUI(QMainWindow):
         self.send_command("S:HWINFO", "Sent hardware info query")
 
     def query_axis_status(self):
-        # 生产固件（ENABLE_DEBUG 关闭）不发 ASCII 回包，直接用 axis_manager 缓存刷新 UI
-        # 调试固件（ENABLE_DEBUG 打开）同时发 ASCII 查询命令，以获取更多状态
+        # production firmware (ENABLE_DEBUG off) does not send ASCII replies, so refresh the UI directly from the axis_manager cache
+        # debug firmware (ENABLE_DEBUG on) also sends ASCII query commands to get more state
         current_axis = self.get_current_axis()
         self.update_current_axis_display(current_axis)
         status = self.axis_manager.get_axis_status(current_axis)
@@ -983,25 +983,25 @@ class TeensyControlGUI(QMainWindow):
                 self.steps_label.setText(f"Position (encoder): {um:.2f} μm")
             else:
                 self.steps_label.setText(f"Position (steps): {um:.2f} μm")
-        # 调试构建时额外发 ASCII 命令（生产构建该命令无响应，但不影响功能）
+        # in debug builds also send the ASCII command (in production builds this command gets no response but does no harm)
         if self.is_connected():
             command = format_command(current_axis, "GET_DATA")
             self.serial_thread.send_command(command)
 
     def refresh_all_axes_status(self):
         if self.is_connected() and self.serial_thread is not None:
-            # 使用互斥锁防止并发
+            # use a mutex to prevent concurrency
             if not self._query_mutex.tryLock():
                 return
             try:
                 for axis in AXIS_CONFIG.keys():
                     command = format_command(axis, "GET_DATA")
                     self.serial_thread.send_command(command)
-                    time.sleep(0.05)  # 稍微延迟，避免发送过快
+                    time.sleep(0.05)  # a small delay to avoid sending too fast
             finally:
                 self._query_mutex.unlock()
 
-    # ====== 其他功能 ======
+    # ====== other features ======
     def set_limits(self):
         if not self.is_connected() or self.serial_thread is None:
             self.log("Not connected to Teensy")
@@ -1030,7 +1030,7 @@ class TeensyControlGUI(QMainWindow):
         low_usteps = int((low / 1000.0) / mm_per_step) * sign
         high_usteps = int((high / 1000.0) / mm_per_step) * sign
 
-        # sign < 0 时正负方向翻转，确保 positive > negative
+        # when sign < 0 the +/- directions flip, ensure positive > negative
         if low_usteps > high_usteps:
             low_usteps, high_usteps = high_usteps, low_usteps
 
@@ -1061,7 +1061,7 @@ class TeensyControlGUI(QMainWindow):
         if self.serial_thread is None:
             return False
 
-        # 使用命令映射表获取正确的命令码
+        # use the command-mapping table to get the correct command code
         move_cmd = AXIS_MOVE_CMD_MAP.get(axis_name)
         if move_cmd is None:
             self.log(f"Unknown axis for move command: {axis_name}")
@@ -1097,7 +1097,7 @@ class TeensyControlGUI(QMainWindow):
         if self.serial_thread is None:
             return False
 
-        # 使用命令映射表获取正确的命令码
+        # use the command-mapping table to get the correct command code
         moveto_cmd = AXIS_MOVETO_CMD_MAP.get(axis_name)
         if moveto_cmd is None:
             self.log(f"Unknown axis for moveto command: {axis_name}")
@@ -1161,7 +1161,7 @@ class TeensyControlGUI(QMainWindow):
         if protocol_axis is None:
             self.log(f"Axis {axis_name} does not support velocity/acceleration setting")
             return False
-        # 编码：vel × 100 → uint16，acc × 10 → uint16
+        # encode: vel * 100 -> uint16, acc * 10 -> uint16
         vel_uint16 = min(max(int(vel_mm_s * 100), 1), 65535)
         acc_uint16 = min(max(int(acc_mm_s2 * 10), 1), 65535)
         cmd = bytearray(8)
@@ -1184,19 +1184,19 @@ class TeensyControlGUI(QMainWindow):
             self.log("Not connected to Teensy")
             return
 
-        distance = self.control_panel.get_move_distance()  # 单位: μm
+        distance = self.control_panel.get_move_distance()  # unit: um
         if distance is None:
             self.log("Invalid move distance")
             return
 
-        # 确定移动方向
+        # determine the movement direction
         value = distance if is_forward else -distance
 
-        # 获取当前轴配置并应用移动符号
+        # get the current axis config and apply the movement sign
         axis = self.get_current_axis()
         value = int(AXIS_CONFIG[axis]["movement_sign"]) * value
 
-        # 使用二进制命令发送相对移动（传入轴名称而非索引）
+        # send a relative move using a binary command (passing the axis name, not an index)
         self._move_step_axis_relative_position(axis, value)
 
     def moveto_axis(self, pos_um: float) -> None:
@@ -1212,7 +1212,7 @@ class TeensyControlGUI(QMainWindow):
         axis = self.get_current_axis()
         value = int(AXIS_CONFIG[axis]["movement_sign"]) * int(pos_um)
 
-        # 使用二进制命令发送绝对移动（传入轴名称而非索引）
+        # send an absolute move using a binary command (passing the axis name, not an index)
         self._move_step_axis_absolute_position(axis, value)
 
     def move_filterwheel(self, is_next: bool) -> None:
@@ -1227,14 +1227,14 @@ class TeensyControlGUI(QMainWindow):
 
         from utils.constants import FILTERWHEEL_DISTANCE
 
-        # 计算移动距离（单位：μm）
+        # compute the move distance (unit: um)
         distance_um = int(1000 * FILTERWHEEL_DISTANCE)
         value = distance_um if is_next else -distance_um
 
-        # 获取当前轴
+        # get the current axis
         axis = self.get_current_axis()
 
-        # 使用二进制命令发送相对移动
+        # send a relative move using a binary command
         self._move_step_axis_relative_position(axis, value)
 
         direction = "Next" if is_next else "Previous"
@@ -1282,13 +1282,13 @@ class TeensyControlGUI(QMainWindow):
         _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W, "Turret": AXIS.TURRET}
         protocol_axis = _AXIS_PROTOCOL.get(axis_name)
         if protocol_axis is None:
-            # 无协议映射的物镜轴，跳过下发，靠固件默认
+            # objective axes without a protocol mapping are skipped, relying on firmware defaults
             return
         cfg = AXIS_CONFIG.get(axis_name, {})
         pitch_mm = cfg.get("actuator_screw_pitch_mm", SCREW_PITCH_W_MM)
         microstepping = cfg.get("actuator_microstepping", 64)
 
-        # SET_LEAD_SCREW_PITCH (cmd 23): data[3..4]=pitch*1000 (uint16 大端)
+        # SET_LEAD_SCREW_PITCH (cmd 23): data[3..4]=pitch*1000 (uint16 big-endian)
         pitch_x1000 = int(round(pitch_mm * 1000))
         cmd = bytearray(8)
         cmd[1] = CMD_SET.SET_LEAD_SCREW_PITCH
@@ -1297,7 +1297,7 @@ class TeensyControlGUI(QMainWindow):
         cmd[4] = pitch_x1000 & 0xFF
         self.serial_thread.send_binary_command(cmd)
 
-        # CONFIGURE_STEPPER_DRIVER (cmd 21): microstep 编码 + current(uint16,RMS) + hold*255
+        # CONFIGURE_STEPPER_DRIVER (cmd 21): microstep encoding + current(uint16, RMS) + hold*255
         if microstepping == 1:
             ms_byte = 0
         elif microstepping >= 256:
@@ -1349,24 +1349,24 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"No mm_per_step for axis: {axis}")
             return
 
-        # 首次换位前下发柔和的物镜电机参数（懒加载，仅一次）
+        # send the gentle objective-motor parameters before the first switch (lazy-loaded, once only)
         self._ensure_objective_configured(axis)
 
         move_sign = OBJECTIVE_NEXT_SIGN if is_next else -OBJECTIVE_NEXT_SIGN
 
-        # 运动期间确保使能；记录原状态用于结束恢复
+        # ensure enabled during motion; record the original state to restore at the end
         was_enabled = self.axis_enabled_states.get(axis, True)
         if not was_enabled:
             self._set_axis_enable(axis, True)
             time.sleep(0.2)
         try:
-            # 齿轮回程间隙补偿：仅在换向时先吃齿隙
+            # gear-backlash compensation: only take up the backlash when reversing
             if is_next != self._objective_move_direction:
                 backlash_mm = (OBJECTIVE_RATIO * OBJECTIVE_BACKLASH_FACTOR_MM) / OBJECTIVE_GEAR_LARGE
                 backlash_usteps = int(round(move_sign * backlash_mm / mm_per_ustep))
                 if backlash_usteps:
                     self._move_step_axis_relative_usteps(axis, backlash_usteps)
-                    # 手动置 MOVING 后等完成，确保正式换位不覆盖齿隙补偿
+                    # manually set MOVING then wait for completion, ensuring the real switch does not overwrite the backlash compensation
                     self.axis_manager.axis_status[axis]["state"] = "MOVING"
                     self.wait_until_idle(15)
                     self.log(
@@ -1375,22 +1375,22 @@ class TeensyControlGUI(QMainWindow):
                     )
             self._objective_move_direction = is_next
 
-            # 正式换位：1 槽 = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES mm
+            # the real switch: 1 slot = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES mm
             mm_per_slot = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES
             usteps = int(round(move_sign * mm_per_slot / mm_per_ustep))
             self._move_step_axis_relative_usteps(axis, usteps)
-            # 断电前必须等到位
+            # must wait until in position before power-down
             self.axis_manager.axis_status[axis]["state"] = "MOVING"
             self.wait_until_idle(15)
             direction = "Next" if is_next else "Previous"
             self.log(f"Sent objective move ({direction}): {usteps} usteps")
         finally:
-            # 恢复移动前的使能状态（原本禁用才回到禁用，避免误改 GUI 跟踪状态）
+            # restore the pre-move enable state (only return to disabled if it was disabled, to avoid wrongly changing the GUI-tracked state)
             if not was_enabled:
                 self._set_axis_enable(axis, False)
                 time.sleep(0.2)
 
-    # ====== 照明命令发送 ======
+    # ====== illumination command sending ======
 
     def _send_illu_port(self, port: int, intensity: int, on: bool):
         """SET_PORT_ILLUMINATION (cmd 37)：原子设置强度 + 开关"""
@@ -1423,7 +1423,7 @@ class TeensyControlGUI(QMainWindow):
         """
         if self.serial_thread is None:
             return
-        # ① 缓存 pattern + RGB
+        # (1) cache pattern + RGB
         cmd13 = bytearray(8)
         cmd13[1] = CMDS.SET_ILLUMINATION_LED_MATRIX
         cmd13[2] = pattern
@@ -1431,7 +1431,7 @@ class TeensyControlGUI(QMainWindow):
         cmd13[4] = g
         cmd13[5] = b
         self.serial_thread.send_binary_command(cmd13)
-        # ② 真点亮（source 与 pattern code 一致：LED_ARRAY_FULL=0..LED_ARRAY_BOTTOM_HALF=8）
+        # (2) actually light up (source matches the pattern code: LED_ARRAY_FULL=0..LED_ARRAY_BOTTOM_HALF=8)
         cmd10 = bytearray(8)
         cmd10[1] = CMDS.TURN_ON_ILLUMINATION
         cmd10[2] = pattern
@@ -1457,7 +1457,7 @@ class TeensyControlGUI(QMainWindow):
         self.serial_thread.send_binary_command(cmd)
         self.log(f"Illumination intensity factor: {pct}%")
 
-    # ── DAC 直控（squid++ bring-up，走 ASCII 调试通道） ────────────
+    # -- DAC direct control (squid++ bring-up, via the ASCII debug channel) ------------
 
     def _send_dac_set(self, ch: int, raw: int):
         """ASCII S:DAC_SET <ch> <raw> — 直控写 DAC raw（绕过 firmware factor）"""
@@ -1481,11 +1481,11 @@ class TeensyControlGUI(QMainWindow):
         axis = self.get_current_axis()
         if axis not in ["E4", "W"]:
             self.set_limits()
-        # 先下发 SET_LEAD_SCREW_PITCH + CONFIGURE_STEPPER_DRIVER，
-        # 把固件 screwPitch/microstepping 拉回 Octoaxes 默认值
-        # （防止此前旧 Squid 上位机把固件切到 32 细分残留）
+        # first send SET_LEAD_SCREW_PITCH + CONFIGURE_STEPPER_DRIVER,
+        # to pull the firmware screwPitch/microstepping back to the Octoaxes defaults
+        # (preventing leftover 32-microstepping from a previous legacy Squid host)
         self._configure_actuators()
-        # 再为有编码器的轴下发 CONFIGURE_STAGE_PID，使能编码器
+        # then send CONFIGURE_STAGE_PID for axes with an encoder, enabling the encoder
         self._configure_encoders()
         self.startup_timer.stop()
 
@@ -1507,7 +1507,7 @@ class TeensyControlGUI(QMainWindow):
             if None in (pitch_mm, microstepping, current_ma, hold_ratio):
                 continue
 
-            # SET_LEAD_SCREW_PITCH (cmd 23): data[2]=axis, data[3..4]=pitch*1000 (uint16 大端)
+            # SET_LEAD_SCREW_PITCH (cmd 23): data[2]=axis, data[3..4]=pitch*1000 (uint16 big-endian)
             pitch_x1000 = int(round(pitch_mm * 1000))
             cmd = bytearray(8)
             cmd[1] = CMD_SET.SET_LEAD_SCREW_PITCH
@@ -1517,9 +1517,9 @@ class TeensyControlGUI(QMainWindow):
             self.serial_thread.send_binary_command(cmd)
 
             # CONFIGURE_STEPPER_DRIVER (cmd 21):
-            #   data[2]=axis, data[3]=microstepping 编码,
-            #   data[4..5]=current_mA (uint16 大端), data[6]=hold*255
-            # 微步编码（与旧 Squid 一致）: 1→0, 256→255, 其他→原值
+            # data[2]=axis, data[3]=microstepping encoding,
+            # data[4..5]=current_mA (uint16 big-endian), data[6]=hold*255
+            # microstep encoding (consistent with legacy Squid): 1->0, 256->255, others->as-is
             if microstepping == 1:
                 ms_byte = 0
             elif microstepping >= 256:
@@ -1537,10 +1537,10 @@ class TeensyControlGUI(QMainWindow):
             cmd[6] = hold_byte
             self.serial_thread.send_binary_command(cmd)
 
-            # SET_LIM_SWITCH_POLARITY (cmd 20): data[2]=axis, data[3]=极性(0/1)
-            # 仅对带 switch_polarity 的轴下发（目前 = Z 变体），profile-safe：
-            # 其他轴 AXIS_CONFIG 无此键自动跳过。这是「Z 变体软件化」的落点 ——
-            # 切换新旧 Z 只改 constants.py Z_AXIS_VARIANT，固件极性随之下发，无需重烧。
+            # SET_LIM_SWITCH_POLARITY (cmd 20): data[2]=axis, data[3]=polarity(0/1)
+            # only sent for axes with switch_polarity (currently = the Z variant), profile-safe:
+            # other axes' AXIS_CONFIG lack this key and are skipped automatically. This is where the "Z-variant software switch" lands --
+            # switching old/new Z only changes constants.py Z_AXIS_VARIANT; the firmware polarity is sent accordingly, no reflash needed.
             switch_polarity = config.get("switch_polarity")
             if switch_polarity is not None:
                 cmd = bytearray(8)
@@ -1552,9 +1552,9 @@ class TeensyControlGUI(QMainWindow):
                     f"Limit switch polarity configured: {axis_name} polarity={switch_polarity}"
                 )
 
-            # S:SET_HOMING_VEL <axis> <vel>：仅对带 homing_velocity_mm 的轴下发（目前 = Z 变体）。
-            # 固件开机默认 homing 速度=1mm/s（对旧 Z 安全、旧 Squid 无下发通道只能用默认）；
-            # 新 Z 在此被提到 2mm/s 避免长行程(~34.5mm)回零超时。profile-safe：无此键自动跳过。
+            # S:SET_HOMING_VEL <axis> <vel>: only sent for axes with homing_velocity_mm (currently = the Z variant).
+            # the firmware boot default homing speed = 1mm/s (safe for the old Z; legacy Squid has no send channel and can only use the default);
+            # the new Z is raised here to 2mm/s to avoid a long-travel (~34.5mm) homing timeout. profile-safe: skipped automatically if the key is absent.
             homing_velocity = config.get("homing_velocity_mm")
             if homing_velocity is not None:
                 self.send_command(
@@ -1593,22 +1593,22 @@ class TeensyControlGUI(QMainWindow):
             self.log(f"Encoder configured: {axis_name} tpr={tpr} flip={flip}")
 
     def closeEvent(self, event):
-        # 关闭日志文件
+        # close the log file
         if self.save_log_checkbox.isChecked():
             self.close_log_file()
 
-        # 停止所有定时器
+        # stop all timers
         self.startup_timer.stop()
         self.status_timer.stop()
 
-        # 停止 Z 老化测试后台线程（若在跑）
+        # stop the Z aging-test background thread (if running)
         if hasattr(self, "test_panel") and self.test_panel is not None:
             worker = getattr(self.test_panel, "_aging_worker", None)
             if worker is not None:
                 worker.stop()
                 worker.wait(2000)
 
-        # 关闭串口连接
+        # close the serial connection
         if self.serial_thread:
             self.serial_thread.stop()
             self.serial_thread.wait()

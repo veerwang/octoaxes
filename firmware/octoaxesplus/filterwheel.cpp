@@ -5,14 +5,14 @@ FilterWheel::FilterWheel(uint8_t csPin, uint8_t axisIndex, const char* axisName,
   : Axis(csPin, axisIndex, axisName), _filterCount(filterCount), _currentFilter(0) {
   _filterPositions = new float[filterCount];
 
-  // 初始化默认位置：等间距分布，假设每个滤光片间隔60度
+  // Initialize default positions: evenly spaced, assuming each filter is 60 degrees apart
   for (uint8_t i = 0; i < filterCount; i++) {
-    _filterPositions[i] = i * (360.0f / filterCount); // 以角度为单位，实际使用时需要转换为毫米
+    _filterPositions[i] = i * (360.0f / filterCount); // in degrees; must be converted to mm when actually used
   }
 }
 
 bool FilterWheel::begin(const AxisConfig& config) {
-  // 调用基类初始化
+  // call the base-class init
   bool result = Axis::begin(config);
 
   if (result) {
@@ -63,11 +63,11 @@ uint8_t FilterWheel::getFilterCount() const {
 }
 
 void FilterWheel::update() {
-  // 先调用基类更新
+  // call the base-class update first
   Axis::update();
 
-  // 滤光轮特有的更新逻辑可以在这里添加
-  // 例如：检查是否到达目标滤光片位置等
+  // filter-wheel-specific update logic can be added here
+  // e.g. check whether the target filter position has been reached
 }
 
 bool FilterWheel::processCommand(const String& command) {
@@ -84,7 +84,7 @@ bool FilterWheel::processCommand(const String& command) {
     DEBUG_PRINTLN(_filterCount);
     return true;
   } else {
-    // 其他命令交给基类处理
+    // hand other commands to the base class
     return Axis::processCommand(command);
   }
 }
@@ -147,22 +147,22 @@ void FilterWheel::performHomingSequence() {
 
   switch (_currentState) {
     case STATE_HOMING_INIT:
-      // 直接操作硬件禁用虚拟限位，不改变 _softLimitsEnabled 标志
+      // directly disable the virtual limits in hardware without changing the _softLimitsEnabled flag
       motor_enableSoftLimits(_icID, false, false);
       _slowApproach = false;
       switchToHomingMicrosteps();
 
       if (limit_state == 0x00) {
-        // 已在感应区，先移出
+        // already in the sensing zone, move out first
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Already at home, moving away first...");
         setState(STATE_LEAVING_HOME);
       } else {
-        // 不在感应区，快速搜索
-        // 2026-05-25 撤销 commit 2b5dce4 的"方向 bug 修复"，恢复与旧 Squid W 段一致的
-        // 硬编码 + 方向 search（旧 Squid stage_commands.cpp:621-636 W HOME_NEGATIVE 不在
-        // 感应区时朝 RGHT_DIR 走，是 W 段特定行为，与 X/Y/Z 相反）。
-        // 硬件方向反相通过 _config.invert_direction 处理（镜像装配硬件设 true）。
+        // not in the sensing zone, fast search
+        // 2026-05-25 reverted commit 2b5dce4's "direction bug fix", restoring behavior consistent with the legacy Squid W section:
+        // hardcoded + directional search (legacy Squid stage_commands.cpp:621-636: when W HOME_NEGATIVE is not in the
+        // sensing zone it moves toward RGHT_DIR, which is W-section-specific behavior, opposite to X/Y/Z).
+        // hardware direction inversion is handled via _config.invert_direction (set true for mirror-assembled hardware).
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Fast search...");
         int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
@@ -174,29 +174,29 @@ void FilterWheel::performHomingSequence() {
 
     case STATE_HOMING_SEARCH:
       if (limit_state == 0x00) {
-        // 触碰到感应区
-        motor_setVelocityInternal(_icID, 0);  // 停车
+        // reached the sensing zone
+        motor_setVelocityInternal(_icID, 0);  // stop
         delay(100);
 
         if (!_slowApproach) {
-          // 第一阶段（快速）：找到感应区后，移出再慢速逼近
+          // phase one (fast): after finding the sensing zone, move out then approach slowly
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Sensor found (fast), moving away for slow approach...");
           _slowApproach = true;
           setState(STATE_LEAVING_HOME);
         } else {
-          // 第二阶段（慢速）：精确定位完成
+          // phase two (slow): precise positioning done
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Sensor found (slow), homing position locked.");
 
-          // 先停车设零，再切回位置模式，最后恢复细分和运动参数
-          motor_setCurrentPositionMicrosteps(_icID, 0);  // VMAX=0 停车，设零，velocity_mode=true
-          motor_moveToMicrosteps(_icID, 0);              // 触发 sRampInit 切回位置模式（target=0=current，无移动）
-          restoreNormalMicrosteps();                      // 安全恢复细分和 VMAX/AMAX
+          // stop and zero first, then switch back to position mode, finally restore microstepping and motion parameters
+          motor_setCurrentPositionMicrosteps(_icID, 0);  // VMAX=0 stop, set zero, velocity_mode=true
+          motor_moveToMicrosteps(_icID, 0);              // trigger sRampInit to switch back to position mode (target=0=current, no movement)
+          restoreNormalMicrosteps();                      // safely restore microstepping and VMAX/AMAX
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Homing completed! Current position set to 0");
 
-          // Homing 完成后恢复软限位和 PID
+          // after homing completes, restore soft limits and PID
           if (_softLimitsEnabled) {
             enableSoftLimits(true);
           }
@@ -226,14 +226,14 @@ void FilterWheel::performLeavingHome() {
 
   if (_currentState == STATE_LEAVING_HOME) {
     if (!(limit_state == 0x00)) {
-      // 已离开感应区
+      // has left the sensing zone
       DEBUG_PRINT(_axisName);
 
-      // 2026-05-25 撤销 commit 2b5dce4：恢复硬编码 + 方向 search（与旧 Squid W 段一致）。
-      // leave 方向 = -search 方向（按 homingSwitch 二选一原始逻辑）。
-      // 硬件反相由 _config.invert_direction 统一处理。
+      // 2026-05-25 reverted commit 2b5dce4: restored hardcoded + directional search (consistent with the legacy Squid W section).
+      // leave direction = -search direction (original logic choosing one of two based on homingSwitch).
+      // hardware inversion is handled uniformly by _config.invert_direction.
       if (_slowApproach) {
-        // 先停车，确保慢速逼近起点一致
+        // stop first to ensure a consistent slow-approach start point
         motor_setVelocityInternal(_icID, 0);
         delay(100);
         DEBUG_PRINTLN(":Left sensor, slow approach...");
@@ -241,7 +241,7 @@ void FilterWheel::performLeavingHome() {
         if (_config.invert_direction) speedInternal = -speedInternal;
         motor_setVelocityInternal(_icID, speedInternal);
       } else {
-        // 快速搜索感应区
+        // fast search for the sensing zone
         DEBUG_PRINTLN(":Left sensor, fast search...");
         int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         if (_config.invert_direction) speedInternal = -speedInternal;
@@ -249,10 +249,10 @@ void FilterWheel::performLeavingHome() {
       }
       setState(STATE_HOMING_SEARCH);
     } else {
-      // 仍在感应区，继续移出（原始旧 Squid 逻辑：按 homingSwitch 二选一）
+      // still in the sensing zone, keep moving out (original legacy Squid logic: choose one of two based on homingSwitch)
       float leaveSpeed = _slowApproach
-        ? _config.homingVelocityMM / 5.0   // 慢速移出，减少过冲
-        : _config.homingVelocityMM;          // 全速移出
+        ? _config.homingVelocityMM / 5.0   // move out slowly to reduce overshoot
+        : _config.homingVelocityMM;          // move out at full speed
       int32_t speedInternal;
       if (_config.homingSwitch == RGHT_SW) {
         speedInternal = motor_velocityMMToInternal(_icID, leaveSpeed);

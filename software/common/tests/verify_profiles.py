@@ -11,7 +11,7 @@ import os
 import sys
 
 
-# verify_profiles.py 位于 software/common/tests/，往上 3 层得到 software/
+# verify_profiles.py is in software/common/tests/; go up 3 levels to get software/
 SOFTWARE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 COMMON = os.path.join(SOFTWARE_DIR, "common")
 
@@ -21,13 +21,13 @@ def check_profile(profile: str, expected_axes: set) -> bool:
     profile_dir = os.path.join(SOFTWARE_DIR, profile)
     print(f"\n--- {profile} ---")
 
-    # 清掉之前的 cached import 让两 profile 独立加载
+    # clear previously cached imports so both profiles load independently
     for mod in list(sys.modules):
         if mod in ("constants", "utils", "utils.constants", "utils.helpers",
                    "define", "hardware.axis_manager"):
             del sys.modules[mod]
 
-    # 模拟 profile main.py 的 sys.path 桥接
+    # emulate the profile main.py's sys.path bridging
     for p in (profile_dir, COMMON):
         if p in sys.path:
             sys.path.remove(p)
@@ -45,7 +45,7 @@ def check_profile(profile: str, expected_axes: set) -> bool:
 
     ok = True
 
-    # AXIS_CONFIG 检查
+    # AXIS_CONFIG check
     actual = set(AXIS_CONFIG.keys())
     if actual != expected_axes:
         print(f"  ❌ AXIS_CONFIG keys 不匹配: 实际={sorted(actual)}, 期望={sorted(expected_axes)}")
@@ -53,7 +53,7 @@ def check_profile(profile: str, expected_axes: set) -> bool:
     else:
         print(f"  ✓ AXIS_CONFIG keys = {sorted(actual)}")
 
-    # AxisManager 初始化检查
+    # AxisManager initialization check
     am = AxisManager()
     am_keys = set(am.axis_status.keys())
     if am_keys != expected_axes:
@@ -62,7 +62,7 @@ def check_profile(profile: str, expected_axes: set) -> bool:
     else:
         print(f"  ✓ AxisManager init keys 与 AXIS_CONFIG 一致")
 
-    # 命令映射齐全检查
+    # command-mapping completeness check
     missing_move = [a for a in actual if a not in AXIS_MOVE_CMD_MAP]
     missing_moveto = [a for a in actual if a not in AXIS_MOVETO_CMD_MAP]
     if missing_move:

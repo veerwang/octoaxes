@@ -9,7 +9,7 @@ import sys
 import time
 import argparse
 
-# 调试协议头
+# debug protocol header
 DEBUG_HEADER = bytes([0x55, 0xAA])
 
 def send_debug_command(ser, command):
@@ -86,18 +86,18 @@ def test_axis_move(port_name, axis_name, distance_um=1000, baudrate=2000000):
         time.sleep(0.5)
         ser.reset_input_buffer()
 
-        # 发送 Engine Start
+        # send Engine Start
         print("\n发送 Engine Start...")
         send_debug_command(ser, "S:Engine Start")
         time.sleep(1.0)
         read_all_responses(ser, timeout=0.5)
 
-        # 等待初始化完成
+        # wait for initialization to complete
         print(f"\n等待轴 {axis_name} 就绪...")
         if not wait_for_idle(ser, axis_name, timeout=5.0):
             print(f"[WARN] 轴 {axis_name} 未进入空闲状态，继续测试...")
 
-        # 获取初始位置
+        # get the initial position
         print(f"\n获取初始位置...")
         initial_pos = get_axis_position(ser, axis_name)
         if initial_pos is not None:
@@ -106,12 +106,12 @@ def test_axis_move(port_name, axis_name, distance_um=1000, baudrate=2000000):
             print(f"  [WARN] 无法获取初始位置")
             initial_pos = 0
 
-        # 执行相对移动
-        # distance_um 单位是微米，命令期望的是毫米 * 1000
-        # 所以 distance_um 直接作为参数发送
+        # perform a relative move
+        # distance_um is in micrometers, the command expects mm * 1000
+        # so distance_um is sent directly as the parameter
         print(f"\n执行相对移动: {distance_um} 微米 ({distance_um/1000:.3f} mm)...")
 
-        # 转换为 hex 格式 (32位有符号整数)
+        # convert to hex format (32-bit signed integer)
         if distance_um < 0:
             hex_val = (1 << 32) + distance_um
         else:
@@ -120,13 +120,13 @@ def test_axis_move(port_name, axis_name, distance_um=1000, baudrate=2000000):
 
         send_debug_command(ser, f"{axis_name}:MOVE_AXIS INT32 {hex_str}")
 
-        # 读取响应
+        # read the response
         time.sleep(0.5)
         responses = read_all_responses(ser, timeout=1.0)
         for resp in responses:
             print(f"  [RX] {resp}")
 
-        # 等待移动完成
+        # wait for the move to complete
         print("\n等待移动完成...")
         move_started = time.time()
         move_completed = wait_for_idle(ser, axis_name, timeout=10.0)
@@ -137,7 +137,7 @@ def test_axis_move(port_name, axis_name, distance_um=1000, baudrate=2000000):
         else:
             print(f"  [WARN] 等待超时")
 
-        # 获取最终位置
+        # get the final position
         print(f"\n获取最终位置...")
         final_pos = get_axis_position(ser, axis_name)
         if final_pos is not None:
@@ -145,9 +145,9 @@ def test_axis_move(port_name, axis_name, distance_um=1000, baudrate=2000000):
             delta = final_pos - initial_pos
             print(f"  位置变化: {delta} 微步")
 
-            # 计算预期位置变化 (假设 256 微步)
+            # compute the expected position change (assuming 256 microsteps)
             # 1 mm = fullSteps * microsteps / screwPitch
-            # 这个计算需要知道具体配置，这里只做基本验证
+            # this calculation needs the specific config; only a basic check is done here
             if delta != 0:
                 print(f"  [OK] 检测到位置变化")
                 success = True

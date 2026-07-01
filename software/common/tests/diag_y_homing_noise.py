@@ -41,7 +41,7 @@ from utils.helpers import find_teensy_port  # noqa: E402
 
 
 # ============================================================================
-# 协议（与 benchmark_xyz_speed.py 一致：8 字节命令 + 24 字节响应）
+# protocol (consistent with benchmark_xyz_speed.py: 8-byte command + 24-byte response)
 # ============================================================================
 
 CMD_MOVE = {"X": 0, "Y": 1, "Z": 2}
@@ -155,7 +155,7 @@ def wait_completed(reader, expected_cmd_id, timeout_s=15.0,
 
 
 # ============================================================================
-# 轴参数（与 benchmark_xyz_speed.py / GUI 一致）
+# axis parameters (consistent with benchmark_xyz_speed.py / the GUI)
 # ============================================================================
 
 AXIS_PARAMS = OrderedDict([
@@ -198,7 +198,7 @@ def axis_center_um(axis):
 
 
 # ============================================================================
-# 命令封装
+# command wrappers
 # ============================================================================
 
 def _pkt_set_lead_screw_pitch(cmd_id, axis_code, pitch_mm):
@@ -298,7 +298,7 @@ def _pkt_home(cmd_id, axis_code, direction=HOME_NEGATIVE):
 
 
 # ============================================================================
-# 高层流程
+# high-level flow
 # ============================================================================
 
 def get_current_position(reader, timeout_s=2.0):
@@ -401,7 +401,7 @@ def set_homing_velocity(ser, axis_name, vel_mm_s, verbose=True):
     """
     msg = DEBUG_HEADER + f"S:SET_HOMING_VEL {axis_name} {vel_mm_s:.3f}\n".encode("ascii")
     ser.write(msg)
-    # 等 firmware ACK（ASCII 响应行）
+    # wait for the firmware ACK (ASCII response line)
     deadline = time.perf_counter() + 1.0
     line = b""
     while time.perf_counter() < deadline:
@@ -438,21 +438,21 @@ def configure_y_microstepping(ser, reader, ms, cmd_id):
 
 
 # ============================================================================
-# 主流程
+# main flow
 # ============================================================================
 
 DEFAULT_COMBOS = [
     # (microstepping, velocity_mm_s)
-    (256, 15),   # 当前 octoaxes baseline（前两次烧录后状态）
-    (32, 15),    # 老 Squid baseline (microstepping 32 + 0.5 × 30 = 15)
-    (256, 5),    # 低速 + 高微步
-    (32, 5),     # 低速 + 低微步
-    (256, 1),    # 极低速 + 高微步
-    (32, 1),     # 极低速 + 低微步
-    (256, 30),   # 满速 + 高微步
-    (32, 30),    # 满速 + 低微步
-    (256, 10),   # 中速 + 高微步
-    (32, 10),    # 中速 + 低微步
+    (256, 15),   # current octoaxes baseline (state after the last two flashes)
+    (32, 15),    # legacy Squid baseline (microstepping 32 + 0.5 * 30 = 15)
+    (256, 5),    # low speed + high microstepping
+    (32, 5),     # low speed + low microstepping
+    (256, 1),    # very low speed + high microstepping
+    (32, 1),     # very low speed + low microstepping
+    (256, 30),   # full speed + high microstepping
+    (32, 30),    # full speed + low microstepping
+    (256, 10),   # medium speed + high microstepping
+    (32, 10),    # medium speed + low microstepping
 ]
 
 
@@ -498,17 +498,17 @@ def main():
     port = args.port or find_teensy_port()
     print(f"打开串口 {port} @ {args.baud}")
     ser = serial.Serial(port, args.baud, timeout=0.1)
-    time.sleep(2.0)  # 等 Teensy USB 枚举完
+    time.sleep(2.0)  # wait for Teensy USB enumeration to finish
     ser.reset_input_buffer()
 
     reader = ResponseReader(ser)
     cmd_id = 1
 
     try:
-        # 启动自检：验证 firmware 支持 S:SET_HOMING_VEL 命令（避免 10 组合白跑）
+        # startup self-check: verify the firmware supports the S:SET_HOMING_VEL command (avoids running all 10 combinations for nothing)
         print("\n[预检] 验证 firmware 是否支持 S:SET_HOMING_VEL 命令...")
         ser.reset_input_buffer()
-        ser.write(DEBUG_HEADER + b"S:SET_HOMING_VEL Y 15.0\n")  # 设回默认值
+        ser.write(DEBUG_HEADER + b"S:SET_HOMING_VEL Y 15.0\n")  # set back to the default value
         time.sleep(0.5)
         check_buf = ser.read(ser.in_waiting)
         if b"S:SET_HOMING_VEL:OK" not in check_buf:
@@ -564,11 +564,11 @@ def main():
                 "notes": notes if rating != -1 else "",
             })
 
-            # 回中心准备下一组
+            # return to center to prepare for the next group
             print(f"    回 Y 中心 {y_center:.0f}μm")
             cmd_id = move_axis_to(ser, reader, "Y", y_center, cmd_id)
 
-        # 保存结果
+        # save the results
         if results:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             results_dir = os.path.join(os.path.dirname(__file__), "results")
@@ -582,7 +582,7 @@ def main():
                 writer.writerows(results)
             print(f"\n✅ 结果保存到 {csv_path}")
 
-            # 简要汇总（按评分排序）
+            # brief summary (sorted by score)
             print("\n汇总（按评分升序，1=最安静）：")
             sorted_rows = sorted(
                 [r for r in results if r["rating"] != "skipped"],

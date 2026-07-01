@@ -23,12 +23,12 @@ extern "C" {
 // ============================================================================
 
 #ifdef USE_HC154_CS
-// squid++ 双相机 8 轴：Y, X, Z1, F1, Z2, F2, R, T
+// squid++ dual-camera 8 axes: Y, X, Z1, F1, Z2, F2, R, T
 #define TMC4361A_IC_COUNT   8
 #define TMC2660_IC_COUNT    8
 #else
-// octoaxes 6 轴：Y, X, Z, W, W2, E1（2026-05-26 W2 接管原 E4 硬件 CS=pin 16/CLK=pin 28；
-// 2026-05-29 E1 启用为物镜转换器 Objectives，CS=pin 19/CLK=pin 28；原 E3 不启用）
+// octoaxes 6 axes: Y, X, Z, W, W2, E1 (2026-05-26 W2 took over the original E4 hardware CS=pin 16/CLK=pin 28;
+// 2026-05-29 E1 enabled as the objective turret (Objectives), CS=pin 19/CLK=pin 28; the original E3 is not enabled)
 #define TMC4361A_IC_COUNT   6
 #define TMC2660_IC_COUNT    6
 #endif
@@ -38,14 +38,14 @@ extern "C" {
 // ============================================================================
 
 typedef enum {
-    // 注意：icID 实际由 addAxis() 调用顺序决定（见 TMC_SPI.cpp tmc_ic_configs[]）。
-    // 当前 octoaxes 顺序：X(0) Y(1) Z(2) W(3) W2(4) E1(5)。下列枚举仅作语义参考。
+    // Note: icID is actually determined by the addAxis() call order (see TMC_SPI.cpp tmc_ic_configs[]).
+    // current octoaxes order: X(0) Y(1) Z(2) W(3) W2(4) E1(5). The enum below is for semantic reference only.
     IC_X  = 0,   // X axis
     IC_Y  = 1,   // Y axis
     IC_Z  = 2,   // Z axis
     IC_W  = 3,   // W axis (Filter wheel 1)
-    IC_W2 = 4,   // W2 axis (Filter wheel 2，接管原 E4 硬件)
-    IC_E1 = 5    // Expand 1 (Objectives，物镜转换器)
+    IC_W2 = 4,   // W2 axis (Filter wheel 2, took over the original E4 hardware)
+    IC_E1 = 5    // Expand 1 (Objectives, objective turret)
 } TMC_IC_ID;
 
 // ============================================================================

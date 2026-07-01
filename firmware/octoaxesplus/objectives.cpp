@@ -5,15 +5,15 @@ Objectives::Objectives(uint8_t csPin, uint8_t axisIndex, const char* axisName, u
   : Axis(csPin, axisIndex, axisName), _objectivesCount(objectivesCount), _currentObjective(0) {
   _objectivePositions = new float[objectivesCount];
 
-  // 初始化默认位置：等间距分布，假设每个物镜转换器间隔90度
+  // Initialize default positions: evenly spaced, assuming each objective is 90 degrees apart
   for (uint8_t i = 0; i < objectivesCount; i++) {
-    _objectivePositions[i] = i * (360.0f / objectivesCount); // 以角度为单位，实际使用时需要转换为毫米
+    _objectivePositions[i] = i * (360.0f / objectivesCount); // in degrees; must be converted to mm when actually used
   }
   
 }
 
 bool Objectives::begin(const AxisConfig& config) {
-  // 调用基类初始化
+  // call the base-class init
   bool result = Axis::begin(config);
   
   if (result) {
@@ -27,7 +27,7 @@ bool Objectives::begin(const AxisConfig& config) {
 }
 
 void Objectives::update() {
-  // 先调用基类更新
+  // call the base-class update first
   Axis::update();
   
 }
@@ -46,7 +46,7 @@ bool Objectives::processCommand(const String& command) {
     DEBUG_PRINTLN(_objectivesCount);
     return true;
   } else {
-    // 其他命令交给基类处理
+    // hand other commands to the base class
     return Axis::processCommand(command);
   }
 }
@@ -62,7 +62,7 @@ void Objectives::performHomingSequence() {
 
   switch (_currentState) {
     case STATE_HOMING_INIT:
-      // 直接操作硬件禁用虚拟限位，不改变 _softLimitsEnabled 标志
+      // directly disable the virtual limits in hardware without changing the _softLimitsEnabled flag
       motor_enableSoftLimits(_icID, false, false);
       switchToHomingMicrosteps();
 
@@ -75,7 +75,7 @@ void Objectives::performHomingSequence() {
         DEBUG_PRINTLN(":Starting homing process...");
 
         DEBUG_PRINTLN(_config.homingVelocityMM);
-        // 搜索方向跟随 homing_direct（+1 正向 / -1 负向），与 stepaxis 一致
+        // the search direction follows homing_direct (+1 positive / -1 negative), consistent with stepaxis
         int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         motor_setVelocityInternal(_icID, speedInternal);
         setState(STATE_HOMING_SEARCH);
@@ -96,11 +96,11 @@ void Objectives::performHomingSequence() {
       break;
 
     case STATE_HOMING_SET_ZERO:
-      // 等待移动到安全位置完成
+      // wait for the move to the safe position to complete
       if (isMovementComplete() || _checkHomeReachTimeout >= 500 * 1000) {
-        // 恢复正常细分
+        // restore normal microstepping
         restoreNormalMicrosteps();
-        // 设置当前位置为0
+        // set the current position to 0
         DEBUG_PRINT(_axisName);
 
         if (_checkHomeReachTimeout > 500 * 1000) {
@@ -109,7 +109,7 @@ void Objectives::performHomingSequence() {
 
         DEBUG_PRINTLN(":Homing completed! Current position set to 0");
 
-        // Homing 完成后恢复软限位和 PID
+        // after homing completes, restore soft limits and PID
         if (_softLimitsEnabled) {
           enableSoftLimits(true);
         }
@@ -121,7 +121,7 @@ void Objectives::performHomingSequence() {
 
         setState(STATE_IDLE);
       } else {
-        // 可选：添加进度显示
+        // optional: add a progress display
         static unsigned long lastProgressTime = 0;
         if (millis() - lastProgressTime > 500) {
           DEBUG_PRINT(_axisName);
@@ -153,12 +153,12 @@ void Objectives::performLeavingHome() {
       DEBUG_PRINT(_axisName);
       DEBUG_PRINTLN(":Left home position, starting homing...");
 
-      // 开始真正的归位搜索（方向跟随 homing_direct）
+      // start the actual homing search (direction follows homing_direct)
       int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
       motor_setVelocityInternal(_icID, speedInternal);
       setState(STATE_HOMING_SEARCH);
     } else {
-      // 继续移动离开 home 位置（与搜索相反方向）
+      // keep moving to leave the home position (opposite direction to the search)
       int32_t speedInternal = -1 * _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
       motor_setVelocityInternal(_icID, speedInternal);
     }

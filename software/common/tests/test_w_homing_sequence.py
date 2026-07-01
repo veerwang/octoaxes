@@ -21,10 +21,10 @@ PORT = "/dev/ttyACM0"
 BAUD = 115200
 RX_LEN = 24
 
-# 协议轴码
+# protocol axis codes
 AXIS_W = 5
 
-# 命令字
+# command words
 CMD_HOME_OR_ZERO = 5
 CMD_MOVE_W = 4
 CMD_CONFIGURE_STAGE_PID = 25
@@ -33,17 +33,17 @@ CMD_CONFIGURE_STAGE_PID = 25
 HOME_POSITIVE = 0
 HOME_NEGATIVE = 1
 
-# GUI 端常量（与 software/common/define.py + software/octoaxes/constants.py 一致）
-SQUID_FILTERWHEEL_OFFSET_MM = -0.011    # 2026-05-22 实测匹配硬件 1 号孔位 -141 µstep
-W_MOVEMENT_SIGN = 1                      # 与旧 Squid 一致（home 朝 - 方向 search）
-# W 轴量纲（2026-05-21 量纲对齐后 1mm pitch, 64 microstep，与旧 Squid 一致）
+# GUI-side constants (consistent with software/common/define.py + software/octoaxes/constants.py)
+SQUID_FILTERWHEEL_OFFSET_MM = -0.011    # 2026-05-22 measured to match hardware slot 1 at -141 ustep
+W_MOVEMENT_SIGN = 1                      # consistent with legacy Squid (home searches toward -)
+# W-axis units (after the 2026-05-21 unit alignment: 1mm pitch, 64 microstep, consistent with legacy Squid)
 W_SCREW_PITCH_MM = 1.0
 W_MICROSTEPPING = 64
 W_FULLSTEPS = 200
 W_STEPS_PER_MM = W_FULLSTEPS * W_MICROSTEPPING / W_SCREW_PITCH_MM   # = 12800
 W_MM_PER_STEP = 1.0 / W_STEPS_PER_MM                                  # = 7.8125e-05
 
-# 编码器分辨率（与 firmware ABN config 一致）
+# encoder resolution (consistent with the firmware ABN config)
 W_ENCODER_TPR = 4000
 W_ENCODER_FLIP = 0
 
@@ -175,7 +175,7 @@ def main():
     reader.drain()
 
     # ------------------------------------------------------------------
-    # Step 1: 启用 W 编码器 (CONFIGURE_STAGE_PID)
+    # Step 1: enable the W encoder (CONFIGURE_STAGE_PID)
     # ------------------------------------------------------------------
     print(f"\n[STEP 1] 启用 W ABN 编码器 (CONFIGURE_STAGE_PID, tpr={W_ENCODER_TPR})")
     pkt = send_cmd(ser, seq=1, cmd=CMD_CONFIGURE_STAGE_PID,
@@ -186,7 +186,7 @@ def main():
     reader.drain()
 
     # ------------------------------------------------------------------
-    # Step 2: 读初始位置（编码器启用后）
+    # Step 2: read the initial position (after the encoder is enabled)
     # ------------------------------------------------------------------
     time.sleep(0.3)
     pkts = []
@@ -200,9 +200,9 @@ def main():
           f"{microsteps_to_mm(w_init):+.4f} mm = {microsteps_to_deg(w_init):+.2f}°")
 
     # ------------------------------------------------------------------
-    # Step 3: 发 HOME_OR_ZERO(W, NEGATIVE)
+    # Step 3: send HOME_OR_ZERO(W, NEGATIVE)
     # ------------------------------------------------------------------
-    # GUI 派生：home_dir = 1 if sign == 1 else 0
+    # GUI derivation: home_dir = 1 if sign == 1 else 0
     home_dir = HOME_NEGATIVE if W_MOVEMENT_SIGN == 1 else HOME_POSITIVE
     home_dir_name = "NEGATIVE" if home_dir == HOME_NEGATIVE else "POSITIVE"
     print(f"\n[STEP 2] 发 HOME_OR_ZERO W {home_dir_name}")
@@ -219,7 +219,7 @@ def main():
         return 1
 
     # ------------------------------------------------------------------
-    # Step 4: 发 MOVE_W offset (与 GUI _move_step_axis_relative_position 一致)
+    # Step 4: send the MOVE_W offset (consistent with GUI _move_step_axis_relative_position)
     # ------------------------------------------------------------------
     offset_um = int(SQUID_FILTERWHEEL_OFFSET_MM * 1000)
     offset_microsteps = int(offset_um / 1000.0 / W_MM_PER_STEP)
@@ -235,9 +235,9 @@ def main():
     print(f"\n  Offset {'COMPLETED' if success else 'TIMEOUT'} in {offset_elapsed * 1000:.1f} ms")
 
     # ------------------------------------------------------------------
-    # Step 5: 编码器位置确认 + trace 分析
+    # Step 5: encoder position confirmation + trace analysis
     # ------------------------------------------------------------------
-    # 等待几个 idle 帧让 chip 完全停稳
+    # wait a few idle frames to let the chip fully settle
     time.sleep(0.3)
     pkts = []
     t_end = time.time() + 0.3
@@ -253,7 +253,7 @@ def main():
     error_us = w_settled - offset_microsteps
     print(f"        误差 = {error_us:+d} 微步 = {microsteps_to_deg(error_us):+.3f}°")
 
-    # 过冲分析
+    # overshoot analysis
     if packets:
         w_max = max(packets, key=lambda s: s[2])
         w_min = min(packets, key=lambda s: s[2])

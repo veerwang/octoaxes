@@ -5,18 +5,18 @@ class AxisManager:
         self.axis_status = {}
         self.last_parsed_axis = None
 
-        # 初始化轴状态
+        # initialize axis state
         self.init_axes()
 
     def init_axes(self):
-        # 轴列表从 AXIS_CONFIG 动态读取，与上位机 profile 一致
-        # （octoaxes: X/Y/Z/W/E1/E3/E4 七轴；octoaxesplus: X/Y/Z/W1/W2 五轴）
-        # 避免硬编码导致 octoaxesplus 的 W1/W2 收到 HWINFO/位置上报时被静默丢弃
-        from utils.constants import AXIS_CONFIG  # profile main.py 已注入 sys.modules
+        # the axis list is read dynamically from AXIS_CONFIG, consistent with the host profile
+        # (octoaxes: 7 axes X/Y/Z/W/E1/E3/E4; octoaxesplus: 5 axes X/Y/Z/W1/W2)
+        # avoids hardcoding that would silently drop octoaxesplus's W1/W2 when they receive HWINFO / position reports
+        from utils.constants import AXIS_CONFIG  # the profile main.py has already injected it into sys.modules
         default_status = {
             "state": "Unknown",
             "position_mm": 0.0,
-            "position_steps": 0,  # 改为整数类型
+            "position_steps": 0,  # changed to integer type
             "moving": "NO",
             "enabled": "YES",
             "limits": "0x0",

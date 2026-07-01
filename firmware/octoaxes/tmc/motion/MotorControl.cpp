@@ -29,11 +29,11 @@ extern "C" void motor_debugPrint(const char* msg, int32_t val)
 // TMC2240 HAL Callbacks
 // ============================================================================
 
-// TMC2240 通过 TMC4361A 的 40-bit Cover 接口通信
-// tmc2240_readWriteSPI 回调：5 字节 SPI 帧 → TMC4361A COVER_HIGH + COVER_LOW
+// TMC2240 communicates through the TMC4361A 40-bit Cover interface
+// tmc2240_readWriteSPI callback: a 5-byte SPI frame -> TMC4361A COVER_HIGH + COVER_LOW
 extern "C" void tmc2240_readWriteSPI(uint16_t icID, uint8_t *data, size_t dataLength)
 {
-    // 路由到 TMC4361A Cover 接口 (5 字节 = 40-bit)
+    // route to the TMC4361A Cover interface (5 bytes = 40-bit)
     tmc4361A_readWriteCover(icID, data, dataLength);
 }
 
@@ -53,23 +53,23 @@ MotorParams motorParams[MOTOR_IC_COUNT] = {};
 // Internal Helper Functions
 // ============================================================================
 
-// BOW 参数最大值 (与旧 API BOWMAX 一致)
+// BOW parameter maximum (consistent with the old API BOWMAX)
 #define BOWMAX ((1 << 24) - 1)
 
-// 自动计算 BOW 参数 (与旧 API tmc4361A_adjustBows 完全一致)
-// 公式: BOW = AMAX² / VMAX
-// 目的: 最小化在 AMAX 饱和的时间
+// automatically compute the BOW parameters (exactly the same as the old API tmc4361A_adjustBows)
+// formula: BOW = AMAX^2 / VMAX
+// purpose: minimize the time spent saturated at AMAX
 static void motor_adjustBows(uint8_t icID)
 {
     if (icID >= MOTOR_IC_COUNT || !motorParams[icID].initialized)
         return;
 
-    // 获取 AMAX 和 VMAX (内部单位)
+    // get AMAX and VMAX (internal units)
     int32_t vmax = motorParams[icID].vmax;
     uint32_t amax = motorParams[icID].amax;
 
     if (vmax == 0) {
-        // 避免除以零
+        // avoid division by zero
         motorParams[icID].bow1 = 0;
         motorParams[icID].bow2 = 0;
         motorParams[icID].bow3 = 0;
@@ -77,22 +77,22 @@ static void motor_adjustBows(uint8_t icID)
         return;
     }
 
-    // 转换为 mm 单位进行计算 (与旧 API 一致)
-    // VMAX 内部单位是 24.8 定点数，需要除以 256
+    // convert to mm units for the calculation (consistent with the old API)
+    // VMAX internal units are 24.8 fixed-point, so divide by 256
     float vmax_mm = (float)vmax / 256.0f / motorParams[icID].stepsPerMM;
 
-    // AMAX 内部单位是 22.2 定点数，需要除以 4
+    // AMAX internal units are 22.2 fixed-point, so divide by 4
     float amax_mm = (float)amax / 4.0f / motorParams[icID].stepsPerMM;
 
-    // 计算 BOW 值: AMAX² / VMAX
+    // compute the BOW value: AMAX^2 / VMAX
     float bowval_mm = (amax_mm * amax_mm) / vmax_mm;
 
-    // 转换回内部单位 (微步)
+    // convert back to internal units (microsteps)
     int32_t bow = (int32_t)(bowval_mm * motorParams[icID].stepsPerMM);
     if (bow < 0) bow = -bow;  // abs
     if (bow > BOWMAX) bow = BOWMAX;
 
-    // 所有 4 个 BOW 参数设为相同值 (与旧 API 一致)
+    // set all 4 BOW parameters to the same value (consistent with the old API)
     motorParams[icID].bow1 = bow;
     motorParams[icID].bow2 = bow;
     motorParams[icID].bow3 = bow;
@@ -109,21 +109,21 @@ static void motor_adjustBows(uint8_t icID)
 }
 
 // Calculate current scale from peak current (mA) and sense resistor
-// TMC2660 公式:
+// TMC2660 formula:
 //   I_peak = (CS + 1) / 32 × V_FS / R_sense
 //   I_rms  = I_peak / √2
 // VSENSE=0 → V_FS = 0.310V; VSENSE=1 → V_FS = 0.165V
-// 本项目 DRVCONF 设置 VSENSE=0 (高量程)
-// 芯片绝对上限: 4A 峰值 (2.8A RMS), CS 范围 0~31
+// this project's DRVCONF sets VSENSE=0 (high range)
+// chip absolute max: 4A peak (2.8A RMS), CS range 0~31
 static uint8_t calculateCurrentScale(float currentMA, float rSense)
 {
-    // 2026-05-11 修复：currentMA 按 RMS 解读（与老 Squid firmware 一致）
-    // 老 Squid software → octoaxes firmware 时若按 PEAK 解读会导致实际电流低 ~30%
-    // → Y 轴加速段失步异响（详见 SESSION.md 2026-05-11 #6）
+    // 2026-05-11 fix: interpret currentMA as RMS (consistent with legacy Squid firmware)
+    // going from legacy Squid software -> octoaxes firmware, interpreting it as PEAK would make the actual current ~30% low
+    // -> step loss and noise on the Y-axis acceleration phase (see SESSION.md 2026-05-11 #6)
     //
     // TMC2660 datasheet: I_peak = (CS+1)/32 × V_FS/R_sense
-    // 由 I_RMS = I_peak/√2 反推：CS = I_RMS × R_sense × 32 × √2 / V_FS - 1
-    // V_FS = 0.310 V (VSENSE=0, 高量程, 与 DRVCONF 设置一致)
+    // derived from I_RMS = I_peak/sqrt(2): CS = I_RMS * R_sense * 32 * sqrt(2) / V_FS - 1
+    // V_FS = 0.310 V (VSENSE=0, high range, consistent with the DRVCONF setting)
     static const float SQRT2 = 1.41421356f;
     float cs = (currentMA / 1000.0f) * rSense * 32.0f * SQRT2 / 0.310f - 1.0f;
 
@@ -153,8 +153,8 @@ static uint8_t calculateMresValue(uint16_t microsteps)
 }
 
 // Get TMC2240 full-scale current (A) from CURRENT_RANGE setting
-// TMC2240 使用集成电流传感 (ICS)，无外部检流电阻
-// I_FS 由 DRV_CONF.CURRENT_RANGE 决定（假设 RREF=默认值）
+// TMC2240 uses integrated current sense (ICS), no external sense resistor
+// I_FS is determined by DRV_CONF.CURRENT_RANGE (assuming RREF=default)
 static float getTMC2240_IFS(uint8_t currentRange)
 {
     switch (currentRange & 0x03) {
@@ -165,11 +165,11 @@ static float getTMC2240_IFS(uint8_t currentRange)
 }
 
 // Calculate TMC2240 current scale (IRUN/IHOLD value 0-31)
-// TMC2240 公式 (数据手册 §3):
+// TMC2240 formula (datasheet section 3):
 //   I_RMS = (CS_ACTUAL + 1) / 32 × (GLOBALSCALER / 256) × I_FS
-//   简化 (GLOBALSCALER=0 即 256):
+// simplified (GLOBALSCALER=0, i.e. 256):
 //   IRUN = round(I_peak / I_FS × 32) - 1
-// 注意: currentMA 是峰值电流 (mA)，I_FS 由 CURRENT_RANGE 决定
+// note: currentMA is peak current (mA), I_FS is determined by CURRENT_RANGE
 static uint8_t calculateCurrentScale_TMC2240(float currentMA, uint8_t currentRange, uint8_t globalScaler)
 {
     float ifs = getTMC2240_IFS(currentRange);
@@ -217,7 +217,7 @@ bool motor_init(uint8_t icID, const AxisMotionConfig *config)
     if (icID >= MOTOR_IC_COUNT || config == NULL)
         return false;
 
-    // 提前保存驱动类型，motor_initMotionController 需要用来选择 SPI_OUT_CONF
+    // save the driver type early; motor_initMotionController needs it to choose SPI_OUT_CONF
     motorParams[icID].driverType = config->motor.driverType;
 
     // Initialize motion controller (TMC4361A)
@@ -235,22 +235,22 @@ bool motor_init(uint8_t icID, const AxisMotionConfig *config)
 }
 
 // ============================================================================
-// 驱动芯片自动检测
+// driver chip auto-detection
 // ============================================================================
 
 uint8_t motor_detectDriverType(uint8_t icID)
 {
-    // 使用 TMC2660 格式 (format=0x0A, 20-bit auto SPI) 配合手动 40-bit Cover
-    // 20-bit auto SPI 不覆盖 40-bit Cover 的完整响应，解决 format=0x0D 干扰问题
-    // COVER_DATA_LENGTH=40 确保 Cover 传输使用 40-bit
+    // use the TMC2660 format (format=0x0A, 20-bit auto SPI) together with a manual 40-bit Cover
+    // the 20-bit auto SPI does not overwrite the full 40-bit Cover response, solving the format=0x0D interference issue
+    // COVER_DATA_LENGTH=40 ensures the Cover transfer uses 40-bit
     // SPI timing: block=4, high=4, low=4
     uint32_t spiOutConf_detect = 0x4445000A;  // CDL=40 + format=0x0A
     tmc4361A_writeRegister(icID, TMC4361A_SPI_OUT_CONF, spiOutConf_detect);
     delayMicroseconds(500);
 
-    // 通过 40-bit Cover 读取 TMC2240 IOIN (地址 0x04)
-    // TMC2240 VERSION 字段在 IOIN[31:24] = 0x40
-    // TMC2660 收到 40-bit 会返回 20-bit 响应 + 填充，VERSION ≠ 0x40
+    // read TMC2240 IOIN via the 40-bit Cover (address 0x04)
+    // the TMC2240 VERSION field is at IOIN[31:24] = 0x40
+    // a TMC2660 receiving 40-bit returns a 20-bit response + padding, VERSION != 0x40
     int32_t ioin = tmc2240_readRegister(icID, TMC2240_IOIN);
     uint8_t version = (ioin >> 24) & 0xFF;
 
@@ -282,7 +282,7 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     motorParams[icID].microsteps = config->microsteps;
     motorParams[icID].stepsPerMM = (float)(config->fullStepsPerRev * config->microsteps) / config->screwPitchMM;
     motorParams[icID].initialized = true;
-    motorParams[icID].velocity_mode = false;  // 与旧 API tmc4361A_init 一致
+    motorParams[icID].velocity_mode = false;  // consistent with the old API tmc4361A_init
 
     // Reset TMC4361A (same as old API)
     tmc4361A_writeRegister(icID, TMC4361A_SW_RESET, 0x52535400);
@@ -293,10 +293,10 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
         return false;  // Communication failed
     }
 
-    // 先设置 CLK_FREQ，Cover SPI 时钟依赖此配置
+    // set CLK_FREQ first; the Cover SPI clock depends on this configuration
     tmc4361A_writeRegister(icID, TMC4361A_CLK_FREQ, config->clockFrequency);
 
-    // 自动检测驱动芯片类型
+    // auto-detect the driver chip type
     if (motorParams[icID].driverType == DRIVER_AUTO) {
         motorParams[icID].driverType = motor_detectDriverType(icID);
     }
@@ -304,32 +304,32 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     // Configure GENERAL_CONF
     uint32_t generalConf = 0x00000000;
     if (config->astartMM > 0) {
-        generalConf |= TMC4361A_USE_ASTART_AND_VSTART_MASK;  // 使能 ASTART/DFINAL
+        generalConf |= TMC4361A_USE_ASTART_AND_VSTART_MASK;  // enable ASTART/DFINAL
     }
-    // TMC2240 direct_mode 下方向由 TMC4361A 微步表相位序列决定，
-    // TMC2240 SHAFT 位无效（仅影响 STEP/DIR 模式）。
-    // 反转 TMC4361A 内部微步表方向，补偿 format 0x0D 与 0x0A 的相位映射差异
+    // under TMC2240 direct_mode, the direction is determined by the TMC4361A microstep-table phase sequence,
+    // the TMC2240 SHAFT bit is ineffective (it only affects STEP/DIR mode).
+    // invert the TMC4361A internal microstep-table direction to compensate for the phase-mapping difference between format 0x0D and 0x0A
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
         generalConf |= TMC4361A_REVERSE_MOTOR_DIR_MASK;  // bit 28
     }
     tmc4361A_writeRegister(icID, TMC4361A_GENERAL_CONF, generalConf);
 
-    // Configure SPI_OUT_CONF - 根据驱动芯片类型选择 SPI 输出格式
+    // Configure SPI_OUT_CONF - choose the SPI output format based on the driver chip type
     uint32_t spiOutConf;
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
-        // TMC2240: SPI_OUTPUT_FORMAT=0x0D (TMC2130/TMC2240 SPI 电流传输模式, 40-bit)
-        // 等价于 TMC2660 的 SDOFF 模式: TMC4361A 直接控制线圈电流
+        // TMC2240: SPI_OUTPUT_FORMAT=0x0D (TMC2130/TMC2240 SPI current-transfer mode, 40-bit)
+        // equivalent to the TMC2660 SDOFF mode: the TMC4361A directly controls the coil current
         // SPI timing: block=4, high=4, low=4
-        // COVER_DATA_LENGTH=40 (bits[19:13]), 显式指定 40-bit Cover 长度
+        // COVER_DATA_LENGTH=40 (bits[19:13]), explicitly specifying a 40-bit Cover length
         spiOutConf = 0x4445000D;
     } else {
-        // TMC2660: SPI_OUTPUT_FORMAT=0x0A (TMC26x 20-bit SPI 模式)
+        // TMC2660: SPI_OUTPUT_FORMAT=0x0A (TMC26x 20-bit SPI mode)
         // 0x4440108A: SCALE_VAL_TRANSFER_EN=1, COVER_DATA_LENGTH for 20-bit
         spiOutConf = 0x4440108A;
     }
     tmc4361A_writeRegister(icID, TMC4361A_SPI_OUT_CONF, spiOutConf);
 
-    // CLK_FREQ 已在检测前设置
+    // CLK_FREQ was already set before detection
 
     // Configure ramp mode
     // RAMPMODE: 0=hold, 1=trapezoid, 2=S-shaped, 4=position mode
@@ -337,10 +337,10 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
 
     // ========================================================================
-    // 缓存斜坡参数 (与旧 API rampParam[] 一致)
+    // cache the ramp parameters (consistent with the old API rampParam[])
     // ========================================================================
 
-    // 计算并缓存速度/加速度参数
+    // compute and cache the velocity/acceleration parameters
     int32_t vmax = motor_velocityMMToInternal(icID, config->maxVelocityMM);
     uint32_t amax = motor_accelMMToInternal(icID, config->maxAccelerationMM);
     float decelMM = config->maxDecelerationMM > 0 ? config->maxDecelerationMM : config->maxAccelerationMM;
@@ -349,21 +349,21 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     motorParams[icID].vmax = vmax;
     motorParams[icID].amax = amax;
     motorParams[icID].dmax = dmax;
-    // ASTART / DFINAL: 起始加速度和终止减速度
+    // ASTART / DFINAL: start acceleration and final deceleration
     uint32_t astart = config->astartMM > 0 ? motor_accelMMToInternal(icID, config->astartMM) : 0;
     float dfinalMM = config->dfinalMM > 0 ? config->dfinalMM : config->astartMM;
     uint32_t dfinal = dfinalMM > 0 ? motor_accelMMToInternal(icID, dfinalMM) : 0;
     motorParams[icID].astart = astart;
     motorParams[icID].dfinal = dfinal;
 
-    // 写入硬件寄存器
+    // write to the hardware registers
     tmc4361A_writeRegister(icID, TMC4361A_VMAX, vmax);
     tmc4361A_writeRegister(icID, TMC4361A_AMAX, amax);
     tmc4361A_writeRegister(icID, TMC4361A_DMAX, dmax);
 
     // Configure S-shaped ramp if enabled
     if (config->useSShapedRamp) {
-        // 如果 BOW 参数为 0，自动计算 (与旧 API tmc4361A_adjustBows 一致)
+        // if the BOW parameters are 0, compute them automatically (consistent with the old API tmc4361A_adjustBows)
         if (config->bow1 == 0 && config->bow2 == 0 && config->bow3 == 0 && config->bow4 == 0) {
             motor_adjustBows(icID);
         } else {
@@ -373,7 +373,7 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
             motorParams[icID].bow4 = config->bow4;
         }
 
-        // 写入 BOW 寄存器
+        // write the BOW registers
         tmc4361A_writeRegister(icID, TMC4361A_BOW1, motorParams[icID].bow1);
         tmc4361A_writeRegister(icID, TMC4361A_BOW2, motorParams[icID].bow2);
         tmc4361A_writeRegister(icID, TMC4361A_BOW3, motorParams[icID].bow3);
@@ -392,14 +392,14 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
     tmc4361A_writeRegister(icID, TMC4361A_DFINAL, motorParams[icID].dfinal);
 
     // ========================================================================
-    // 关键配置: 微步和每转步数 (与旧 API tmc4361A_writeMicrosteps/writeSPR 一致)
+    // key configuration: microstepping and steps per revolution (consistent with the old API tmc4361A_writeMicrosteps/writeSPR)
     // ========================================================================
 
-    // 计算 MSTEP_PER_FS 值: 256->0, 128->1, ..., 1->8
+    // compute the MSTEP_PER_FS value: 256->0, 128->1, ..., 1->8
     uint16_t mstep = config->microsteps;
     uint8_t mstepVal = 0;
     if (mstep > 0 && (mstep & (mstep - 1)) == 0 && mstep <= 256) {
-        // 计算 log2(mstep) + 1, 然后 9 - result
+        // compute log2(mstep) + 1, then 9 - result
         uint8_t bitsSet = 0;
         while (mstep > 0) {
             bitsSet++;
@@ -408,20 +408,20 @@ bool motor_initMotionController(uint8_t icID, const MotionConfig *config)
         mstepVal = 9 - bitsSet;
     }
 
-    // 组合 STEP_CONF: MSTEP_PER_FS (bit 0-3) + FS_PER_REV (bit 4-15)
+    // combine STEP_CONF: MSTEP_PER_FS (bit 0-3) + FS_PER_REV (bit 4-15)
     uint32_t stepConf = (mstepVal & TMC4361A_MSTEP_PER_FS_MASK) |
                         ((uint32_t)config->fullStepsPerRev << TMC4361A_FS_PER_REV_SHIFT);
     tmc4361A_writeRegister(icID, TMC4361A_STEP_CONF, stepConf);
 
     // ========================================================================
-    // 关键配置: 电流缩放
-    // TMC4361A 内部使用 SCALE_VALUES 计算线圈电流幅值，适用于所有 SPI 输出格式：
-    //   - TMC2660 (format 0x0A): 20-bit SPI 数据包含缩放后的电流值
-    //   - TMC2240 (format 0x0D): 40-bit SPI 写入 DIRECT_MODE 寄存器，同样需要缩放
-    // 不配置 SCALE_VALUES 会导致发送零电流 → 电机不动
+    // key configuration: current scaling
+    // the TMC4361A internally uses SCALE_VALUES to compute the coil current amplitude, applicable to all SPI output formats:
+    // - TMC2660 (format 0x0A): the 20-bit SPI data contains the scaled current value
+    // - TMC2240 (format 0x0D): 40-bit SPI writes the DIRECT_MODE register, which also needs scaling
+    // not configuring SCALE_VALUES would send zero current -> the motor does not move
     // ========================================================================
 
-    // SCALE_VALUES + CURRENT_CONF (与旧 API tmc4361A_cScaleInit 一致)
+    // SCALE_VALUES + CURRENT_CONF (consistent with the old API tmc4361A_cScaleInit)
     uint32_t scaleValues = (128 << TMC4361A_HOLD_SCALE_VAL_SHIFT) |   // hold = 50%
                            (255 << TMC4361A_DRV2_SCALE_VAL_SHIFT) |   // drv2 = 100%
                            (255 << TMC4361A_DRV1_SCALE_VAL_SHIFT) |   // drv1 = 100%
@@ -443,7 +443,7 @@ bool motor_initDriver(uint8_t icID, const MotorConfig *config)
     if (icID >= MOTOR_IC_COUNT || config == NULL)
         return false;
 
-    // 缓存驱动类型和 rSense
+    // cache the driver type and rSense
     motorParams[icID].driverType = config->driverType;
     motorParams[icID].rSense = config->rSense;
 
@@ -455,21 +455,21 @@ bool motor_initDriver(uint8_t icID, const MotorConfig *config)
 }
 
 // ========================================================================
-// TMC2660 驱动初始化
+// TMC2660 driver initialization
 // ========================================================================
 static bool motor_initDriver_TMC2660(uint8_t icID, const MotorConfig *config)
 {
-    // 缓存 toff 用于 enableDriver 恢复
+    // cache toff for enableDriver to restore
     motorParams[icID].toff = config->toff;
 
     // Calculate current scale
     uint8_t cs = calculateCurrentScale(config->runCurrentMA, config->rSense);
 
-    // TMC2660 初始化 - 与旧 API 顺序一致
-    // 旧 API 顺序: CHOPCONF -> SMARTEN -> SGCSCONF -> DRVCONF
-    // 注意: SPI 模式 (SDOFF=1) 下不发送 DRVCTRL
+    // TMC2660 initialization - same order as the old API
+    // old API order: CHOPCONF -> SMARTEN -> SGCSCONF -> DRVCONF
+    // note: in SPI mode (SDOFF=1), DRVCTRL is not sent
 
-    // 1. Configure CHOPCONF (旧 API: 0x000900C3)
+    // 1. Configure CHOPCONF (old API: 0x000900C3)
     uint8_t hend_reg = (uint8_t)(config->hend + 3);  // Offset by 3
     uint32_t chopconf = TMC2660_SET_TBL(config->tbl) |
                         TMC2660_SET_HEND(hend_reg) |
@@ -477,83 +477,83 @@ static bool motor_initDriver_TMC2660(uint8_t icID, const MotorConfig *config)
                         TMC2660_SET_TOFF(config->toff);
     tmc2660_writeRegister(icID, TMC2660_CHOPCONF, chopconf);
 
-    // 2. Configure SMARTEN (旧 API: 0x000A0000, CoolStep disabled)
+    // 2. Configure SMARTEN (old API: 0x000A0000, CoolStep disabled)
     tmc2660_writeRegister(icID, TMC2660_SMARTEN, 0);
 
-    // 3. Configure SGCSCONF (旧 API: 0x000C000A)
+    // 3. Configure SGCSCONF (old API: 0x000C000A)
     uint8_t sgt = (uint8_t)(config->stallThreshold & 0x7F);
     uint32_t sgcsconf = TMC2660_SET_CS(cs) |
                         TMC2660_SET_SGT(sgt) |
                         TMC2660_SET_SFILT(config->stallFilter ? 1 : 0);
     tmc2660_writeRegister(icID, TMC2660_SGCSCONF, sgcsconf);
 
-    // 4. Configure DRVCONF (旧 API: 0x000E00A1)
+    // 4. Configure DRVCONF (old API: 0x000E00A1)
     // SDOFF=1: SPI mode (motion control via SPI, not Step/Dir)
     // VSENSE=0: High sense resistor voltage range (V_fs=0.310V)
     // RDSEL=2: StallGuard2 value and CoolStep current level in response
     uint32_t drvconf = TMC2660_SET_RDSEL(2) | TMC2660_SET_VSENSE(0) | TMC2660_SET_SDOFF(1) | 0x01;
     tmc2660_writeRegister(icID, TMC2660_DRVCONF, drvconf);
 
-    // 注意: 在 SPI 模式 (SDOFF=1) 下，不发送 DRVCTRL
-    // 微步由 TMC4361A 的 STEP_CONF 寄存器控制
+    // note: in SPI mode (SDOFF=1), DRVCTRL is not sent
+    // microstepping is controlled by the TMC4361A STEP_CONF register
 
     return true;
 }
 
 // ========================================================================
-// TMC2240 驱动初始化
+// TMC2240 driver initialization
 // ========================================================================
 static bool motor_initDriver_TMC2240(uint8_t icID, const MotorConfig *config)
 {
-    // 缓存 TMC2240 专用参数（运行时 setRunCurrent / enableDriver 需要）
+    // cache the TMC2240-specific parameters (needed at runtime by setRunCurrent / enableDriver)
     motorParams[icID].currentRange = config->currentRange;
     motorParams[icID].toff = config->toff;
 
-    // 注意: SPI_OUTPUT_FORMAT=0x0D 保持活跃，不能禁用 (format=0 会关闭 SPI 输出硬件)
-    // Cover 写入与自动 SPI 输出由 TMC4361A 硬件串行化，写入应可靠
-    // Cover 读取可能受自动 SPI 干扰（读回值不可靠），但不影响配置写入
+    // note: SPI_OUTPUT_FORMAT=0x0D stays active and must not be disabled (format=0 turns off the SPI output hardware)
+    // Cover writes and the automatic SPI output are serialized by the TMC4361A hardware, so writes should be reliable
+    // Cover reads may be disturbed by the automatic SPI (read-back values are unreliable), but this does not affect configuration writes
 
-    // 1. DRV_CONF - 设置 CURRENT_RANGE 和 SLOPE_CONTROL
+    // 1. DRV_CONF - set CURRENT_RANGE and SLOPE_CONTROL
     // CURRENT_RANGE: 0=1A, 1=2A, 2=3A, 3=3A
-    // SLOPE_CONTROL: 1 = 200V/μs (默认)
+    // SLOPE_CONTROL: 1 = 200V/us (default)
     uint32_t drvConf = ((uint32_t)(config->currentRange & 0x03) << 0) |
                        (1 << 4);  // SLOPE_CONTROL=1
     tmc2240_writeRegister(icID, TMC2240_DRV_CONF, drvConf);
 
-    // 2. GLOBAL_SCALER (0=256 即全量程, 32-255 缩放)
+    // 2. GLOBAL_SCALER (0=256, i.e. full scale; 32-255 scaling)
     tmc2240_writeRegister(icID, TMC2240_GLOBAL_SCALER,
                           config->globalScaler == 0 ? 0 : config->globalScaler);
 
-    // 3. 计算电流 — 基于 CURRENT_RANGE 的 I_FS
+    // 3. compute the current -- I_FS based on CURRENT_RANGE
     uint8_t irun = calculateCurrentScale_TMC2240(config->runCurrentMA,
                                                   config->currentRange,
                                                   config->globalScaler);
     uint8_t ihold = (uint8_t)(irun * config->holdCurrentRatio);
     if (ihold > 31) ihold = 31;
 
-    // 4. IHOLD_IRUN - 电流配置
+    // 4. IHOLD_IRUN - current configuration
     uint32_t iholdIrun = ((uint32_t)ihold << TMC2240_IHOLD_SHIFT) |
                          ((uint32_t)irun << TMC2240_IRUN_SHIFT) |
                          ((uint32_t)(config->iholdDelay & 0x0F) << TMC2240_IHOLDDELAY_SHIFT);
     tmc2240_writeRegister(icID, TMC2240_IHOLD_IRUN, iholdIrun);
 
-    // 5. TPOWERDOWN - 保持电流延时 (默认 10)
+    // 5. TPOWERDOWN - hold-current delay (default 10)
     tmc2240_writeRegister(icID, TMC2240_TPOWERDOWN, 10);
 
-    // 6. GCONF - 全局配置
+    // 6. GCONF - global configuration
     uint32_t gconf = 0x00000000;
-    // direct_mode (bit 16): TMC4361A 通过 SPI 直接控制线圈电流 (DIRECT_MODE 寄存器)
-    // 必须启用，否则 TMC2240 等待 Step/Dir 信号而不响应 SPI 电流指令
+    // direct_mode (bit 16): the TMC4361A directly controls the coil current via SPI (DIRECT_MODE register)
+    // must be enabled, otherwise the TMC2240 waits for Step/Dir signals and does not respond to SPI current commands
     gconf |= TMC2240_DIRECT_MODE_MASK;  // bit 16: direct coil current control via SPI
-    // 注意: SHAFT (bit 4) 在 direct_mode 下无效，方向由 TMC4361A REVERSE_MOTOR_DIR 控制
+    // note: SHAFT (bit 4) is ineffective in direct_mode; the direction is controlled by the TMC4361A REVERSE_MOTOR_DIR
     if (config->enableStealthChop) {
-        gconf |= TMC2240_EN_PWM_MODE_MASK;  // bit 2: StealthChop 使能
+        gconf |= TMC2240_EN_PWM_MODE_MASK;  // bit 2: StealthChop enable
     }
     tmc2240_writeRegister(icID, TMC2240_GCONF, gconf);
 
-    // 7. CHOPCONF - Chopper 配置 (含 MRES 微步设置)
-    // MRES 编码: 0=256, 1=128, 2=64, ..., 8=全步 (与 TMC4361A STEP_CONF 一致)
-    uint8_t mresVal = config->microstepRes;  // 由 Axis::begin() 传入，通常为 0 (256微步)
+    // 7. CHOPCONF - Chopper configuration (includes the MRES microstepping setting)
+    // MRES encoding: 0=256, 1=128, 2=64, ..., 8=full step (consistent with TMC4361A STEP_CONF)
+    uint8_t mresVal = config->microstepRes;  // passed in by Axis::begin(), usually 0 (256 microsteps)
 
     uint32_t chopconf = ((uint32_t)(config->toff & 0x0F) << TMC2240_TOFF_SHIFT) |
                         ((uint32_t)(config->hstrt & 0x07) << TMC2240_HSTRT_TFD210_SHIFT) |
@@ -563,13 +563,13 @@ static bool motor_initDriver_TMC2240(uint8_t icID, const MotorConfig *config)
                         (config->interpolation ? (1 << TMC2240_INTPOL_SHIFT) : 0);
     tmc2240_writeRegister(icID, TMC2240_CHOPCONF, chopconf);
 
-    // 8. PWMCONF - StealthChop PWM 配置
+    // 8. PWMCONF - StealthChop PWM configuration
     if (config->enableStealthChop) {
-        // 默认值: pwm_autoscale=1, pwm_autograd=1
+        // defaults: pwm_autoscale=1, pwm_autograd=1
         tmc2240_writeRegister(icID, TMC2240_PWMCONF, 0xC44C001E);
     }
 
-    // 清 GSTAT reset 标志
+    // clear the GSTAT reset flag
     tmc2240_writeRegister(icID, TMC2240_GSTAT, 0x07);
     // ---- END DEBUG ----
 
@@ -581,16 +581,16 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
     if (icID >= MOTOR_IC_COUNT || config == NULL)
         return;
 
-    // Read current REFERENCE_CONF to preserve other bits (与旧 API setBits 行为一致)
+    // Read current REFERENCE_CONF to preserve other bits (consistent with the old API setBits behavior)
     uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
     // Left switch configuration
-    // 2026-06-06：硬停使能(STOP_LEFT_EN)与"极性/位置锁存"解耦。
-    // 极性(POL_STOP_LEFT)与锁存(LATCH_X_ON_ACTIVE_L)始终按配置写入，与 enable 无关 ——
-    // 这样关掉 chip 硬停(enableLeft=false, 走软件停车)后，STATUS STOPL_ACTIVE_F 仍按极性
-    // 正确反映开关电平(软件 poll 需要它)，且 homing 退回安全位用的 X_LATCH 仍工作。
-    // 旧实现把这两项关在 if(enableLeft) 里 → enable=false 时极性丢失(读反)、锁存失效。
-    // 对 enable=true 的轴行为完全不变(无回归)。
+    // 2026-06-06: the hard-stop enable (STOP_LEFT_EN) is decoupled from "polarity / position latch".
+    // the polarity (POL_STOP_LEFT) and latch (LATCH_X_ON_ACTIVE_L) are always written per the config, independent of enable --
+    // so after disabling the chip hard stop (enableLeft=false, using software stop), STATUS STOPL_ACTIVE_F still reflects the
+    // switch level correctly per polarity (software poll needs it), and the X_LATCH used for homing retract-to-safe still works.
+    // the old implementation gated both inside if(enableLeft) -> when enable=false the polarity was lost (read inverted) and the latch failed.
+    // behavior for enable=true axes is completely unchanged (no regression).
     if (config->enableLeft)
         refConf |= TMC4361A_STOP_LEFT_EN_MASK;   // bit 0
     else
@@ -601,7 +601,7 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
         refConf &= ~TMC4361A_POL_STOP_LEFT_MASK;
     refConf |= TMC4361A_LATCH_X_ON_ACTIVE_L_MASK;  // bit 11
 
-    // Right switch configuration（同上：解耦）
+    // Right switch configuration (same as above: decoupled)
     if (config->enableRight)
         refConf |= TMC4361A_STOP_RIGHT_EN_MASK;  // bit 1
     else
@@ -612,8 +612,8 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
         refConf &= ~TMC4361A_POL_STOP_RIGHT_MASK;
     refConf |= TMC4361A_LATCH_X_ON_ACTIVE_R_MASK;  // bit 13
 
-    // Invert stop direction: 交换左右限位开关的逻辑含义
-    // 与 master 分支旧 API (tmc4361A_enableLimitSwitch) 一致:
+    // Invert stop direction: swap the logical meaning of the left/right limit switches
+    // consistent with the master-branch old API (tmc4361A_enableLimitSwitch):
     //   if (flipped != 0) setBits(INVERT_STOP_DIRECTION_MASK)
     if (config->leftFlipped || config->rightFlipped) {
         refConf |= TMC4361A_INVERT_STOP_DIRECTION_MASK;  // bit 4
@@ -621,10 +621,10 @@ void motor_configLimitSwitches(uint8_t icID, const LimitConfig *config)
         refConf &= ~TMC4361A_INVERT_STOP_DIRECTION_MASK;
     }
 
-    // 注意：不设 SOFT_STOP_EN (bit 5)
-    // SOFT_STOP_EN=1 会使限位触发时芯片进入内部软停车状态机，
-    // 锁定 RAMPMODE/VMAX/XTARGET 写入，导致 homing 停车失败。
-    // 与 master 分支旧 API (tmc4361A_enableLimitSwitch) 保持一致：硬停车。
+    // note: do not set SOFT_STOP_EN (bit 5)
+    // SOFT_STOP_EN=1 makes the chip enter an internal soft-stop state machine when a limit triggers,
+    // locking RAMPMODE/VMAX/XTARGET writes and causing homing stop to fail.
+    // kept consistent with the master-branch old API (tmc4361A_enableLimitSwitch): hard stop.
 
     tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
 }
@@ -674,23 +674,23 @@ bool motor_moveToMicrosteps(uint8_t icID, int32_t position)
         return false;
 
     // ========================================================================
-    // 与旧 API tmc4361A_moveTo 完全一致的实现
+    // an implementation exactly matching the old API tmc4361A_moveTo
     // ========================================================================
 
-    // 状态恢复: 仅当 velocity_mode == true 时调用 sRampInit
-    // 与旧 API: if(tmc4361A->velocity_mode) { tmc4361A_sRampInit(); velocity_mode = false; }
+    // state restore: call sRampInit only when velocity_mode == true
+    // as in the old API: if(tmc4361A->velocity_mode) { tmc4361A_sRampInit(); velocity_mode = false; }
     if (motorParams[icID].velocity_mode) {
         // ====================================================================
-        // sRampInit 等效实现 (与旧 API tmc4361A_sRampInit 完全一致)
+        // sRampInit-equivalent implementation (exactly the same as the old API tmc4361A_sRampInit)
         // ====================================================================
 
-        // 1. RAMPMODE: 使用 setBits 设置位置模式 + S-shaped 斜坡
-        //    旧 API: tmc4361A_setBits(tmc4361A, TMC4361A_RAMPMODE, TMC4361A_RAMP_POSITION | TMC4361A_RAMP_SSHAPE);
+        // 1. RAMPMODE: use setBits to set position mode + S-shaped ramp
+        // old API: tmc4361A_setBits(tmc4361A, TMC4361A_RAMPMODE, TMC4361A_RAMP_POSITION | TMC4361A_RAMP_SSHAPE);
         uint32_t rampMode = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
         rampMode |= (TMC4361A_RAMP_POSITION | TMC4361A_RAMP_SSHAPE);
         tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
 
-        // 2. 恢复 USE_ASTART_AND_VSTART 设置（根据 astart 配置决定）
+        // 2. restore the USE_ASTART_AND_VSTART setting (decided by the astart config)
         uint32_t generalConf = tmc4361A_readRegister(icID, TMC4361A_GENERAL_CONF);
         if (motorParams[icID].astart > 0) {
             generalConf |= TMC4361A_USE_ASTART_AND_VSTART_MASK;
@@ -699,7 +699,7 @@ bool motor_moveToMicrosteps(uint8_t icID, int32_t position)
         }
         tmc4361A_writeRegister(icID, TMC4361A_GENERAL_CONF, generalConf);
 
-        // 3. 重写所有斜坡参数 (与旧 API sRampInit 一致)
+        // 3. rewrite all ramp parameters (consistent with the old API sRampInit)
         tmc4361A_writeRegister(icID, TMC4361A_BOW1, motorParams[icID].bow1);
         tmc4361A_writeRegister(icID, TMC4361A_BOW2, motorParams[icID].bow2);
         tmc4361A_writeRegister(icID, TMC4361A_BOW3, motorParams[icID].bow3);
@@ -710,26 +710,26 @@ bool motor_moveToMicrosteps(uint8_t icID, int32_t position)
         tmc4361A_writeRegister(icID, TMC4361A_DFINAL, motorParams[icID].dfinal);
         tmc4361A_writeRegister(icID, TMC4361A_VMAX, motorParams[icID].vmax);
 
-        // 4. 清除 velocity_mode 标志
+        // 4. clear the velocity_mode flag
         motorParams[icID].velocity_mode = false;
 
     }
 
-    // 无条件写回 VMAX（与旧 API tmc4361A_moveTo 一致）
-    // 旧 API 每次 moveTo 都写 VMAX，确保即使被外部（如 motor_stop）
-    // 清零后也能恢复正确速度
+    // unconditionally write back VMAX (consistent with the old API tmc4361A_moveTo)
+    // the old API writes VMAX on every moveTo, ensuring that even if it is zeroed by something external (e.g. motor_stop)
+    // the correct speed is restored
     tmc4361A_writeRegister(icID, TMC4361A_VMAX, motorParams[icID].vmax);
 
     // ========================================================================
-    // 写入目标位置 (与旧 API tmc4361A_moveTo 一致)
+    // write the target position (consistent with the old API tmc4361A_moveTo)
     // ========================================================================
 
-    // 虚拟限位恢复（TMC4361A Programming Guide §10.4）：
-    // "前提：停止开关不再激活 或 已禁用停止开关。然后清除事件。"
+    // virtual-limit recovery (TMC4361A Programming Guide section 10.4):
+    // "precondition: the stop switch is no longer active OR the stop switch is disabled. Then clear the events."
     //
-    // 策略：禁用被激活的 virtual_limit_en → 清除事件 → 写 XTARGET。
-    // 不在此处恢复使能位：必须等电机离开边界后才能恢复（由 Axis 层管理）。
-    // 如果立即恢复，XACTUAL 仍在边界上 → VSTOP 立即重新触发 → 电机无法移动。
+    // strategy: disable the activated virtual_limit_en -> clear events -> write XTARGET.
+    // do not restore the enable bit here: it can only be restored after the motor leaves the boundary (managed by the Axis layer).
+    // if restored immediately, XACTUAL is still at the boundary -> VSTOP re-triggers immediately -> the motor cannot move.
     uint32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
     bool vstopL = status & TMC4361A_VSTOPL_ACTIVE_F_MASK;
     bool vstopR = status & TMC4361A_VSTOPR_ACTIVE_F_MASK;
@@ -738,19 +738,19 @@ bool motor_moveToMicrosteps(uint8_t icID, int32_t position)
     if (vstopL || vstopR) {
         uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
-        // 禁用被激活的虚拟限位（满足恢复前提条件）
+        // disable the activated virtual limit (to satisfy the recovery precondition)
         if (vstopL)
             refConf &= ~TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
         if (vstopR)
             refConf &= ~TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
 
         tmc4361A_writeRegister(icID, TMC4361A_REFERENCE_CONF, refConf);
-        tmc4361A_readRegister(icID, TMC4361A_EVENTS);  // 清除事件（恢复动作）
+        tmc4361A_readRegister(icID, TMC4361A_EVENTS);  // clear events (recovery action)
 
         tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
-        tmc4361A_readRegister(icID, TMC4361A_EVENTS);  // 清除可能的新事件
+        tmc4361A_readRegister(icID, TMC4361A_EVENTS);  // clear any new events
     } else {
-        // 正常路径（无虚拟限位激活）
+        // normal path (no virtual limit active)
         tmc4361A_readRegister(icID, TMC4361A_EVENTS);
         tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
         tmc4361A_readRegister(icID, TMC4361A_EVENTS);
@@ -814,12 +814,12 @@ bool motor_isTargetReached(uint8_t icID)
     if (icID >= MOTOR_IC_COUNT)
         return true;
 
-    // 与旧 Squid tmc4361A_isRunning(取反) 等价：位置到达 AND 速度归零 AND ramp 不在变化
+    // equivalent to legacy Squid tmc4361A_isRunning (negated): target reached AND velocity zero AND ramp not changing
     // - TARGET_REACHED_F (bit 0): XACTUAL == XTARGET
-    // - VEL_STATE_F (bits 3-4): 00 = velocity 已归零 (非 0 = +/- velocity)
-    // - RAMP_STATE_F (bits 5-6): 00 = ramp idle (非 0 = acc/dec/const)
-    // 单次 STATUS 读多 bit，SPI 成本不变；防 chip ramp 末尾「XACTUAL 短暂 == XTARGET
-    // 但速度未归零」的边缘 case 误判
+    // - VEL_STATE_F (bits 3-4): 00 = velocity has reached zero (non-zero = +/- velocity)
+    // - RAMP_STATE_F (bits 5-6): 00 = ramp idle (non-zero = acc/dec/const)
+    // reads multiple bits in a single STATUS read at no extra SPI cost; prevents the edge case at the end of the chip ramp where "XACTUAL briefly == XTARGET
+    // but the speed has not reached zero" is misjudged
     uint32_t status = tmc4361A_readRegister(icID, TMC4361A_STATUS);
     return (status & TMC4361A_TARGET_REACHED_F_MASK) &&
            !(status & (TMC4361A_VEL_STATE_F_MASK | TMC4361A_RAMP_STATE_F_MASK));
@@ -911,12 +911,12 @@ void motor_setMaxVelocity(uint8_t icID, float velocityMM)
         return;
 
     int32_t vel = motor_velocityMMToInternal(icID, velocityMM);
-    motorParams[icID].vmax = vel;  // 保存用于位置模式恢复 (与旧 API rampParam[VMAX_IDX] 一致)
+    motorParams[icID].vmax = vel;  // saved for position-mode restore (consistent with the old API rampParam[VMAX_IDX])
 
-    // 与旧 API tmc4361A_setMaxSpeed 一致: 自动重新计算 BOW 参数
+    // consistent with the old API tmc4361A_setMaxSpeed: automatically recompute the BOW parameters
     motor_adjustBows(icID);
 
-    // 写入硬件 (sRampInit 等效)
+    // write to hardware (sRampInit-equivalent)
     tmc4361A_writeRegister(icID, TMC4361A_VMAX, motorParams[icID].vmax);
     tmc4361A_writeRegister(icID, TMC4361A_BOW1, motorParams[icID].bow1);
     tmc4361A_writeRegister(icID, TMC4361A_BOW2, motorParams[icID].bow2);
@@ -929,18 +929,18 @@ void motor_resetRampMode(uint8_t icID)
     if (icID >= MOTOR_IC_COUNT)
         return;
 
-    // 读取当前 RAMPMODE
+    // read the current RAMPMODE
     [[maybe_unused]] uint32_t rampModeBefore = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
 
-    // 重置 RAMPMODE 为位置模式 + S-shaped 斜坡 (与初始化一致)
-    // 这在 RESET 命令或硬件限位触发后需要调用
+    // reset RAMPMODE to position mode + S-shaped ramp (consistent with initialization)
+    // this must be called after a RESET command or a hardware-limit trigger
     uint32_t rampMode = 0x06;  // S-shaped position mode
     tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);
 
-    // 读取设置后的 RAMPMODE
+    // read the RAMPMODE after setting
     [[maybe_unused]] uint32_t rampModeAfter = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
 
-    // 调试输出
+    // debug output
     DEBUG_PRINT("motor_resetRampMode: icID=");
     DEBUG_PRINT(icID);
     DEBUG_PRINT(" RAMPMODE: 0x");
@@ -955,13 +955,13 @@ void motor_setMaxAcceleration(uint8_t icID, float accelerationMM)
         return;
 
     uint32_t accel = motor_accelMMToInternal(icID, accelerationMM);
-    motorParams[icID].amax = accel;  // 缓存 (与旧 API rampParam[AMAX_IDX] 一致)
-    motorParams[icID].dmax = accel;  // 与旧 API 一致: DMAX = AMAX
+    motorParams[icID].amax = accel;  // cache (consistent with the old API rampParam[AMAX_IDX])
+    motorParams[icID].dmax = accel;  // consistent with the old API: DMAX = AMAX
 
-    // 与旧 API tmc4361A_setMaxAcceleration 一致: 自动重新计算 BOW 参数
+    // consistent with the old API tmc4361A_setMaxAcceleration: automatically recompute the BOW parameters
     motor_adjustBows(icID);
 
-    // 写入硬件 (sRampInit 等效)
+    // write to hardware (sRampInit-equivalent)
     tmc4361A_writeRegister(icID, TMC4361A_AMAX, motorParams[icID].amax);
     tmc4361A_writeRegister(icID, TMC4361A_DMAX, motorParams[icID].dmax);
     tmc4361A_writeRegister(icID, TMC4361A_BOW1, motorParams[icID].bow1);
@@ -976,7 +976,7 @@ void motor_setMaxDeceleration(uint8_t icID, float decelerationMM)
         return;
 
     uint32_t decel = motor_accelMMToInternal(icID, decelerationMM);
-    motorParams[icID].dmax = decel;  // 缓存 (与旧 API rampParam[DMAX_IDX] 一致)
+    motorParams[icID].dmax = decel;  // cache (consistent with the old API rampParam[DMAX_IDX])
     tmc4361A_writeRegister(icID, TMC4361A_DMAX, decel);
 }
 
@@ -991,14 +991,14 @@ void motor_setCurrentPositionMicrosteps(uint8_t icID, int32_t position)
     if (icID >= MOTOR_IC_COUNT)
         return;
 
-    // 与旧 API tmc4361A_setCurrentPosition 行为一致：
-    // 1. 先停止电机（设置 VMAX=0）
-    // 2. 设置 XACTUAL 和 XTARGET
-    // 3. 设置 velocity_mode=true，下次 moveToMicrosteps 时会恢复 VMAX
+    // consistent with the old API tmc4361A_setCurrentPosition behavior:
+    // 1. stop the motor first (set VMAX=0)
+    // 2. set XACTUAL and XTARGET
+    // 3. set velocity_mode=true; VMAX will be restored on the next moveToMicrosteps
     tmc4361A_writeRegister(icID, TMC4361A_VMAX, 0);
     tmc4361A_writeRegister(icID, TMC4361A_XACTUAL, position);
     tmc4361A_writeRegister(icID, TMC4361A_XTARGET, position);
-    tmc4361A_writeRegister(icID, TMC4361A_ENC_POS, position);  // 同步编码器位置
+    tmc4361A_writeRegister(icID, TMC4361A_ENC_POS, position);  // sync the encoder position
     motorParams[icID].velocity_mode = true;
 }
 
@@ -1007,11 +1007,11 @@ void motor_setMicrosteps(uint8_t icID, uint16_t microsteps)
     if (icID >= MOTOR_IC_COUNT || !motorParams[icID].initialized)
         return;
 
-    // 更新缓存
+    // update the cache
     motorParams[icID].microsteps = microsteps;
     motorParams[icID].stepsPerMM = (float)(motorParams[icID].fullStepsPerRev * microsteps) / motorParams[icID].screwPitchMM;
 
-    // 计算 MSTEP_PER_FS 值: 256->0, 128->1, ..., 1->8
+    // compute the MSTEP_PER_FS value: 256->0, 128->1, ..., 1->8
     uint16_t mstep = microsteps;
     uint8_t mstepVal = 0;
     if (mstep > 0 && (mstep & (mstep - 1)) == 0 && mstep <= 256) {
@@ -1023,15 +1023,15 @@ void motor_setMicrosteps(uint8_t icID, uint16_t microsteps)
         mstepVal = 9 - bitsSet;
     }
 
-    // 组合 STEP_CONF: MSTEP_PER_FS (bit 0-3) + FS_PER_REV (bit 4-15)
+    // combine STEP_CONF: MSTEP_PER_FS (bit 0-3) + FS_PER_REV (bit 4-15)
     uint32_t stepConf = (mstepVal & TMC4361A_MSTEP_PER_FS_MASK) |
                         ((uint32_t)motorParams[icID].fullStepsPerRev << TMC4361A_FS_PER_REV_SHIFT);
     tmc4361A_writeRegister(icID, TMC4361A_STEP_CONF, stepConf);
 
-    // TMC2240: 同步更新 CHOPCONF.MRES（TMC2240 的 MRES 必须与 TMC4361A 的 STEP_CONF 一致）
-    // 注意: 不能用 tmc2240_fieldWrite (read-modify-write)，因为 SPI_OUTPUT_FORMAT=0x0D
-    // 自动 SPI 输出干扰 Cover 读取，读回值不可靠会损坏 CHOPCONF（TOFF=0→驱动关闭）。
-    // 改用 shadow register 获取上次写入的 CHOPCONF 值。
+    // TMC2240: also update CHOPCONF.MRES (the TMC2240's MRES must match the TMC4361A's STEP_CONF)
+    // note: cannot use tmc2240_fieldWrite (read-modify-write), because SPI_OUTPUT_FORMAT=0x0D
+    // the automatic SPI output disturbs Cover reads; an unreliable read-back would corrupt CHOPCONF (TOFF=0 -> driver off).
+    // use the shadow register to get the last-written CHOPCONF value instead.
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
         uint32_t chopconf = (uint32_t)tmc2240_shadowRegister[icID][TMC2240_CHOPCONF];
         chopconf = (chopconf & ~((uint32_t)0x0F << TMC2240_MRES_SHIFT)) |
@@ -1063,7 +1063,7 @@ void motor_enableDriver(uint8_t icID, bool enable)
 
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
         if (enable) {
-            // 使用缓存的 TOFF 恢复驱动（而非硬编码默认值）
+            // use the cached TOFF to restore the driver (rather than a hardcoded default)
             uint32_t chopconf = tmc2240_readRegister(icID, TMC2240_CHOPCONF);
             uint8_t currentToff = (chopconf & TMC2240_TOFF_MASK) >> TMC2240_TOFF_SHIFT;
             if (currentToff == 0) {
@@ -1159,7 +1159,7 @@ void motor_enableHomingLimit(uint8_t icID, uint8_t polarity, uint8_t whichSwitch
     // Read current REFERENCE_CONF
     uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
-    // Configure HOME_EVENT and home switch (与旧 API tmc4361A_enableHomingLimit 一致)
+    // Configure HOME_EVENT and home switch (consistent with the old API tmc4361A_enableHomingLimit)
     if (whichSwitch == 0x01) {  // Left switch (LEFT_SW)
         if (polarity != 0) {
             // Active high: HOME_REF = 0 indicates positive direction
@@ -1210,10 +1210,10 @@ void motor_enableSoftLimits(uint8_t icID, bool enableLower, bool enableUpper)
     // Read current REFERENCE_CONF
     uint32_t refConf = tmc4361A_readRegister(icID, TMC4361A_REFERENCE_CONF);
 
-    // Configure virtual stop enables (使用官方宏定义)
+    // Configure virtual stop enables (using the official macro definitions)
     if (enableLower) {
         refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;   // bit 6
-        // Set VIRT_STOP_MODE = 1 for hard stop (与旧 API 一致)
+        // Set VIRT_STOP_MODE = 1 for hard stop (consistent with the old API)
         refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);  // bit 8
     } else {
         refConf &= ~TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
@@ -1221,7 +1221,7 @@ void motor_enableSoftLimits(uint8_t icID, bool enableLower, bool enableUpper)
 
     if (enableUpper) {
         refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;  // bit 7
-        // Set VIRT_STOP_MODE = 1 for hard stop (与旧 API 一致)
+        // Set VIRT_STOP_MODE = 1 for hard stop (consistent with the old API)
         refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);  // bit 8
     } else {
         refConf &= ~TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
@@ -1244,9 +1244,9 @@ void motor_initABNEncoder(uint8_t icID, uint32_t transitions_per_rev,
     // Set encoder resolution
     tmc4361A_writeRegister(icID, TMC4361A_ENC_IN_RES, transitions_per_rev);
 
-    // 2026-05-25 撤销 always-on debug print：旧 Squid software 没有 ASCII/binary 混合
-    // 解析，会把 "ENC_INIT ..." 文本当响应包字节，导致 checksum 错 + 后续命令 ack 错位
-    // → cmd 7 (HOME_OR_ZERO) timeout abort。改回 DEBUG_PRINT (NDEBUG 编译掉)。
+    // 2026-05-25 reverted the always-on debug print: legacy Squid software has no mixed ASCII/binary
+    // parsing and would treat the "ENC_INIT ..." text as response-packet bytes, causing checksum errors + misaligned acks for subsequent commands
+    // -> cmd 7 (HOME_OR_ZERO) timeout abort. Reverted to DEBUG_PRINT (compiled out under NDEBUG).
     DEBUG_PRINT("ENC_INIT icID=");
     DEBUG_PRINT(icID);
     DEBUG_PRINT(" wrote_ENC_IN_RES=");
@@ -1261,7 +1261,7 @@ void motor_initABNEncoder(uint8_t icID, uint32_t transitions_per_rev,
                        | ((uint32_t)filter_vmean << 16);
     tmc4361A_writeRegister(icID, TMC4361A_ENC_VMEAN_FILTER, filterVal);
 
-    // 禁用差分编码器输入（单端 ABN 编码器）
+    // disable differential encoder input (single-ended ABN encoder)
     uint32_t gen_conf = tmc4361A_readRegister(icID, TMC4361A_GENERAL_CONF);
     gen_conf |= TMC4361A_DIFF_ENC_IN_DISABLE_MASK;  // bit 12 = 1
     tmc4361A_writeRegister(icID, TMC4361A_GENERAL_CONF, gen_conf);
@@ -1329,9 +1329,9 @@ void motor_configStallGuard(uint8_t icID, int8_t threshold, bool filterEnable, b
 
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
         // TMC2240: StallGuard4
-        // SGT 在 COOLCONF (0x6D) 的 bits [22:16]
+        // SGT is in bits [22:16] of COOLCONF (0x6D)
         tmc2240_fieldWrite(icID, TMC2240_SGT_FIELD, (uint32_t)(threshold & 0x7F));
-        // SG4_THRS 在 SG4_THRS (0x74) 的 bits [7:0]
+        // SG4_THRS is in bits [7:0] of SG4_THRS (0x74)
         tmc2240_fieldWrite(icID, TMC2240_SG4_FILT_EN_FIELD, filterEnable ? 1 : 0);
     } else {
         // TMC2660: StallGuard2
@@ -1339,9 +1339,9 @@ void motor_configStallGuard(uint8_t icID, int8_t threshold, bool filterEnable, b
         tmc2660_setStallGuardFilter(icID, filterEnable);
     }
 
-    // Configure TMC4361A to react to stall event (与旧 API 一致)
+    // Configure TMC4361A to react to stall event (consistent with the old API)
     if (stopOnStall) {
-        // Set VSTALL_LIMIT (与旧 API 一致)
+        // Set VSTALL_LIMIT (consistent with the old API)
         // 0 = react at any velocity > 0
         tmc4361A_writeRegister(icID, TMC4361A_VSTALL_LIMIT, 0);
 
@@ -1375,18 +1375,18 @@ void motor_setVelocityInternal(uint8_t icID, int32_t velocityInternal)
         return;
 
     // ========================================================================
-    // 与旧 API tmc4361A_setSpeed 完全一致的实现
+    // an implementation exactly matching the old API tmc4361A_setSpeed
     // ========================================================================
 
-    // 1. 设置 velocity_mode 标志 (与旧 API: tmc4361A->velocity_mode = true)
+    // 1. set the velocity_mode flag (as in the old API: tmc4361A->velocity_mode = true)
     motorParams[icID].velocity_mode = true;
 
     // 2. Clear EVENTS register (reading clears it)
     tmc4361A_readRegister(icID, TMC4361A_EVENTS);
 
-    // 3. 清除 POSITION 位和 HOLD 位，保留 S-shaped 位
-    //    旧 API: tmc4361A_rstBits(tmc4361A, TMC4361A_RAMPMODE, TMC4361A_RAMP_POSITION | TMC4361A_RAMP_HOLD);
-    //    如果原来是 0x06 (S-shaped 位置模式)，结果是 0x02 (S-shaped 速度模式)
+    // 3. clear the POSITION and HOLD bits, keep the S-shaped bit
+    // old API: tmc4361A_rstBits(tmc4361A, TMC4361A_RAMPMODE, TMC4361A_RAMP_POSITION | TMC4361A_RAMP_HOLD);
+    // if it was originally 0x06 (S-shaped position mode), the result is 0x02 (S-shaped velocity mode)
     uint32_t rampModeBefore = tmc4361A_readRegister(icID, TMC4361A_RAMPMODE);
     uint32_t rampMode = rampModeBefore & ~(TMC4361A_RAMP_POSITION | TMC4361A_RAMP_HOLD);
     tmc4361A_writeRegister(icID, TMC4361A_RAMPMODE, rampMode);

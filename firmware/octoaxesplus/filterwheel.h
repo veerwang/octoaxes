@@ -5,24 +5,24 @@
 
 class FilterWheel : public Axis {
 public:
-  // 构造函数
+  // Constructor
   FilterWheel(uint8_t csPin, uint8_t axisIndex, const char* axisName, uint8_t filterCount = 8);
   
-  // 重写基类的初始化函数，添加滤光轮特有配置
+  // Override the base-class init function to add filter-wheel-specific configuration
   bool begin(const AxisConfig& config) override;
   
-  // 滤光轮特有功能
+  // Filter-wheel-specific features
   bool moveToFilter(uint8_t filterPosition);
   uint8_t getCurrentFilter() const;
   uint8_t getFilterCount() const;
   
-  // 重写状态机更新，添加滤光轮特有逻辑
+  // Override the state-machine update to add filter-wheel-specific logic
   void update() override;
   
-  // 重写命令处理，添加滤光轮特有命令
+  // Override command processing to add filter-wheel-specific commands
   bool processCommand(const String& command) override;
   
-  // 设置滤光轮位置映射
+  // Set the filter-wheel position mapping
   void setFilterPositions(const float* positions, uint8_t count);
   
 private:
@@ -31,10 +31,10 @@ private:
 
   uint8_t _filterCount;
   uint8_t _currentFilter;
-  float* _filterPositions; // 每个滤光片对应的位置（毫米）
-  bool _slowApproach;      // homing 两阶段标志：false=快速找感应区，true=慢速精确逼近
+  float* _filterPositions; // position (mm) of each filter
+  bool _slowApproach;      // two-phase homing flag: false=fast search for the sensing zone, true=slow precise approach
   
-  // 滤光轮特有方法
+  // Filter-wheel-specific methods
 	bool handleSetLimits(const String& command) override;
 
   bool handleMoveToFilter(const String& command);

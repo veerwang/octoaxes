@@ -26,7 +26,7 @@ def main():
     print("Octoaxes 硬件测试套件")
     print("=" * 60)
 
-    # 获取串口参数
+    # get the serial-port argument
     if len(sys.argv) > 1:
         port = sys.argv[1]
     else:
@@ -36,25 +36,25 @@ def main():
 
     results = {}
 
-    # 测试 1: 串口连接
+    # test 1: serial connection
     results['01_connection'] = run_test('test_01_serial_connection.py')
     if not results['01_connection']:
         print("\n[STOP] 串口连接失败，无法继续测试")
         return 1
 
-    # 测试 2: 版本查询
+    # test 2: version query
     results['02_version'] = run_test('test_02_version_query.py', [port])
     if not results['02_version']:
         print("\n[STOP] 固件通信失败，无法继续测试")
         return 1
 
-    # 测试 3: Engine Start
+    # test 3: Engine Start
     results['03_engine_start'] = run_test('test_03_engine_start.py', [port])
 
-    # 测试 4: TMC 状态
+    # test 4: TMC status
     results['04_tmc_status'] = run_test('test_04_tmc_status.py', [port])
 
-    # 测试 5: 轴运动 (可选，需要确认安全)
+    # test 5: axis motion (optional, requires safety confirmation)
     print("\n" + "-" * 60)
     response = input("是否进行轴运动测试? (需要确保机械安全) [y/N]: ")
     if response.lower() == 'y':
@@ -63,7 +63,7 @@ def main():
         results['05_axis_move'] = None
         print("跳过轴运动测试")
 
-    # 汇总结果
+    # summarize results
     print("\n" + "=" * 60)
     print("测试结果汇总")
     print("=" * 60)
@@ -77,7 +77,7 @@ def main():
             status = "FAIL"
         print(f"  {name}: {status}")
 
-    # 检查是否有失败
+    # check whether any failed
     failed = [k for k, v in results.items() if v is False]
     if failed:
         print(f"\n失败的测试: {', '.join(failed)}")

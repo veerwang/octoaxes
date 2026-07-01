@@ -19,7 +19,7 @@ void initializeClock(uint8_t clk_pin, uint32_t frequence) {
 }
 
 void initializeSPIAndPins() {
-  // 全部轴去使能
+  // Disable all axes
   for (uint8_t i = 0; i < sizeof(Pins::CONTROL_PINS); i++) {
     pinMode(Pins::CONTROL_PINS[i], OUTPUT);
     digitalWrite(Pins::CONTROL_PINS[i], HIGH);
@@ -30,24 +30,24 @@ void initializeSPIAndPins() {
     digitalWrite(Pins::STANDARD_CONTROL_PINS[i], HIGH);
   }
 
-  // 初始化SPI
+  // Initialize SPI
   SPI.begin();
-  delay(50); // 50ms延迟，使用明确的时间单位
+  delay(50); // 50ms delay, using explicit time units
 }
 
 bool initializePowerManagement() {
   pinMode(Pins::POWER_GOOD, INPUT_PULLUP);
 
-  // 禁用DAC引脚
+  // Disable the DAC pins
   pinMode(Pins::DAC8050x_CS, OUTPUT);
   digitalWrite(Pins::DAC8050x_CS, HIGH);
 
   delay(100);
 
-  // 等待电源就绪
+  // Wait for power to be ready
   unsigned long startTime = millis();
   while (!digitalRead(Pins::POWER_GOOD)) {
-    if (millis() - startTime > 5000) { // 5秒超时
+    if (millis() - startTime > 5000) { // 5-second timeout
       DEBUG_PRINTLN("Power management initialization timeout");
       return false;
     }
@@ -58,61 +58,61 @@ bool initializePowerManagement() {
 }
 
 bool initializeSystem() {
-  // 初始化电源管理
+  // Initialize power management
   if (!initializePowerManagement()) {
     return false;
   }
 
-  // 初始化时钟
+  // Initialize the clock
   initializeClock(Pins::TMC4361_STANDARD_CLK,
                   SystemConfig::TMC4361_CLOCK_FREQUENCY);
   initializeClock(Pins::TMC4361_EXPAND_CLK,
                   SystemConfig::TMC4361_CLOCK_FREQUENCY);
 
-  // 初始化SPI和引脚
+  // Initialize SPI and pins
   initializeSPIAndPins();
 
-  // 初始化照明系统（引脚、LED矩阵、DAC、联锁）
+  // Initialize the illumination system (pins, LED matrix, DAC, interlock)
   illumination_init();
 
-  // 初始化触发系统（引脚、频闪定时器）
+  // Initialize the trigger system (pins, strobe timer)
   trigger_init();
 
-  // 初始化新架构的运动控制子系统
+  // Initialize the new-architecture motion-control subsystem
   motor_initSubsystem();
 
-  // 创建轴对象并添加到管理器
+  // Create axis objects and add them to the manager
   //
-  // 重要 (2026-05-08 修正): axisName ↔ CS 引脚映射与旧 Squid 硬件接线对齐
+  // Important (2026-05-08 fix): the axisName <-> CS pin mapping is aligned with the legacy Squid hardware wiring
   //
-  // 旧 Squid firmware 内部 axis 索引 vs 协议轴号映射 (def_v1.h:11-21)：
+  // legacy Squid firmware internal axis index vs protocol axis number mapping (def_v1.h:11-21):
   //   Protocol: AXIS_X=0, AXIS_Y=1
-  //   Internal: x=1, y=0  (注释明确说"Internal indices match hardware wiring")
-  // → 旧 Squid 硬件实际接线：
-  //   pin_TMC4361_CS[0]=41 → 物理 Y 电机 (因为 internal y=0)
-  //   pin_TMC4361_CS[1]=36 → 物理 X 电机 (因为 internal x=1)
+  // Internal: x=1, y=0  (the comment explicitly says "Internal indices match hardware wiring")
+  // -> legacy Squid hardware actual wiring:
+  // pin_TMC4361_CS[0]=41 -> physical Y motor (because internal y=0)
+  // pin_TMC4361_CS[1]=36 -> physical X motor (because internal x=1)
   //
-  // 因此 axisName="X" 必须绑定到 CS=36 (Pins::Y_AXIS_CS) 才能正确驱动物理 X 电机。
-  // 之前用 axisName="X" + Pins::X_AXIS_CS=41 → 实际驱动物理 Y 电机，
-  // 引发旧 Squid 点动 X 卡死的现象（X 走到 79.9mm 触发的是 Y 物理限位）。
+  // Therefore axisName="X" must be bound to CS=36 (Pins::Y_AXIS_CS) to correctly drive the physical X motor.
+  // Previously axisName="X" + Pins::X_AXIS_CS=41 -> actually drove the physical Y motor,
+  // causing the legacy Squid jog-X freeze (X moving to 79.9mm actually triggered the physical Y limit).
   //
-  // axisIndex (icID) 只是内部数组索引，不影响 CS 物理对应。
-  Axis *xAxis  = new StepAxis  (Pins::Y_AXIS_CS,  0, "X");   // CS=36 = 物理 X 电机
-  Axis *yAxis  = new StepAxis  (Pins::X_AXIS_CS,  1, "Y");   // CS=41 = 物理 Y 电机
+  // axisIndex (icID) is just the internal array index and does not affect the physical CS mapping.
+  Axis *xAxis  = new StepAxis  (Pins::Y_AXIS_CS,  0, "X");   // CS=36 = physical X motor
+  Axis *yAxis  = new StepAxis  (Pins::X_AXIS_CS,  1, "Y");   // CS=41 = physical Y motor
   Axis *zAxis  = new StepAxis  (Pins::Z_AXIS_CS,  2, "Z");
   Axis *wAxis  = new FilterWheel(Pins::W_AXIS_CS,  3, "W");
-  // W2 = 第二滤光转盘，接管原 E4 硬件（CS=pin 16, CLK=pin 28 = TMC4361_EXPAND_CLK），
-  // 与旧 Squid pin_TMC4361_CS[4]=16 / pin_TMC4361_CLK_W2=28 完全一致。
-  // 板可能未插：axesmrg.cpp::beginAll 会在 SPI 无响应时 delete + nullptr 该槽位，
-  // 所有 W2 handler 的 if (axis) 保护自动让命令 silent no-op，不影响其他轴。
+  // W2 = the second filter wheel, taking over the original E4 hardware (CS=pin 16, CLK=pin 28 = TMC4361_EXPAND_CLK),
+  // fully consistent with legacy Squid pin_TMC4361_CS[4]=16 / pin_TMC4361_CLK_W2=28.
+  // the board may be absent: axesmrg.cpp::beginAll deletes + nullptrs this slot when SPI does not respond,
+  // so all W2 handlers' if (axis) guards turn commands into a silent no-op without affecting other axes.
   Axis *w2Axis = new FilterWheel(Pins::W2_AXIS_CS, 4, "W2");
-  // E1 = 物镜转换器（4 物镜），接 EXPAND1 硬件（CS=pin 19, CLK=pin 28 = TMC4361_EXPAND_CLK）。
-  // 2026-05-29：本电路板 icID=5 槽位为物镜转换器（不动 W 滤光轮）。
-  // 协议走专属 MOVE_TURRET/MOVETO_TURRET + HOME_OR_ZERO axis=7（protocolAxisToName case 7→"Turret"）。
-  // 板可能未插：axesmrg.cpp::beginAll 会在 SPI 无响应时 delete + nullptr 该槽位。
+  // E1 = objective changer (4 objectives), connected to the EXPAND1 hardware (CS=pin 19, CLK=pin 28 = TMC4361_EXPAND_CLK).
+  // 2026-05-29: on this board the icID=5 slot is the objective changer (the W filter wheel is left unchanged).
+  // the protocol uses dedicated MOVE_TURRET/MOVETO_TURRET + HOME_OR_ZERO axis=7 (protocolAxisToName case 7 -> "Turret").
+  // the board may be absent: axesmrg.cpp::beginAll deletes + nullptrs this slot when SPI does not respond.
   Axis *turretAxis = new Objectives (Pins::EXPAND1_AXIS_CS, 5, "Turret", 4);
 
-  // 按 axisIndex 顺序添加: X(0), Y(1), Z(2), W(3), W2(4), E1(5)
+  // add in axisIndex order: X(0), Y(1), Z(2), W(3), W2(4), E1(5)
   if (!axisManager.addAxis(xAxis)  || !axisManager.addAxis(yAxis)  ||
       !axisManager.addAxis(zAxis)  || !axisManager.addAxis(wAxis)  ||
       !axisManager.addAxis(w2Axis) || !axisManager.addAxis(turretAxis)) {
@@ -120,42 +120,42 @@ bool initializeSystem() {
     return false;
   }
 
-  // 初始化所有轴
-  // 注意：beginAll() 返回 false 表示**至少一根轴 begin 失败**（典型场景：
-  // TMC4361A SPI 无响应导致 motor_initMotionController 写 SW_RESET 后读
-  // VERSION_NO 返回 0/-1）。**不再视为致命错误** —— 串口通信和调试命令
-  // (S:VERSION / S:HWINFO / S:DUMPREGS) 必须保持可用，否则现场无法定位
-  // SPI 失败根因。失败轴的标识已由 axis.cpp 中的 DEBUG_PRINT(_axisName +
-  // ":BEGIN_FAIL ...") 打印到串口。
+  // Initialize all axes
+  // Note: beginAll() returning false means **at least one axis failed begin** (typical case:
+  // TMC4361A SPI not responding, so after motor_initMotionController writes SW_RESET, reading
+  // VERSION_NO returns 0/-1). **No longer treated as fatal** -- serial communication and debug commands
+  // (S:VERSION / S:HWINFO / S:DUMPREGS) must remain available, otherwise the SPI failure root cause cannot be diagnosed
+  // on-site. The failed axis is already identified by axis.cpp's DEBUG_PRINT(_axisName +
+  // ":BEGIN_FAIL ...") printed to the serial port.
   if (!axisManager.beginAll()) {
     DEBUG_PRINTLN("WARNING: beginAll() reported partial axis failure (see :BEGIN_FAIL above). Continuing so serial diagnostics remain available.");
   }
 
-  // 初始化手控盒（Serial5 + PacketSerial）
+  // Initialize the hand controller (Serial5 + PacketSerial)
   joystick_init();
 
   return true;
 }
 
 void setup() {
-  // 初始化串口
+  // Initialize the serial port
   serialProtocol.begin(115200, 300);
 
-  // 初始化状态指示灯
+  // Initialize the status indicator LED
   initializeStartupLED();
 
-  // 尽早把 APA102 矩阵清零，最小化"启动亮"窗口。
-  // 之后的 initializePowerManagement (等 PG) + delay + clock + SPI 初始化
-  // 累计可能数百 ms~5s，APA102 在此期间处于上电默认亮态。
+  // clear the APA102 matrix as early as possible to minimize the "startup glow" window.
+  // the subsequent initializePowerManagement (waiting for PG) + delay + clock + SPI init
+  // may total hundreds of ms to 5s, during which the APA102 stays in its power-on default lit state.
   illumination_init_matrix_early();
 
   DEBUG_PRINTLN("Initializing system...");
 
-  // 初始化系统
+  // Initialize the system
   if (!initializeSystem()) {
     DEBUG_PRINTLN("System initialization failed!");
     while (1) {
-      delay(1000); // 停止执行
+      delay(1000); // halt execution
     }
   }
 
@@ -165,11 +165,11 @@ void setup() {
 void loop() {
   static bool firstLoop = true;
   if (firstLoop) {
-    DEBUG_PRINTLN("MAIN_LOOP_ENTERED");  // 确认进入主循环
+    DEBUG_PRINTLN("MAIN_LOOP_ENTERED");  // confirm entry into the main loop
     firstLoop = false;
   }
 
-  // 安全联锁检查：联锁断开时直接拉低 TTL 激光端口（硬编码 GPIO，零开销）
+  // Safety interlock check: when the interlock opens, directly pull the TTL laser ports low (hardcoded GPIO, zero overhead)
   if (!illumination_interlock_ok()) {
     digitalWrite(Pins::ILLUMINATION_D1, LOW);
     digitalWrite(Pins::ILLUMINATION_D2, LOW);
@@ -178,22 +178,22 @@ void loop() {
     digitalWrite(Pins::ILLUMINATION_D5, LOW);
   }
 
-  // 串口看门狗：通信中断超时后自动关闭所有照明
+  // Serial watchdog: automatically turn off all illumination after a communication-loss timeout
   watchdog_check();
 
-  // 更新触发脉冲恢复
+  // Update trigger-pulse recovery
   trigger_update();
 
-  // 处理串口调试命令
+  // Process serial debug commands
   serialProtocol.processSerialCommands();
 
-  // 10ms 周期位置上报（与旧 Squid 协议兼容）
+  // 10ms periodic position reporting (compatible with the legacy Squid protocol)
   serialProtocol.send_position_update();
 
-  // 更新手控盒（PacketSerial 接收 + 摇杆/焦点轮控制）
+  // Update the hand controller (PacketSerial receive + joystick/focus-wheel control)
   joystick_update();
 
-  // 更新所有轴状态机
+  // Update all axis state machines
   axisManager.updateAll();
 
 }

@@ -11,7 +11,7 @@ static inline int sgn(int val) {
   return 1;
 }
 
-// 构造函数
+// Constructor
 Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char *axisName)
     : _csPin(csPin), _axisIndex(axisIndex), _axisName(axisName) {
 
@@ -23,49 +23,49 @@ Axis::Axis(uint8_t csPin, uint8_t axisIndex, const char *axisName)
   _maxVelocityMicrosteps = 0;
   _maxAccelerationMicrosteps = 0;
 
-  // 新架构: 使用 axisIndex 作为 IC 标识符
+  // New architecture: use axisIndex as the IC identifier
   _icID = axisIndex;
 
-  // 新增：初始化状态变化检测
+  // Added: initialize state-change detection
   _lastReportedState = STATE_IDLE;
   _stateChanged = false;
   _lastStateReportTime = 0;
 
-  // 新增：初始化移动状态
+  // Added: initialize movement state
   _isMoving = false;
   _moveDirection = 0;
   _softLimitsEnabled = false;
   _needReenableLimits = false;
 
-  // 初始化配置结构体（value-init：等同清零 + 尊重成员默认初始化器 polarityAffectsChip=false。
-  // AxisConfig 现含默认成员初始化器为非平凡类型，不能再用 memset，否则 -Wclass-memaccess 告警）
+  // Initialize the config struct (value-init: equivalent to zeroing + respects the member default initializer polarityAffectsChip=false.
+  // AxisConfig now has default member initializers making it non-trivial, so memset can no longer be used, otherwise a -Wclass-memaccess warning)
   _config = AxisConfig{};
 }
 
-// 初始化函数
+// Initialization function
 bool Axis::begin(const AxisConfig &config) {
   _config = config;
 
   // HOME timeout ms
   _homing_timeout_ms = _config.homing_timeout_ms;
 
-  // 配置CS引脚
+  // Configure the CS pin
 #ifndef USE_HC154_CS
-  // octoaxes 直接 GPIO CS：_csPin 是 Teensy 物理 pin 号，配置为 OUTPUT 默认 HIGH（不选中）
+  // octoaxes direct GPIO CS: _csPin is the Teensy physical pin number, configured as OUTPUT default HIGH (not selected)
   pinMode(_csPin, OUTPUT);
   digitalWrite(_csPin, HIGH);
 #endif
-  // USE_HC154_CS (octoaxesplus): _csPin 是 HC154 通道号 (0-15)，不是 GPIO 引脚号。
-  // 物理片选由 tmc_spi_init() 初始化 + tmc4361A_readWriteSPI() 事务级
-  // 调 Pins::hc154_select() 切换。此处若 pinMode/digitalWrite(_csPin) 会
-  // 误操作 Teensy 物理 pin 8/9/10（squid++ 上分别是 CAMERA_TRIGGER_2 /
-  // CAMERA_TRIGGER_1 / ILLUMINATION_D8），导致初始化时误触发相机和激光。
+  // USE_HC154_CS (octoaxesplus): _csPin is the HC154 channel number (0-15), not a GPIO pin number.
+  // The physical chip-select is initialized by tmc_spi_init() and, at the transaction level by tmc4361A_readWriteSPI(),
+  // switched via Pins::hc154_select(). Calling pinMode/digitalWrite(_csPin) here would
+  // wrongly drive Teensy physical pins 8/9/10 (on squid++ these are CAMERA_TRIGGER_2 /
+  // CAMERA_TRIGGER_1 / ILLUMINATION_D8), causing the camera and laser to be triggered by mistake during init.
 
-  // ========== 新架构初始化 ==========
-  // 设置驱动类型（DRIVER_AUTO 时由 motor_initMotionController 自动检测）
+  // ========== New-architecture initialization ==========
+  // Set the driver type (when DRIVER_AUTO, auto-detected by motor_initMotionController)
   motorParams[_icID].driverType = _config.driverType;
 
-  // 初始化运动参数缓存 (用于新 API 的单位转换)
+  // Initialize the motion-parameter cache (used for unit conversion in the new API)
   MotionConfig motionConfig = {
       .clockFrequency = _config.clockFrequency,
       .screwPitchMM = _config.screwPitchMM,
@@ -81,21 +81,21 @@ bool Axis::begin(const AxisConfig &config) {
       .bow2 = 0,
       .bow3 = 0,
       .bow4 = 0};
-  // motor_initMotionController 在 TMC4361A SPI 通信失败（写 SW_RESET 后读
-  // VERSION_NO 返回 0 或 -1）时返回 false。检查返回值并向上传播失败，让
-  // beginAll() 能记录哪根轴 chip 没起来，避免后续操作一个未初始化的 chip。
+  // motor_initMotionController returns false when TMC4361A SPI communication fails (after writing
+  // SW_RESET, reading VERSION_NO returns 0 or -1). Check the return value and propagate the failure upward so
+  // beginAll() can record which axis chip failed to come up, avoiding later operations on an uninitialized chip.
   if (!motor_initMotionController(_icID, &motionConfig)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":BEGIN_FAIL motor_initMotionController (TMC4361A SPI 无响应)");
     return false;
   }
 
-  // 自动检测完成后，回写实际驱动类型
+  // After auto-detection completes, write back the actual driver type
   if (_config.driverType == DRIVER_AUTO) {
     _config.driverType = motorParams[_icID].driverType;
   }
 
-  // 初始化驱动器配置
+  // Initialize the driver configuration
   MotorConfig motorConfig = {
       .driverType = _config.driverType,
       .rSense = _config.r_sense,
@@ -104,18 +104,18 @@ bool Axis::begin(const AxisConfig &config) {
       .microstepRes = 0,  // 256 microsteps
       .interpolation = true,
       .toff = 3,   // TOFF = 3
-      .hstrt = 0,  // HSTRT = 0（对齐老 Squid CHOPCONF=0x000900C3，零滞回静音）
-      .hend = 0,   // HEND 寄存器值 = 3, 实际值 = 0（对齐老 Squid）
+      .hstrt = 0,  // HSTRT = 0 (matches legacy Squid CHOPCONF=0x000900C3, zero-hysteresis quiet)
+      .hend = 0,   // HEND register value = 3, actual value = 0 (matches legacy Squid)
       .tbl = 2,    // TBL = 2
       .stallThreshold = (int8_t)_config.stallSensitivity,
       .stallFilter = true,
       .enableStealthChop = false,
-      .globalScaler = 0,   // 全量程 (256)
+      .globalScaler = 0,   // full scale (256)
       .iholdDelay = 7,
       .currentRange = _config.currentRange};
   motor_initDriver(_icID, &motorConfig);
 
-  // 配置限位开关
+  // Configure the limit switches
   LimitConfig limitConfig = {
       .enableLeft = _config.enableLeftLimitSwitch,
       .enableRight = _config.enableRightLimitSwitch,
@@ -127,18 +127,18 @@ bool Axis::begin(const AxisConfig &config) {
       .homeSafetyMarginMM = _config.homeSafetyMarginMM};
   motor_configLimitSwitches(_icID, &limitConfig);
 
-  // 设置运动参数
+  // Set the motion parameters
   setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
 
-  // 使能归位限位
+  // Enable the homing limit
   motor_enableHomingLimit(_icID, _config.rightSwitchPolarity,
                           _config.homingSwitch,
                           mmToMicrosteps(_config.homeSafetyMarginMM));
 
-  // 禁用虚拟限位开关（初始状态）
+  // Disable the virtual limit switches (initial state)
   enableSoftLimits(false);
 
-  // 编码器初始化
+  // Encoder initialization
   if (_config.enableEncoder && _config.encoderLinesPerRev > 0) {
     uint32_t transitions = (uint32_t)_config.encoderLinesPerRev;
     motor_initABNEncoder(_icID, transitions,
@@ -153,27 +153,27 @@ bool Axis::begin(const AxisConfig &config) {
     DEBUG_PRINTLN(transitions);
   }
 
-  // 禁用 PID (使用新 API)
+  // Disable PID (using the new API)
   motor_disablePID(_icID);
 
-  // 配置 StallGuard (使用新 API)
-  // TMC2660 SG2：参数 SGT=12 经长期实测稳定，正常运动不会误触发，碰撞会停车。
-  // TMC2240 SG4：算法与 SG2 不兼容，SGT=12 极易误触发 ACTIVE_STALL_F latch
-  // 锁死 chip（2026-05-12 旧 Squid X 卡死现场确诊，STATUS bit11 latched
-  // 触发后必须断电拔 USB 才能复位）。motor_moveToMicrosteps 的现有 VSTOP
-  // recovery 路径不清此 latch（仅清 VSTOPL/R_ACTIVE_F bit9/10）。
-  // 临时方案：TMC2240 跳过 stall 启用；保留 config.enableStallSensitivity /
-  // stallSensitivity 参数供未来 SG4 调优 + chip-level latch 恢复修复后启用。
+  // Configure StallGuard (using the new API)
+  // TMC2660 SG2: SGT=12 has been stable over long-term testing; normal motion does not false-trigger, a collision stops the motor.
+  // TMC2240 SG4: the algorithm is incompatible with SG2; SGT=12 very easily false-triggers the ACTIVE_STALL_F latch
+  // locking up the chip (diagnosed on-site 2026-05-12 with legacy Squid X stuck, STATUS bit11 latched;
+  // once triggered, power must be cut and USB unplugged to reset). The existing VSTOP
+  // recovery path of motor_moveToMicrosteps does not clear this latch (it only clears VSTOPL/R_ACTIVE_F bit9/10).
+  // Temporary workaround: skip enabling stall on TMC2240; keep config.enableStallSensitivity /
+  // stallSensitivity parameters for future SG4 tuning, to enable after the chip-level latch recovery is fixed.
   if (_config.enableStallSensitivity && _config.driverType != DRIVER_TMC2240)
     motor_configStallGuard(_icID, _config.stallSensitivity, true, true);
 
-  // 默认使能轴
+  // Enable the axis by default
   enableAxis();
 
   return true;
 }
 
-// 设置运动参数 (使用新 API)
+// Set motion parameters (using the new API)
 void Axis::setMotionParameters(float maxVelocityMM, float maxAccelerationMM) {
   _maxVelocityMicrosteps = motor_velocityMMToInternal(_icID, maxVelocityMM);
   _maxAccelerationMicrosteps = motor_accelMMToInternal(_icID, maxAccelerationMM);
@@ -182,9 +182,9 @@ void Axis::setMotionParameters(float maxVelocityMM, float maxAccelerationMM) {
   motor_setMaxAcceleration(_icID, maxAccelerationMM);
 }
 
-// 状态机更新
+// State-machine update
 void Axis::update() {
-  // 保存旧状态用于比较
+  // Save the old state for comparison
   AxisState oldState = _currentState;
 
   switch (_currentState) {
@@ -201,17 +201,17 @@ void Axis::update() {
   case STATE_MOVING: {
     checkMovementComplete();
 
-    // 极限状态检测：对齐旧 Squid `check_limits` 10ms 节流（operations.cpp:533）
-    // 减少 SPI bus 抢占；hard limit 完成判定容忍 0-10ms 延迟（chip 已物理停止）
+    // Limit-state check: matches legacy Squid `check_limits` 10ms throttle (operations.cpp:533)
+    // reduces SPI bus contention; the hard-limit completion check tolerates a 0-10ms delay (the chip has already physically stopped)
     // (#5, 2026-05-19)
     if (_limitCheckThrottle >= 10000) {
       _limitCheckThrottle = 0;
       checkLimitPosition();
     }
 
-    // VSTOP recovery 后延迟恢复虚拟限位：
-    // 等电机离开边界（STATUS 中 VSTOP flags 清除）后才重新使能限位，
-    // 避免在边界上立即重新触发 VSTOP。
+    // Delayed re-enable of the virtual limits after VSTOP recovery:
+    // only re-enable the limits after the motor leaves the boundary (VSTOP flags cleared in STATUS),
+    // to avoid immediately re-triggering VSTOP at the boundary.
     if (_needReenableLimits) {
       uint32_t st = motor_readStatus(_icID);
       bool vstopStillActive = (st & TMC4361A_VSTOPL_ACTIVE_F_MASK) ||
@@ -222,40 +222,40 @@ void Axis::update() {
       }
     }
 
-    // 移动状态下的超时检查
+    // Timeout check while moving
     if (checkTimeout(MOVEMENT_TIMEOUT_MS)) {
       handleError("Movement timeout");
     }
   } break;
 
   case STATE_IDLE:
-    // 空闲状态不需要特殊处理
+    // The idle state needs no special handling
     break;
 
   case STATE_ERROR:
-    // 错误状态需要外部干预
+    // The error state requires external intervention
     break;
   }
 
-  // 检查状态是否发生变化
+  // Check whether the state changed
   if (oldState != _currentState) {
     _stateChanged = true;
   }
 
-  // 上报状态变化（如果需要）
+  // Report the state change (if needed)
   reportStateIfChanged();
 }
 
-// 新增：状态上报函数
+// Added: state-report function
 void Axis::reportStateIfChanged(bool force) {
-  // 检查是否需要上报
+  // Check whether a report is needed
   bool shouldReport = false;
 
   if (force) {
-    // 强制上报
+    // Force a report
     shouldReport = true;
   } else if (_stateChanged) {
-    // 状态发生变化
+    // The state changed
     shouldReport = true;
   } else if (_currentState == STATE_MOVING) {
   } else if (_currentState == STATE_HOMING_INIT ||
@@ -273,25 +273,25 @@ void Axis::reportStateIfChanged(bool force) {
   }
 }
 
-// 极限位的处理函数
+// Limit-position handler
 void Axis::checkLimitPosition() {
   uint32_t event = readAxisEvent();
 
-  // 虚拟限位（软件限位）：信任上层 isMoveAllowedByDirection() 已保证
-  // in-progress move 朝更安全方向移动，VSTOP_ACTIVE 在此期间是 chip
-  // 在 SET_LIM 把电机置于禁区后留下的 sticky/残留状态，不应视为「真实越界」。
-  // motor_moveToMicrosteps() 已临时清掉 VIRT_*_LIMIT_EN 让电机能动；
-  // 完成判定由 checkMovementComplete()（XACTUAL == XTARGET）负责。
+  // Virtual limits (software limits): trust that the upper-layer isMoveAllowedByDirection() has guaranteed
+  // the in-progress move goes toward the safer direction; VSTOP_ACTIVE during this time is a
+  // sticky/residual state left by the chip after SET_LIM placed the motor in the forbidden zone, and should not be treated as a real out-of-bounds.
+  // motor_moveToMicrosteps() has temporarily cleared VIRT_*_LIMIT_EN so the motor can move;
+  // the completion check is handled by checkMovementComplete() (XACTUAL == XTARGET).
   uint32_t vstop_bits =
       event & (TMC4361A_VSTOPL_ACTIVE_MASK | TMC4361A_VSTOPR_ACTIVE_MASK);
   if (vstop_bits) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":VSTOP active during move (ignored, gate handled upstream): event=0x");
     DEBUG_PRINTLNF(event, HEX);
-    // 不调 completeMovement()，让 checkMovementComplete() 在 XACTUAL 到达 XTARGET 时正常收尾
+    // do not call completeMovement(); let checkMovementComplete() finish normally when XACTUAL reaches XTARGET
   }
 
-  // 硬件限位（保留方向检查，硬件限位需要方向匹配）
+  // Hardware limits (keep the direction check; hardware limits require a direction match)
   uint32_t hw_datagram = event & (TMC4361A_STOPL_EVENT_MASK | TMC4361A_STOPR_EVENT_MASK);
   hw_datagram >>= TMC4361A_STOPL_EVENT_SHIFT;
   uint8_t hw_result = hw_datagram & 0xff;
@@ -304,7 +304,7 @@ void Axis::checkLimitPosition() {
     return;
   }
 
-  // 判断是否是stall状态
+  // Determine whether this is a stall state
   if (event & 0x20000000) {
     DEBUG_PRINTLN("Axis Is Stop for Stalling");
     DEBUG_PRINTLNF(event, HEX);
@@ -316,11 +316,11 @@ void Axis::checkLimitPosition() {
   }
 }
 
-// 命令处理
+// Command processing
 bool Axis::processCommand(const String &command) {
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":CMD_RECV:");
-  DEBUG_PRINTLN(command);  // 调试点0 - 命令接收
+  DEBUG_PRINTLN(command);  // debug point 0 - command received
 
   if (command.startsWith("GET_POSITION")) {
     return handleGetPosition();
@@ -350,13 +350,13 @@ bool Axis::processCommand(const String &command) {
   }
 }
 
-// 命令处理辅助方法
+// Command-handling helper method
 bool Axis::handleGetPosition() {
   int32_t microsteps = getCurrentPosition();
   [[maybe_unused]] float positionMM = microstepsToMM(microsteps);
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Current Position (mm):");
-  DEBUG_PRINTLNF(positionMM, 3); // 增加精度显示
+  DEBUG_PRINTLNF(positionMM, 3); // increase display precision
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Current Position (microsteps):");
   DEBUG_PRINTLN(microsteps);
@@ -429,41 +429,41 @@ bool Axis::handleMoveToAxis(const String &command) {
   return true;
 }
 
-// 新增：移动状态检测函数 (使用新 API)
+// Added: movement-detection function (using the new API)
 void Axis::checkMovementComplete() {
   if (!_isMoving)
     return;
 
-  // 用 chip STATUS.TARGET_REACHED_F bit 替代「读 XACTUAL + 读 XTARGET 比较」。
-  // chip 内部在写 XTARGET 后实时更新该 bit（XACTUAL == XTARGET 时置 1，
-  // motor_moveToMicrosteps 后已清 EVENTS 防 sticky 残留），无需等待。
-  // 完成判定路径从 2 个 SPI 读减为 1 个，且更可靠（chip 权威信号）。
+  // Use the chip STATUS.TARGET_REACHED_F bit instead of read-XACTUAL + read-XTARGET-and-compare.
+  // The chip updates this bit in real time after XTARGET is written (set to 1 when XACTUAL == XTARGET,
+  // and EVENTS were cleared after motor_moveToMicrosteps to prevent sticky residue), so no waiting is needed.
+  // This reduces the completion-check path from 2 SPI reads to 1, and is more reliable (the chip's authoritative signal).
   if (motor_isTargetReached(_icID)) {
     completeMovement();
   }
 }
 
-// 新增：开始移动 (使用新 API)
+// Added: start movement (using the new API)
 void Axis::startMovement() {
   _isMoving = true;
   _moveStartMicros = micros();
   setState(STATE_MOVING);
 }
 
-// 新增：完成移动
+// Added: complete movement
 void Axis::completeMovement() {
   _isMoving = false;
   setState(STATE_IDLE);
 
-  // 移动完成时恢复虚拟限位（如果 recovery 路径禁用了限位且 update 循环未及时恢复）
+  // Restore the virtual limits when the move completes (if the recovery path disabled the limits and the update loop did not restore them in time)
   if (_needReenableLimits && _softLimitsEnabled) {
     motor_enableSoftLimits(_icID, true, true);
     _needReenableLimits = false;
   }
 
 #ifdef ENABLE_DEBUG
-  // DEBUG-only: 调试时段记录 motor / prep / total 时间和位置 vs 目标
-  // 生产构建 (NDEBUG) 不读 SPI，省 ~200µs/move × 1000 ≈ 200ms (#3, 2026-05-19)
+  // DEBUG-only: during debugging, log motor / prep / total time and position vs target
+  // Production builds (NDEBUG) do not read SPI, saving ~200us/move x 1000 ~= 200ms (#3, 2026-05-19)
   unsigned long now = micros();
   unsigned long motorTime = now - _moveStartMicros;
   unsigned long totalTime = now - _cmdRecvMicros;
@@ -502,22 +502,22 @@ bool Axis::handleHoming() {
 bool Axis::handleReset() {
   _isMoving = false;
 
-  // 恢复细分（可能在 homing 中被改变）
+  // Restore microstepping (may have been changed during homing)
   restoreNormalMicrosteps();
 
-  // 清除状态
+  // Clear state
   readLimitSwitches();
   readSwitchEvent();
 
-  // 重置 RAMPMODE（硬件限位触发后可能变成 HOLD 模式）
+  // Reset RAMPMODE (may become HOLD mode after a hardware limit triggers)
   motor_resetRampMode(_icID);
 
-  // 恢复运动参数（VMAX/AMAX 可能被 stop 清零）
+  // Restore motion parameters (VMAX/AMAX may have been zeroed by stop)
   setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
 
   setState(STATE_IDLE);
 
-  // 立即上报状态
+  // Report the state immediately
   reportStateIfChanged(true);
 
   DEBUG_PRINT(_axisName);
@@ -525,26 +525,26 @@ bool Axis::handleReset() {
   return true;
 }
 
-// 移动到绝对位置（微步单位，协议层入口）
+// Move to an absolute position (microstep units, protocol-layer entry point)
 bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
-  // 2026-05-25 硬件方向反相：镜像装配的硬件需要 chip 朝相反方向走
-  // 上位机协议层不变（仍按"标准 Squid 设计"发命令），firmware 层反 target
+  // 2026-05-25 hardware direction inversion: mirror-assembled hardware needs the chip to move in the opposite direction
+  // the host protocol layer is unchanged (still sends commands per the "standard Squid design"); the firmware layer inverts the target
   if (_config.invert_direction) {
     targetMicrosteps = -targetMicrosteps;
   }
 
-  // 自动从错误状态恢复（虚拟限位超时等非硬件故障）
+  // Auto-recover from the error state (non-hardware faults such as a virtual-limit timeout)
   if (_currentState == STATE_ERROR) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Auto-recovery from error state");
     handleReset();
   }
 
-  // STATE_IDLE：正常路径
-  // STATE_MOVING：仿老 Squid（main_controller_teensy41.ino:900 MOVETO_X handler 无忙检查）
-  //   —— 覆盖 chip XTARGET，由 chip ramp generator 平滑切换目标。
-  // STATE_HOMING_*/LEAVING_HOME：homing 期间 chip 在 velocity 模式，覆盖会破坏 homing，
-  //   仍然 reject（这是显式拒绝，调用方应等 homing 完成后再发）。
+  // STATE_IDLE: normal path
+  // STATE_MOVING: mimics legacy Squid (main_controller_teensy41.ino:900 MOVETO_X handler has no busy check)
+  // -- overwrites the chip XTARGET; the chip ramp generator smoothly switches the target.
+  // STATE_HOMING_*/LEAVING_HOME: during homing the chip is in velocity mode, so overwriting would break homing,
+  // so still reject (this is an explicit rejection; the caller should wait until homing completes before sending).
   if (_currentState != STATE_IDLE && _currentState != STATE_MOVING) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":Movement rejected: Axis is homing, current state: ");
@@ -558,14 +558,14 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
     return false;
   }
 
-  // 方向感知 clamp：朝禁区方向的 target 截到边界，让电机停在边界处
-  // （兼容旧 Squid 行为：旧 Squid 上位机不可改，需要固件兜底处理越界 target）
+  // Direction-aware clamp: a target toward the forbidden zone is clamped to the boundary, so the motor stops at the boundary
+  // (compatible with legacy Squid behavior: the legacy Squid host cannot be changed, so the firmware must handle out-of-bounds targets as a fallback)
   targetMicrosteps = clampTargetByDirection(targetMicrosteps);
 
-  // No-op short-circuit：clamp 后 target == 当前位置时电机本不需要移动，
-  // 跳过 motor_moveToMicrosteps + startMovement 直接返回，
-  // 避免 _isMoving 被误设导致上位机收到 IN_PROGRESS 5 秒等到 timeout。
-  // 典型场景：电机已经卡在限位边界，上位机继续发越界 MOVE 命令。
+  // No-op short-circuit: when after clamping target == current position the motor need not move,
+  // skip motor_moveToMicrosteps + startMovement and return directly,
+  // to avoid _isMoving being set wrongly, which would make the host receive IN_PROGRESS and wait 5 seconds until timeout.
+  // Typical case: the motor is already stuck at the limit boundary and the host keeps sending out-of-bounds MOVE commands.
   int32_t currentPos = motor_getPositionMicrosteps(_icID);
   if (targetMicrosteps == currentPos) {
     DEBUG_PRINT(_axisName);
@@ -573,10 +573,10 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
     return true;
   }
 
-  // motor_moveToMicrosteps 内部已读 STATUS 检查 VSTOP，复用其返回值
-  // 避免重复 SPI 读（2026-05-18 acquisition optimization #2.2，省 ~10-20µs/move）
+  // motor_moveToMicrosteps already reads STATUS to check VSTOP internally; reuse its return value
+  // to avoid a redundant SPI read (2026-05-18 acquisition optimization #2.2, saves ~10-20us/move)
   bool vstopWasActive = motor_moveToMicrosteps(_icID, targetMicrosteps);
-  startMovement(); // 设置移动状态
+  startMovement(); // set the movement state
 
   if (vstopWasActive && _softLimitsEnabled) {
     _needReenableLimits = true;
@@ -585,7 +585,7 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
   return true;
 }
 
-// 移动到绝对位置（mm 单位，薄包装）
+// Move to an absolute position (mm units, thin wrapper)
 bool Axis::moveToPosition(float positionMM) {
   if (!isValidPosition(positionMM)) {
     DEBUG_PRINT(_axisName);
@@ -596,25 +596,25 @@ bool Axis::moveToPosition(float positionMM) {
   return moveToPositionMicrosteps(motor_mmToMicrosteps(_icID, positionMM));
 }
 
-// 相对移动（微步单位，协议层入口）
+// Relative move (microstep units, protocol-layer entry point)
 bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
-  // 2026-05-25 硬件方向反相：反 delta 让 chip 朝相反物理方向走
+  // 2026-05-25 hardware direction inversion: invert delta so the chip moves in the opposite physical direction
   if (_config.invert_direction) {
     deltaMicrosteps = -deltaMicrosteps;
   }
 
-  // 自动从错误状态恢复
+  // Auto-recover from the error state
   if (_currentState == STATE_ERROR) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Auto-recovery from error state");
     handleReset();
   }
 
-  // STATE_IDLE：正常路径
-  // STATE_MOVING：仿老 Squid（main_controller_teensy41.ino:845 MOVE_X handler 无忙检查）
-  //   —— 基于 chip 当前位置重算 target 并覆盖 XTARGET。语义与老 Squid 一致：
-  //   delta 相对的是「命令到达时的 chip 当前位置」，不是「上一条命令的目标位置」。
-  // STATE_HOMING_*/LEAVING_HOME：reject（与 moveToPositionMicrosteps 同）。
+  // STATE_IDLE: normal path
+  // STATE_MOVING: mimics legacy Squid (main_controller_teensy41.ino:845 MOVE_X handler has no busy check)
+  // -- recompute the target from the chip's current position and overwrite XTARGET. Semantics match legacy Squid:
+  // delta is relative to "the chip current position when the command arrives", not "the target of the previous command".
+  // STATE_HOMING_*/LEAVING_HOME: reject (same as moveToPositionMicrosteps).
   if (_currentState != STATE_IDLE && _currentState != STATE_MOVING) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":Move rejected: Axis is homing, current state: ");
@@ -629,22 +629,22 @@ bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
     return false;
   }
 
-  // 方向感知 clamp：朝禁区方向的 target 截到边界，让电机停在边界处
-  // （兼容旧 Squid 行为：旧 Squid 上位机不可改，需要固件兜底处理越界 target）
+  // Direction-aware clamp: a target toward the forbidden zone is clamped to the boundary, so the motor stops at the boundary
+  // (compatible with legacy Squid behavior: the legacy Squid host cannot be changed, so the firmware must handle out-of-bounds targets as a fallback)
   targetPos = clampTargetByDirection(targetPos);
 
-  // No-op short-circuit：clamp 后 target == 当前位置时跳过 motor + startMovement，
-  // 避免 _isMoving 误设致上位机硬等 5 秒 timeout（详见 moveToPositionMicrosteps 同处注释）
+  // No-op short-circuit: when after clamping target == current position, skip motor + startMovement,
+  // to avoid _isMoving being set wrongly, making the host wait a full 5 seconds for timeout (see the corresponding comment in moveToPositionMicrosteps)
   if (targetPos == currentPos) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Move no-op (clamped to current position), skipping motor command");
     return true;
   }
 
-  // motor_moveToMicrosteps 内部已读 STATUS 检查 VSTOP，复用其返回值
-  // 避免重复 SPI 读（2026-05-18 acquisition optimization #2.2，省 ~10-20µs/move）
+  // motor_moveToMicrosteps already reads STATUS to check VSTOP internally; reuse its return value
+  // to avoid a redundant SPI read (2026-05-18 acquisition optimization #2.2, saves ~10-20us/move)
   bool vstopWasActive = motor_moveToMicrosteps(_icID, targetPos);
-  startMovement(); // 设置移动状态
+  startMovement(); // set the movement state
 
   if (vstopWasActive && _softLimitsEnabled) {
     _needReenableLimits = true;
@@ -653,52 +653,52 @@ bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
   return true;
 }
 
-// 相对移动（mm 单位，薄包装）
+// Relative move (mm units, thin wrapper)
 bool Axis::moveRelative(float distanceMM) {
   return moveRelativeMicrosteps(motor_mmToMicrosteps(_icID, distanceMM));
 }
 
-// 设置速度
+// Set speed
 void Axis::setSpeed(float speedMM) {
   motor_setMaxVelocity(_icID, speedMM);
 }
 
-// 平滑停止
+// Smooth stop
 void Axis::smoothStop() {
   motor_stop(_icID);
-  completeMovement(); // 停止移动状态
+  completeMovement(); // clear the movement state
 }
 
-// 运动控制函数
+// Motion-control functions
 void Axis::disableAxis() {
   motor_enableDriver(_icID, false);
-  _isEnabled = false; // 更新使能状态
+  _isEnabled = false; // update the enable state
 }
 
 void Axis::enableAxis() {
   motor_enableDriver(_icID, true);
-  _isEnabled = true; // 更新使能状态
+  _isEnabled = true; // update the enable state
 }
 
-// 设置当前位置
+// Set the current position
 void Axis::setCurrentPosition(float positionMM) {
   motor_setCurrentPosition(_icID, positionMM);
 }
 
-// 获取当前位置 microsteps (使用新 API)
+// Get the current position in microsteps (using the new API)
 int32_t Axis::getCurrentPosition() const {
   return motor_getPositionMicrosteps(_icID);
 }
 
-// 获取当前位置（毫米）(使用新 API)
+// Get the current position (mm) (using the new API)
 float Axis::getCurrentPositionMM() const {
   return motor_getPositionMM(_icID);
 }
 
-// 获取当前位置（微步）
-// 编码器使能时返回 ENC_POS（经 ENC_CONST 换算，单位与微步一致）
-// 未使能时返回 XACTUAL（开环位置）
-// 2026-05-25 硬件方向反相：上报给上位机的值反相，让上位机看到与协议层一致的方向
+// Get the current position (microsteps)
+// When the encoder is enabled, return ENC_POS (converted via ENC_CONST, same units as microsteps)
+// When disabled, return XACTUAL (open-loop position)
+// 2026-05-25 hardware direction inversion: invert the value reported to the host so it sees a direction consistent with the protocol layer
 int32_t Axis::getCurrentPositionMicrosteps() const {
   int32_t raw;
   if (_config.enableEncoder) {
@@ -709,8 +709,8 @@ int32_t Axis::getCurrentPositionMicrosteps() const {
   return _config.invert_direction ? -raw : raw;
 }
 
-// 获取编码器位置（微步单位，经 ENC_CONST 换算）
-// 未启用编码器时返回 XACTUAL
+// Get the encoder position (microstep units, converted via ENC_CONST)
+// When the encoder is not enabled, return XACTUAL
 int32_t Axis::getEncoderPositionMicrosteps() const {
   int32_t raw;
   if (_config.enableEncoder) {
@@ -721,7 +721,7 @@ int32_t Axis::getEncoderPositionMicrosteps() const {
   return _config.invert_direction ? -raw : raw;
 }
 
-// Homing 细分切换
+// Homing microstepping switch
 void Axis::switchToHomingMicrosteps() {
   if (_config.homingMicrostepping != _config.microstepping) {
     DEBUG_PRINT(_axisName);
@@ -746,9 +746,9 @@ void Axis::restoreNormalMicrosteps() {
   }
 }
 
-// 开始归位
+// Start homing
 bool Axis::startHoming() {
-  // 自动从错误状态恢复
+  // Auto-recover from the error state
   if (_currentState == STATE_ERROR) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Auto-recovery from error state for homing");
@@ -763,7 +763,7 @@ bool Axis::startHoming() {
   return true;
 }
 
-// 检查是否正在归位
+// Check whether homing is in progress
 bool Axis::isHomingInProgress() const {
   return _currentState == STATE_HOMING_INIT ||
          _currentState == STATE_HOMING_SEARCH ||
@@ -771,22 +771,22 @@ bool Axis::isHomingInProgress() const {
          _currentState == STATE_LEAVING_HOME;
 }
 
-// 检查运动是否完成 (使用新 API)
-// 双重条件：位置到达目标 + VACTUAL 为零（电机已实际停止）
-// 防止 S-ramp 减速阶段 XACTUAL 短暂等于 XTARGET 但速度未归零时过早报完成
+// Check whether the movement is complete (using the new API)
+// Dual condition: position reached the target + VACTUAL is zero (the motor has actually stopped)
+// prevents reporting completion too early when, during the S-ramp deceleration phase, XACTUAL briefly equals XTARGET but the speed has not reached zero
 bool Axis::isMovementComplete() const {
   return motor_getPositionMicrosteps(_icID) == motor_getTargetMicrosteps(_icID)
          && !motor_isRunning(_icID);
 }
 
-// 设置软限位 (使用新 API)
+// Set soft limits (using the new API)
 void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
   int32_t lowerMicrosteps = motor_mmToMicrosteps(_icID, lowerLimitMM);
   int32_t upperMicrosteps = motor_mmToMicrosteps(_icID, upperLimitMM);
 
   motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
 
-  // 同步方向闸门 shadow（双侧）
+  // sync the direction-gate shadow (both sides)
   _softLimits.leftEnabled = true;
   _softLimits.leftValue = lowerMicrosteps;
   _softLimits.rightEnabled = true;
@@ -795,20 +795,20 @@ void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
   enableSoftLimits(true);
 }
 
-// 启用/禁用软限位 (使用新 API)
+// Enable/disable soft limits (using the new API)
 void Axis::enableSoftLimits(bool enable) {
   motor_enableSoftLimits(_icID, enable, enable);
   _softLimitsEnabled = enable;
   if (!enable) {
-    // 显式关闭软限位时清空方向闸门 shadow，允许任意方向移动
+    // when explicitly disabling soft limits, clear the direction-gate shadow to allow movement in any direction
     _softLimits.leftEnabled = false;
     _softLimits.rightEnabled = false;
   }
 }
 
-// 设置单侧软限位 (direction: +1=上限/右, -1=下限/左)
+// Set one-sided soft limit (direction: +1=upper/right, -1=lower/left)
 void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
-  // 先将 XTARGET 设为当前位置，防止放宽限位后电机自动恢复运动
+  // first set XTARGET to the current position to prevent the motor from auto-resuming motion after the limit is loosened
   int32_t xactual = tmc4361A_readRegister(_icID, TMC4361A_XACTUAL);
   tmc4361A_writeRegister(_icID, TMC4361A_XTARGET, xactual);
 
@@ -830,15 +830,15 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
   _softLimitsEnabled = true;
 }
 
-// 方向感知 clamp：参见 axis.h 注释
+// Direction-aware clamp: see the comment in axis.h
 //
-// 边界缓冲（BOUNDARY_MARGIN）防 chip ramp generator 减速精度不足导致 hard-stop latch：
-// 实测案例（main_hcs.log 2026-05-09 10:31:57，cmd 37 MOVETO_X usteps=6300 = L+1）：
-// 上位机 target=L+1（5mm = 6300，刚好贴 X_NEG_LIMIT=6299 边界 1 微步），
-// chip 写 XTARGET 启动 ramp 减速，亚微步精度让 ramp 短暂跨越 L → 触发
-// VSTOPL_ACTIVE 进入 hard-stop latch，**所有后续 MOVE_X 朝任何方向都
-// 启动不了 ramp**（chip 内部 latch 不释放，仅清 EVENTS 不能解锁）。
-// 在安全区时把 target 强制离开边界至少 N 微步避开此 quirk。
+// Boundary margin (BOUNDARY_MARGIN) prevents the chip ramp generator's insufficient deceleration precision from causing a hard-stop latch:
+// Measured case (main_hcs.log 2026-05-09 10:31:57, cmd 37 MOVETO_X usteps=6300 = L+1):
+// host target=L+1 (5mm = 6300, exactly 1 microstep against the X_NEG_LIMIT=6299 boundary),
+// the chip writes XTARGET and starts ramp deceleration; sub-microstep precision lets the ramp briefly cross L -> triggering
+// VSTOPL_ACTIVE and entering a hard-stop latch, **so all subsequent MOVE_X in any direction
+// cannot start a ramp** (the chip's internal latch does not release; clearing EVENTS alone cannot unlock it).
+// in the safe zone, force the target at least N microsteps away from the boundary to avoid this quirk.
 static constexpr int32_t BOUNDARY_MARGIN_MICROSTEPS = 100;
 
 int32_t Axis::clampTargetByDirection(int32_t target) const {
@@ -846,7 +846,7 @@ int32_t Axis::clampTargetByDirection(int32_t target) const {
   int32_t original = target;
   if (_softLimits.leftEnabled) {
     int32_t L = _softLimits.leftValue;
-    // 越界时下界 = C（禁止再下）；安全区时下界 = L + margin（防 ramp 越界）
+    // when out of bounds, lower bound = C (forbid going further down); in the safe zone, lower bound = L + margin (prevents the ramp from crossing)
     int32_t effective_lower = (C <= L) ? C : (L + BOUNDARY_MARGIN_MICROSTEPS);
     if (target < effective_lower) target = effective_lower;
   }
@@ -872,14 +872,14 @@ int32_t Axis::clampTargetByDirection(int32_t target) const {
   return target;
 }
 
-// PID 控制
+// PID control
 void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) {
-  // 运行时使能编码器（上位机下发后生效，getCurrentPositionMicrosteps 将读 ENC_POS）
+  // enable the encoder at runtime (takes effect after the host sends it; getCurrentPositionMicrosteps will then read ENC_POS)
   _config.enableEncoder = true;
 
-  // ENC-2 tripwire：runtime flip 是权威值，应与 config.h boot 默认 invertEncoderDir 一致。
-  // 不一致说明 constants.py 与 config.h 编码器方向脱钩（只改了一边）→ 告警。
-  // 然后把 _config.invertEncoderDir 同步成实际生效值，使该字段始终反映硬件真实方向。
+  // ENC-2 tripwire: the runtime flip is the authoritative value and should match the config.h boot default invertEncoderDir.
+  // A mismatch means constants.py and config.h have decoupled encoder directions (only one side changed) -> warn.
+  // Then sync _config.invertEncoderDir to the actually-effective value so this field always reflects the true hardware direction.
   if (flip_direction != _config.invertEncoderDir) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":WARN encoder flip mismatch boot=");
@@ -889,21 +889,21 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
   }
   _config.invertEncoderDir = flip_direction;
 
-  // ABN 编码器初始化（硬编码参数与旧架构一致）
+  // ABN encoder initialization (hardcoded parameters match the old architecture)
   motor_initABNEncoder(_icID, transitions_per_rev,
                         32,    // filter_wait_time
                         4,     // filter_exponent
                         512,   // filter_vmean
                         flip_direction);
 
-  // PID 参数初始化（按轴类型区分）
-  // pid_dclip = VMAX (内部单位), 已缓存在 motorParams 中
+  // PID parameter initialization (differentiated by axis type)
+  // pid_dclip = VMAX (internal units), already cached in motorParams
   uint32_t vmax_usteps = (uint32_t)motorParams[_icID].vmax;
   uint32_t target_tolerance, pid_tolerance, pid_iclip;
 
-  // 根据轴名称区分参数
+  // differentiate parameters by axis name
   if (strcmp(_axisName, "W") == 0 || strcmp(_axisName, "W2") == 0) {
-    // 2026-05-26 速度优化（与 octoaxes 同步）：target_tolerance / pid_tolerance 2→20。
+    // 2026-05-26 speed optimization (synced with octoaxes): target_tolerance / pid_tolerance 2->20.
     target_tolerance = 20;
     pid_tolerance = 20;
     pid_iclip = 4096;
@@ -912,7 +912,7 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
     pid_tolerance = 25;
     pid_iclip = 4096;
   } else {
-    // X, Y 及其他
+    // X, Y and others
     target_tolerance = 25;
     pid_tolerance = 25;
     pid_iclip = 32767;
@@ -962,7 +962,7 @@ void Axis::setPIDArguments(uint16_t p, uint8_t i, uint8_t d) {
   DEBUG_PRINTLN(d);
 }
 
-// 运行时更新丝杆导程
+// Update the lead-screw pitch at runtime
 void Axis::setLeadScrewPitch(float pitchMM) {
   _config.screwPitchMM = pitchMM;
   motorParams[_icID].screwPitchMM = pitchMM;
@@ -971,19 +971,19 @@ void Axis::setLeadScrewPitch(float pitchMM) {
       pitchMM;
 }
 
-// 运行时重新配置步进驱动器（微步 + 电流）
+// Reconfigure the stepper driver at runtime (microstepping + current)
 void Axis::configureDriver(uint16_t microstepping, float currentMA,
                             float holdCurrentRatio) {
   _config.microstepping = microstepping;
-  // 注意：不同步 homingMicrostepping —— Y 实测 256 微步 + 30 mm/s 最安静，
-  // 即便老 Squid software 下发 32 微步运行，homing 仍走 256 微步切换。
+  // Note: do not sync homingMicrostepping -- on Y, 256 microsteps + 30 mm/s measured as quietest,
+  // so even if legacy Squid software sends 32 microsteps for running, homing still switches to 256 microsteps.
   _config.motorCurrentMA = currentMA;
   _config.holdCurrent = holdCurrentRatio;
 
-  // 更新 TMC4361A 控制器侧微步 + stepsPerMM 缓存
+  // update the TMC4361A controller-side microstepping + stepsPerMM cache
   motor_setMicrosteps(_icID, microstepping);
 
-  // 重新初始化驱动器（电流 + chopper 参数）
+  // reinitialize the driver (current + chopper parameters)
   MotorConfig motorConfig = {
       .driverType = _config.driverType,
       .rSense = _config.r_sense,
@@ -992,7 +992,7 @@ void Axis::configureDriver(uint16_t microstepping, float currentMA,
       .microstepRes = 0,
       .interpolation = true,
       .toff = 3,
-      .hstrt = 0,  // 对齐老 Squid 零滞回（见 begin() 注释）
+      .hstrt = 0,  // match legacy Squid zero-hysteresis (see the begin() comment)
       .hend = 0,
       .tbl = 2,
       .stallThreshold = (int8_t)_config.stallSensitivity,
@@ -1003,11 +1003,11 @@ void Axis::configureDriver(uint16_t microstepping, float currentMA,
       .currentRange = _config.currentRange};
   motor_initDriver(_icID, &motorConfig);
 
-  // 微步变化导致 stepsPerMM 变化，重新计算运动参数
+  // a microstepping change alters stepsPerMM, so recompute the motion parameters
   setMotionParameters(_config.maxVelocityMM, _config.maxAccelerationMM);
 }
 
-// 运行时更新 homing 安全裕量
+// Update the homing safety margin at runtime
 void Axis::setHomeSafetyMargin(float marginMM) {
   _config.homeSafetyMarginMM = marginMM;
   motor_enableHomingLimit(_icID, _config.rightSwitchPolarity,
@@ -1015,7 +1015,7 @@ void Axis::setHomeSafetyMargin(float marginMM) {
                           mmToMicrosteps(marginMM));
 }
 
-// 运行时把 _config 限位配置重写进芯片（极性现由上位机 cmd 20 下发，须重应用才生效）
+// Re-write the _config limit configuration into the chip at runtime (polarity is now sent by the host via cmd 20 and must be reapplied to take effect)
 void Axis::reapplyLimitSwitches() {
   LimitConfig limitConfig = {
       .enableLeft = _config.enableLeftLimitSwitch,
@@ -1032,37 +1032,37 @@ void Axis::reapplyLimitSwitches() {
                           mmToMicrosteps(_config.homeSafetyMarginMM));
 }
 
-// 获取当前状态
+// Get the current state
 AxisState Axis::getCurrentState() const { return _currentState; }
 
-// 获取轴名称
+// Get the axis name
 const char *Axis::getAxisName() const { return _axisName; }
 
-// 检查是否在错误状态
+// Check whether in the error state
 bool Axis::isInErrorState() const { return _currentState == STATE_ERROR; }
 
-// 读取电子限位开关状态 (使用新 API)
+// Read the electronic limit-switch state (using the new API)
 uint8_t Axis::readLimitSwitches() const {
   return motor_readLimitSwitches(_icID);
 }
 
-// 读取开关事件 (使用新 API)
+// Read switch events (using the new API)
 uint8_t Axis::readSwitchEvent() const {
   return motor_readSwitchEvent(_icID);
 }
 
-// 读取轴事件 (使用新 API)
+// Read axis events (using the new API)
 uint32_t Axis::readAxisEvent() const {
   return motor_readEvents(_icID);
 }
 
-// 私有方法实现
+// Private method implementations
 void Axis::setState(AxisState newState) {
   if (_currentState != newState) {
     _previousState = _currentState;
     _currentState = newState;
     _stateStartTime = millis();
-    _stateChanged = true; // 标记状态已变化
+    _stateChanged = true; // mark the state as changed
   }
 }
 
@@ -1079,7 +1079,7 @@ bool Axis::checkTimeout(unsigned long timeoutMs) const {
 }
 
 
-// 单位转换函数 (使用新 API)
+// Unit-conversion functions (using the new API)
 int32_t Axis::mmToMicrosteps(float mm) const {
   return motor_mmToMicrosteps(_icID, mm);
 }
@@ -1097,18 +1097,18 @@ uint32_t Axis::accelerationMMToMicrosteps(float accelerationMM) const {
 }
 
 bool Axis::isValidPosition(float positionMM) const {
-  // 检查位置是否在合理范围内
-  return (positionMM >= -1000.0f && positionMM <= 1000.0f); // 根据实际情况调整
+  // check whether the position is within a reasonable range
+  return (positionMM >= -1000.0f && positionMM <= 1000.0f); // adjust to actual conditions
 }
 
 bool Axis::isWithinSoftLimits(int32_t microsteps) const {
-  // 这里需要根据实际的软限位设置来检查
-  // 暂时返回true，需要根据具体实现完善
+  // this should check against the actual soft-limit settings
+  // temporarily returns true; needs to be completed per the concrete implementation
   return true;
 }
 
 bool Axis::handleEmergency() {
-  // 发送轴状态
+  // send the axis state
   [[maybe_unused]] const char *stateStr = "UNKNOWN";
   switch (_currentState) {
   case STATE_IDLE:
@@ -1143,9 +1143,9 @@ bool Axis::handleEmergency() {
 
 bool Axis::handleGetData() {
   DEBUG_PRINT(_axisName);
-  DEBUG_PRINTLN(":GET_DATA:START");  // 调试点1
+  DEBUG_PRINTLN(":GET_DATA:START");  // debug point 1
 
-  // 发送轴状态
+  // send the axis state
   [[maybe_unused]] const char *stateStr = "UNKNOWN";
   switch (_currentState) {
   case STATE_IDLE:
@@ -1176,13 +1176,13 @@ bool Axis::handleGetData() {
   DEBUG_PRINTLN(stateStr);
 
   DEBUG_PRINT(_axisName);
-  DEBUG_PRINTLN(":GET_DATA:BEFORE_GET_POS");  // 调试点2
+  DEBUG_PRINTLN(":GET_DATA:BEFORE_GET_POS");  // debug point 2
 
-  // 发送当前位置
+  // send the current position
   int32_t microsteps = getCurrentPosition();
 
   DEBUG_PRINT(_axisName);
-  DEBUG_PRINTLN(":GET_DATA:AFTER_GET_POS");  // 调试点3
+  DEBUG_PRINTLN(":GET_DATA:AFTER_GET_POS");  // debug point 3
   [[maybe_unused]] float positionMM = microstepsToMM(microsteps);
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":Current Position (mm):");
@@ -1193,29 +1193,29 @@ bool Axis::handleGetData() {
   DEBUG_PRINTLN(microsteps);
 
   DEBUG_PRINT(_axisName);
-  DEBUG_PRINTLN(":GET_DATA:BEFORE_READ_LIMIT");  // 调试点4
+  DEBUG_PRINTLN(":GET_DATA:BEFORE_READ_LIMIT");  // debug point 4
 
-  // 发送限位开关状态
+  // send the limit-switch state
   [[maybe_unused]] uint8_t limitState = readLimitSwitches();
 
   DEBUG_PRINT(_axisName);
-  DEBUG_PRINTLN(":GET_DATA:AFTER_READ_LIMIT");  // 调试点5
+  DEBUG_PRINTLN(":GET_DATA:AFTER_READ_LIMIT");  // debug point 5
 
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":LIMIT_SWITCHES:0x");
   DEBUG_PRINTLNF(limitState, HEX);
 
-  // 新增：发送移动状态
+  // Added: send the movement state
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":IS_MOVING:");
   DEBUG_PRINTLN(_isMoving ? "YES" : "NO");
 
-  // 新增：发送使能状态
+  // Added: send the enable state
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":IS_ENABLED:");
   DEBUG_PRINTLN(_isEnabled ? "YES" : "NO");
 
-  // 发送综合状态信息（用于标签显示）
+  // send aggregate status info (for label display)
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":AXIS_STATUS:");
   DEBUG_PRINT(stateStr);
@@ -1248,7 +1248,7 @@ bool Axis::handleDebugReg() {
   DEBUG_PRINT(_axisName);
   DEBUG_PRINTLN(":DEBUG_REG:START");
 
-  // 读取关键 TMC4361A 寄存器
+  // read the key TMC4361A registers
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":REG:GENERAL_CONF(0x00)=0x");
   DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_GENERAL_CONF), HEX);
@@ -1301,7 +1301,7 @@ bool Axis::handleDebugReg() {
   DEBUG_PRINT(":REG:DMAX(0x29)=");
   DEBUG_PRINTLN(tmc4361A_readRegister(_icID, TMC4361A_DMAX));
 
-  // 新增：关键配置寄存器
+  // Added: key configuration registers
   DEBUG_PRINT(_axisName);
   DEBUG_PRINT(":REG:STEP_CONF(0x0A)=0x");
   DEBUG_PRINTLNF(tmc4361A_readRegister(_icID, TMC4361A_STEP_CONF), HEX);

@@ -20,7 +20,7 @@
 用法：
   python3 software/common/tests/z_homing_safedist.py
   python3 software/common/tests/z_homing_safedist.py --port /dev/ttyACM0 --step-mm 0.05
-  python3 software/common/tests/z_homing_safedist.py --approach-dir -1   # 方向相反时
+  python3 software/common/tests/z_homing_safedist.py --approach-dir -1   # when the direction is reversed
 """
 
 import argparse
@@ -101,7 +101,7 @@ def read_regs(ser, axis="Z", timeout=1.5, retries=4):
                     return regs
             else:
                 time.sleep(0.003)
-        if "STATUS" in regs:   # 至少拿到 STATUS 也接受
+        if "STATUS" in regs:   # getting at least STATUS is also acceptable
             return regs
     return regs
 
@@ -155,8 +155,8 @@ def main():
         port = "/dev/ttyACM0"
 
     step_us = int(round(args.step_mm * args.steps_per_mm))
-    approach = args.approach_dir * step_us     # 朝限位
-    retreat = -args.approach_dir * step_us     # 退离
+    approach = args.approach_dir * step_us     # toward the limit
+    retreat = -args.approach_dir * step_us     # back away
 
     print(f"[INFO] 端口 {port} 轴 {args.axis} | 步长 {args.step_mm}mm={step_us}微步 | "
           f"朝限位方向 {'+ (firmware正/物理左)' if args.approach_dir==1 else '- '}")
@@ -179,7 +179,7 @@ def main():
         return us / args.steps_per_mm
 
     try:
-        # Phase 0：清出感应区
+        # Phase 0: clear out of the sensing zone
         n = 0
         while stopl_on(r) and n < args.max_steps:
             prev = r.get("XACTUAL")
@@ -194,7 +194,7 @@ def main():
             ser.close()
             return
 
-        # Phase 1：逼近找触发点 A
+        # Phase 1: approach to find trigger point A
         A = None
         n = 0
         while n < args.max_steps:
@@ -215,7 +215,7 @@ def main():
             return
         print(f"[触发点 A] XACTUAL={A}")
 
-        # Phase 2：退离找释放点 B
+        # Phase 2: back away to find release point B
         B = None
         n = 0
         while n < args.max_steps:
@@ -232,11 +232,11 @@ def main():
             return
         print(f"[释放点 B] XACTUAL={B}")
 
-        # 结果
+        # result
         hyst_us = abs(A - B)
         hyst_mm = to_mm(hyst_us)
         recommend = hyst_mm + args.safety_mm
-        recommend_round = math.ceil(recommend * 10) / 10.0   # 向上取到 0.1mm
+        recommend_round = math.ceil(recommend * 10) / 10.0   # round up to 0.1mm
         print("\n================= 测量结果 =================")
         print(f"  触发点 A = {A} 微步")
         print(f"  释放点 B = {B} 微步")

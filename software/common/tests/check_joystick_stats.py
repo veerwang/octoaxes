@@ -36,7 +36,7 @@ from utils.helpers import find_teensy_port  # noqa: E402
 # firmware/octoaxes/serial.h DEBUG_PROTOCOL_HEADER_1/2
 DEBUG_HEADER = bytes([0x55, 0xAA])
 
-# 匹配 firmware joystick_print_stats 输出格式：
+# match the firmware joystick_print_stats output format:
 #   JOYSTICK_STATS legacy=N crc_ok=N crc_fail=N
 STATS_RE = re.compile(
     rb"JOYSTICK_STATS\s+legacy=(\d+)\s+crc_ok=(\d+)\s+crc_fail=(\d+)"
@@ -72,7 +72,7 @@ def main():
         return 2
 
     try:
-        time.sleep(2.0)  # Teensy USB 枚举
+        time.sleep(2.0)  # Teensy USB enumeration
         ser.reset_input_buffer()
 
         cmd = DEBUG_HEADER + b"S:JOYSTICK_STATS\n"
@@ -82,13 +82,13 @@ def main():
         time.sleep(args.wait)
 
         buf = ser.read(ser.in_waiting or 1)
-        # 多读一轮防止位置广播切断响应
+        # read one extra round to prevent the position broadcast from cutting off the response
         time.sleep(0.1)
         buf += ser.read(ser.in_waiting or 1)
         print(f"收到 {len(buf)} 字节")
 
-        # 响应是 ASCII 行（DEBUG_PRINTLN → SerialUSB.println），夹在 10ms 周期
-        # 24 字节位置广播之间。直接对原始字节做正则匹配。
+        # the response is an ASCII line (DEBUG_PRINTLN -> SerialUSB.println), sandwiched among the 10ms periodic
+        # 24-byte position broadcasts. Regex-match the raw bytes directly.
         m = STATS_RE.search(buf)
         if m:
             legacy = int(m.group(1))
@@ -97,7 +97,7 @@ def main():
             print()
             print(f"✓ 计数器读到：legacy={legacy} crc_ok={crc_ok} crc_fail={crc_fail}")
             print()
-            # 诊断解读
+            # diagnostic interpretation
             if crc_ok > 0 and crc_fail == 0 and legacy == 0:
                 print("  ✅ 正向场景：新 joystick + 新 firmware，CRC 校验全通过")
             elif legacy > 0 and crc_ok == 0 and crc_fail == 0:
@@ -115,7 +115,7 @@ def main():
                 print("  ⚠ 混合状态，可能新老 joystick 切换中")
             return 0
 
-        # 没匹配到 → 看是不是命令本身未识别
+        # no match -> check whether the command itself was not recognized
         if b"S:JOYSTICK_STATS" in buf or b"joystick" in buf.lower():
             print("⚠ Firmware 收到命令但回包格式不对：")
             print(f"   首段 raw bytes: {buf[:200]!r}")

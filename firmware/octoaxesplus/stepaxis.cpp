@@ -9,7 +9,7 @@ StepAxis::StepAxis(uint8_t csPin, uint8_t axisIndex, const char* axisName)
 }
 
 bool StepAxis::begin(const AxisConfig& config) {
-  // 调用基类初始化
+  // call the base-class init
   bool result = Axis::begin(config);
   
   if (result) {
@@ -36,45 +36,45 @@ void StepAxis::enableBacklashCompensation(bool enable) {
 }
 
 bool StepAxis::moveToPosition(float positionMM) {
-  // 在步进轴中，可以添加反向间隙补偿逻辑
+  // in the stepper axis, backlash-compensation logic can be added
   if (_backlashCompensationEnabled && _backlashMM > 0) {
-    // 计算移动方向
+    // compute the movement direction
     float currentPos = getCurrentPositionMM();
     int32_t direction = (positionMM > currentPos) ? 1 : -1;
     
-    // 应用反向间隙补偿
+    // apply backlash compensation
     applyBacklashCompensation(direction);
   }
   
-  // 调用基类移动函数
+  // call the base-class move function
   return Axis::moveToPosition(positionMM);
 }
 
 bool StepAxis::moveRelative(float distanceMM) {
-  // 在步进轴中，可以添加反向间隙补偿逻辑
+  // in the stepper axis, backlash-compensation logic can be added
   if (_backlashCompensationEnabled && _backlashMM > 0) {
     int32_t direction = (distanceMM > 0) ? 1 : -1;
     applyBacklashCompensation(direction);
   }
   
-  // 调用基类移动函数
+  // call the base-class move function
   return Axis::moveRelative(distanceMM);
 }
 
 void StepAxis::applyBacklashCompensation(int32_t direction) {
-  // 简单的反向间隙补偿实现
-  // 在实际应用中可能需要更复杂的逻辑
+  // a simple backlash-compensation implementation
+  // real applications may need more complex logic
   if (_backlashMM > 0) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":Applying backlash compensation: ");
     DEBUG_PRINTF(_backlashMM, 3);
     DEBUG_PRINTLN("mm");
     
-    // 先向反方向移动消除间隙，再向目标方向移动
+    // first move in the opposite direction to take up the backlash, then move toward the target
     float compensationDistance = direction * _backlashMM;
     Axis::moveRelative(compensationDistance);
     
-    // 等待补偿移动完成
+    // wait for the compensation move to complete
     while (isMoving()) {
       delay(10);
     }
@@ -125,19 +125,19 @@ void StepAxis::performHomingSequence() {
 
   switch (_currentState) {
     case STATE_HOMING_INIT:
-      // 直接操作硬件禁用虚拟限位，不改变 _softLimitsEnabled 标志
+      // directly disable the virtual limits in hardware without changing the _softLimitsEnabled flag
       motor_enableSoftLimits(_icID, false, false);
 
-      // 解锁 hard-stop latch：复用 motor_moveToMicrosteps 已验证的完整
-      // VSTOP recovery 路径（禁 EN→清 EVENTS→写 XTARGET→再清 EVENTS）。
+      // unlock the hard-stop latch: reuse the full, already-verified
+      // VSTOP recovery path of motor_moveToMicrosteps (disable EN -> clear EVENTS -> write XTARGET -> clear EVENTS again).
       //
-      // 场景：固件复位后 XACTUAL=0，SET_LIM x_neg=5mm 立即触发 VSTOPL_ACTIVE_F
-      // hard-stop，chip ramp generator 被锁住。后续 motor_setVelocityInternal
-      // 仅写 VMAX 不能解除 hard-stop latch，电机不动。
+      // scenario: after a firmware reset XACTUAL=0, SET_LIM x_neg=5mm immediately triggers a VSTOPL_ACTIVE_F
+      // hard-stop, locking the chip ramp generator. A subsequent motor_setVelocityInternal
+      // only writes VMAX and cannot release the hard-stop latch, so the motor does not move.
       //
-      // 写 XTARGET=XACTUAL 不引起电机移动，仅触发 chip 重新评估 ramp 状态，
-      // 让 hard-stop latch 复位。这是 motor_moveToMicrosteps 的 VSTOP recovery
-      // 路径已在 2026-02-27 commit 验证有效。
+      // writing XTARGET=XACTUAL causes no movement, only triggers the chip to re-evaluate the ramp state,
+      // resetting the hard-stop latch. This is the VSTOP recovery path of motor_moveToMicrosteps,
+      // already verified effective in the 2026-02-27 commit.
       motor_moveToMicrosteps(_icID, motor_getPositionMicrosteps(_icID));
 
       switchToHomingMicrosteps();
@@ -160,18 +160,18 @@ void StepAxis::performHomingSequence() {
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Home limit switch triggered!");
 
-        motor_setVelocityInternal(_icID, 0); // 停止
-        delay(100);                          // 等待完全停止
+        motor_setVelocityInternal(_icID, 0); // stop
+        delay(100);                          // wait for a full stop
 
         int32_t latchedPosition = motor_readLatchPosition(_icID);
 
-        // 计算安全位置（离开限位开关）
+        // compute the safe position (away from the limit switch)
         int32_t safePosition = latchedPosition;
         int32_t margin = motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
-        // 退回方向 = 搜索方向(homing_direct)的反方向，永远离开刚撞到的限位。
-        // 比"按 homingSwitch ±margin"鲁棒：当 homingSwitch 与搜索方向不符合常规约定
-        // （如新 Z：LEFT_SW 但 homing_direct=+1 朝物理左，左限位在 firmware 正方向端）
-        // 时，旧逻辑会朝限位更深处退 → 离不开感应区。对常规 X/Y/Z 等价（无回归）。
+        // retract direction = opposite of the search direction (homing_direct), always leaving the limit just hit.
+        // more robust than "homingSwitch +/- margin": when homingSwitch and the search direction do not follow the usual convention
+        // (e.g. new Z: LEFT_SW but homing_direct=+1 toward physical left, the left limit is at the firmware positive-direction end),
+        // the old logic would retract deeper into the limit -> unable to leave the sensing zone. Equivalent for regular X/Y/Z (no regression).
         safePosition -= _config.homing_direct * margin;
 
         DEBUG_PRINT(_axisName);
@@ -186,11 +186,11 @@ void StepAxis::performHomingSequence() {
       break;
 
     case STATE_HOMING_SET_ZERO:
-      // 等待移动到安全位置完成（超时为 5 秒 = 5,000,000 微秒）
+      // wait for the move to the safe position to complete (timeout 5 seconds = 5,000,000 microseconds)
       if (isMovementComplete() || _checkHomeReachTimeout >= 5000000) {
-        // 恢复正常细分
+        // restore normal microstepping
         restoreNormalMicrosteps();
-        // 设置当前位置为0
+        // set the current position to 0
         motor_setCurrentPositionMicrosteps(_icID, 0);
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Homing completed! Current position set to 0");
@@ -198,12 +198,12 @@ void StepAxis::performHomingSequence() {
           DEBUG_PRINT(_axisName);
           DEBUG_PRINTLN(":Homing Set Current Position to safe position Timeout");
         }
-        // 恢复 homing 前的软限位状态（上位机初始化时已设置 VIRT_STOP 值）
+        // restore the pre-homing soft-limit state (the host set the VIRT_STOP values during initialization)
         if (_softLimitsEnabled) {
           enableSoftLimits(true);
         }
 
-        // Homing 完成后自动恢复 PID（与旧架构一致）
+        // automatically restore PID after homing completes (consistent with the old architecture)
         if (_pidState.enabled) {
           motor_enablePID(_icID);
           DEBUG_PRINT(_axisName);
@@ -231,18 +231,18 @@ void StepAxis::performLeavingHome() {
     if (!(limit_state & _config.homingSwitch)) {
       DEBUG_PRINT(_axisName);
       DEBUG_PRINTLN(":Left home position, starting homing...");
-      motor_setVelocityInternal(_icID, 0); // 停止
+      motor_setVelocityInternal(_icID, 0); // stop
 
-      // 等待完全停止
+      // wait for a full stop
       delay(100);
 
-      // 开始真正的归位搜索
+      // start the actual homing search
       int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.maxVelocityMM);
       motor_setVelocityInternal(_icID, speedInternal);
       setState(STATE_HOMING_SEARCH);
     } else {
-      // 继续移动离开home位置
-      // 根据限位开关类型设置正确的离开方向
+      // keep moving to leave the home position
+      // set the correct leaving direction based on the limit-switch type
       int32_t speedInternal = -1 * _config.homing_direct * motor_velocityMMToInternal(_icID, _config.maxVelocityMM);
       motor_setVelocityInternal(_icID, speedInternal);
     }

@@ -5,12 +5,12 @@
 #include "trigger.h"
 #include "config.h"
 
-// 协议常量（来自 Squid constants_protocol.h）
+// Protocol constants (from Squid constants_protocol.h)
 static const int HOME_POSITIVE     = 0;
 static const int HOME_NEGATIVE     = 1;
 static const int HOME_OR_ZERO_ZERO = 2;
 
-// SET_LIM 限位码
+// SET_LIM limit codes
 static const int LIM_CODE_X_POSITIVE = 0;
 static const int LIM_CODE_X_NEGATIVE = 1;
 static const int LIM_CODE_Y_POSITIVE = 2;
@@ -18,17 +18,17 @@ static const int LIM_CODE_Y_NEGATIVE = 3;
 static const int LIM_CODE_Z_POSITIVE = 4;
 static const int LIM_CODE_Z_NEGATIVE = 5;
 
-// 限位开关极性
+// Limit-switch polarity
 static const int POLARITY_ACTIVE_LOW  = 0;
 static const int POLARITY_ACTIVE_HIGH = 1;
 static const int POLARITY_DISABLED    = 2;
 
-// 偏移速度（与旧架构 globals.cpp 一致）
-// enable_offset_velocity 已在 def_octopi_80120.h 中定义
+// offset velocity (consistent with the old architecture globals.cpp)
+// enable_offset_velocity is already defined in def_octopi_80120.h
 float offset_velocity_x = 0;
 float offset_velocity_y = 0;
 
-// 协议轴值 → 轴名称（nullptr = 无效轴）
+// protocol axis value -> axis name (nullptr = invalid axis)
 static const char* protocolAxisToName(uint8_t protocolAxis) {
   switch (protocolAxis) {
     case 0: return "X";
@@ -36,7 +36,7 @@ static const char* protocolAxisToName(uint8_t protocolAxis) {
     case 2: return "Z";
     case 5: return "W";
     case 6: return "W2";
-    case 7: return "Turret";   // 2026-05-29 物镜转换器（HOME_OR_ZERO axis=7）
+    case 7: return "Turret";   // 2026-05-29 objective turret (HOME_OR_ZERO axis=7)
     default: return nullptr;
   }
 }
@@ -44,14 +44,14 @@ static const char* protocolAxisToName(uint8_t protocolAxis) {
 CommandProcessor commandProcessor;
 
 CommandProcessor::CommandProcessor() {
-  // 构造函数初始化代码
+  // constructor initialization code
 }
 
 CommandProcessor::~CommandProcessor() {
-  // 析构函数清理代码
+  // destructor cleanup code
 }
 
-// 以下为各个命令处理函数的实现框架
+// the following are the implementation skeletons of the individual command handlers
 void CommandProcessor::handleMoveX(const byte *data) {
   int32_t relative_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
@@ -86,7 +86,7 @@ void CommandProcessor::handleMoveZ(const byte *data) {
 }
 
 void CommandProcessor::handleMoveTheta(const byte *data) {
-  // TODO: 实现 MOVE_THETA 命令处理
+  // TODO: implement MOVE_THETA command handling
   DEBUG_PRINTLN("CMD_NOT_IMPLEMENTED: MOVE_THETA");
 }
 
@@ -102,11 +102,11 @@ void CommandProcessor::handleMoveW(const byte *data) {
 }
 
 void CommandProcessor::handleHomeOrZero(const byte *data) {
-  // data[2]: 协议轴值（0=X,1=Y,2=Z,4=XY,5=W,6=W2）
-  // data[3]: HOME_POSITIVE=0 (朝+方向), HOME_NEGATIVE=1 (朝-方向), HOME_OR_ZERO_ZERO=2 (仅清零)
+  // data[2]: protocol axis value (0=X,1=Y,2=Z,4=XY,5=W,6=W2)
+  // data[3]: HOME_POSITIVE=0 (toward +), HOME_NEGATIVE=1 (toward -), HOME_OR_ZERO_ZERO=2 (zero only)
   if (data[3] == HOME_OR_ZERO_ZERO) {
-    // 归零模式：将当前位置设为 0，不移动
-    if (data[2] == 4) {  // AXES_XY 联合
+    // zero mode: set the current position to 0, no movement
+    if (data[2] == 4) {  // AXES_XY combined
       Axis *axX = axisManager.findAxisByName("X");
       Axis *axY = axisManager.findAxisByName("Y");
       if (axX) axX->setCurrentPosition(0.0f);
@@ -120,20 +120,20 @@ void CommandProcessor::handleHomeOrZero(const byte *data) {
     }
     return;
   }
-  // Homing 模式（HOME_POSITIVE / HOME_NEGATIVE）：
-  // 2026-05-11：按协议 data[3] 解析方向，兼容老 Squid software
-  //   老 Squid microcontroller.py:88 按 stage_movement_sign_x 派生 data[3]，
-  //   老 Squid firmware (main_controller_teensy41.ino:1252) 读 data[3] 决定方向。
-  // 之前 octoaxes 忽略 data[3] 仅用 config.homing_direct，在 octoaxes GUI 下行为正确
-  // （constants.py 的 sign 与 config.homing_direct 配对一致），但老 Squid software
-  // 发的 data[3] 不被解读时 → 方向可能反（X home 朝物理 + 端撞限位）。
+  // Homing mode (HOME_POSITIVE / HOME_NEGATIVE):
+  // 2026-05-11: parse the direction from protocol data[3], compatible with legacy Squid software
+  // legacy Squid microcontroller.py:88 derives data[3] from stage_movement_sign_x,
+  // legacy Squid firmware (main_controller_teensy41.ino:1252) reads data[3] to decide the direction.
+  // previously octoaxes ignored data[3] and used only config.homing_direct, which behaves correctly under the octoaxes GUI
+  // (constants.py's sign pairs consistently with config.homing_direct), but when legacy Squid software's
+  // data[3] is not interpreted -> the direction may reverse (X homes toward the physical + end and hits the limit).
   //
-  // 兼容策略：用 data[3] 覆盖 config.homing_direct：
-  //   HOME_POSITIVE (0) → homing_direct = +1（朝 + 方向）
-  //   HOME_NEGATIVE (1) → homing_direct = -1（朝 - 方向）
-  // 永久写入 _config，后续 startHoming() 即按新方向走。
+  // compatibility strategy: override config.homing_direct with data[3]:
+  // HOME_POSITIVE (0) -> homing_direct = +1 (toward +)
+  // HOME_NEGATIVE (1) -> homing_direct = -1 (toward -)
+  // written permanently into _config; subsequent startHoming() then uses the new direction.
   int8_t new_direct = (data[3] == HOME_NEGATIVE) ? -1 : +1;
-  if (data[2] == 4) {  // AXES_XY 联合归位
+  if (data[2] == 4) {  // AXES_XY combined homing
     Axis *axX = axisManager.findAxisByName("X");
     Axis *axY = axisManager.findAxisByName("Y");
     if (axX) {
@@ -190,7 +190,7 @@ void CommandProcessor::handleMoveToZ(const byte *data) {
 }
 
 void CommandProcessor::handleSetLim(const byte *data) {
-  // data[2]: LIM_CODE (0-5), data[3..6]: 限位值 (微步, 32bit 大端序)
+  // data[2]: LIM_CODE (0-5), data[3..6]: limit value (microsteps, 32-bit big-endian)
   int32_t value = int32_t((uint32_t(data[3]) << 24) | (uint32_t(data[4]) << 16) |
                           (uint32_t(data[5]) << 8)  |  uint32_t(data[6]));
   const char *axisName = nullptr;
@@ -210,9 +210,9 @@ void CommandProcessor::handleSetLim(const byte *data) {
 }
 
 void CommandProcessor::handleTurnOnIllumination(const byte *data) {
-  // 与老 Squid main_controller_teensy41.ino:1529 对齐：不动 illumination_source。
-  // 老 Squid 上位机 turn_on_illumination() 命令包 cmd[2]=0；若此处读 data[2] 写 source，
-  // 会把 source 强制覆盖为 0 (LED_ARRAY_FULL = 明场)，导致切荧光通道后明场被点亮。
+  // matches legacy Squid main_controller_teensy41.ino:1529: do not touch illumination_source.
+  // the legacy Squid host's turn_on_illumination() command packet has cmd[2]=0; if we read data[2] and write source here,
+  // it would force source to 0 (LED_ARRAY_FULL = brightfield), lighting up brightfield after switching to a fluorescence channel.
   turn_on_illumination();
 }
 
@@ -286,13 +286,13 @@ void CommandProcessor::handleSetWatchdogTimeout(const byte *data) {
 }
 
 void CommandProcessor::handleHeartbeat(const byte *data) {
-  // 空操作：看门狗计时器在收到有效串口消息时已重置
+  // no-op: the watchdog timer is already reset when a valid serial message is received
 }
 
 void CommandProcessor::handleMoveW2(const byte *data) {
-  // 旧 Squid MOVE_W2 (cmd 19)：相对运动，data[2..5] 为 int32 微步大端序。
-  // W2 板未插时 axesmrg::beginAll 已删除该轴 → findAxisByName 返回 nullptr →
-  // silent no-op（响应包立即报 COMPLETED）。
+  // legacy Squid MOVE_W2 (cmd 19): relative move, data[2..5] is int32 microsteps big-endian.
+  // when the W2 board is absent, axesmrg::beginAll has deleted this axis -> findAxisByName returns nullptr ->
+  // silent no-op (the response packet reports COMPLETED immediately).
   int32_t relative_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
@@ -304,8 +304,8 @@ void CommandProcessor::handleMoveW2(const byte *data) {
 }
 
 void CommandProcessor::handleMoveTurret(const byte *data) {
-  // 2026-05-29 MOVE_TURRET (cmd 44)：物镜转换器相对运动，data[2..5] 为 int32 微步大端序。
-  // E1 板未插时 axesmrg::beginAll 已删除该轴 → findAxisByName 返回 nullptr → silent no-op。
+  // 2026-05-29 MOVE_TURRET (cmd 44): objective turret relative move, data[2..5] is int32 microsteps big-endian.
+  // when the E1 board is absent, axesmrg::beginAll has deleted this axis -> findAxisByName returns nullptr -> silent no-op.
   int32_t relative_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
@@ -317,7 +317,7 @@ void CommandProcessor::handleMoveTurret(const byte *data) {
 }
 
 void CommandProcessor::handleMoveToTurret(const byte *data) {
-  // 2026-05-29 MOVETO_TURRET (cmd 45)：物镜转换器绝对运动。
+  // 2026-05-29 MOVETO_TURRET (cmd 45): objective turret absolute move.
   int32_t absolute_position =
       int32_t((uint32_t(data[2]) << 24) + (uint32_t(data[3]) << 16) +
               (uint32_t(data[4]) << 8) + uint32_t(data[5]));
@@ -345,7 +345,7 @@ void CommandProcessor::handleMoveToW(const byte *data) {
 }
 
 void CommandProcessor::handleSetLimSwitchPolarity(const byte *data) {
-  // data[2]: 协议轴; data[3]: 极性 (0=ACTIVE_LOW, 1=ACTIVE_HIGH, 2=DISABLED)
+  // data[2]: protocol axis; data[3]: polarity (0=ACTIVE_LOW, 1=ACTIVE_HIGH, 2=DISABLED)
   if (data[3] == POLARITY_DISABLED)
     return;
   const char *name = protocolAxisToName(data[2]);
@@ -355,21 +355,21 @@ void CommandProcessor::handleSetLimSwitchPolarity(const byte *data) {
   uint8_t polarity = data[3];
   axis->getMutableConfig().leftSwitchPolarity = polarity;
   axis->getMutableConfig().rightSwitchPolarity = polarity;
-  // 仅对 polarityAffectsChip=true 的轴（=Z）把极性重写进芯片 REFERENCE_CONF——这是「Z 变体软件化」
-  // 的关键（上位机按 Z_AXIS_VARIANT 下发极性，切换无需重烧）。X/Y 等固定硬件极性轴只改结构体不碰芯片，
-  // 与旧 Squid 固件一致（旧 Squid cmd 20 也只设软件变量），避免旧 Squid 下发的 X/Y 极性误翻芯片。
+  // only for axes with polarityAffectsChip=true (=Z), rewrite the polarity into the chip REFERENCE_CONF -- this is the key to the "Z-variant software switch"
+  // (the host sends the polarity per Z_AXIS_VARIANT, so switching needs no reflash). Fixed-hardware-polarity axes like X/Y only update the struct and do not touch the chip,
+  // consistent with legacy Squid firmware (legacy Squid cmd 20 also only sets a software variable), avoiding the X/Y polarity sent by legacy Squid wrongly flipping the chip.
   if (axis->getConfig().polarityAffectsChip)
     axis->reapplyLimitSwitches();
 }
 
 void CommandProcessor::handleConfigureStepperDriver(const byte *data) {
-  // data[2]: 协议轴; data[3]: 微步; data[4..5]: RMS 电流 (mA); data[6]: 保持电流 (0-255)
+  // data[2]: protocol axis; data[3]: microstepping; data[4..5]: RMS current (mA); data[6]: hold current (0-255)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
   Axis *axis = axisManager.findAxisByName(name);
   if (!axis) return;
 
-  // 微步特殊处理: 0→1, 1-128→原值, >128→256
+  // microstepping special handling: 0->1, 1-128->as-is, >128->256
   int microstepping = data[3];
   if (microstepping > 128)
     microstepping = 256;
@@ -383,7 +383,7 @@ void CommandProcessor::handleConfigureStepperDriver(const byte *data) {
 }
 
 void CommandProcessor::handleSetMaxVelocityAcceleration(const byte *data) {
-  // data[2]: 协议轴; data[3:4]: 速度×100 (mm/s); data[5:6]: 加速度×10 (mm/s²)
+  // data[2]: protocol axis; data[3:4]: velocity*100 (mm/s); data[5:6]: acceleration*10 (mm/s2)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
   Axis *axis = axisManager.findAxisByName(name);
@@ -394,7 +394,7 @@ void CommandProcessor::handleSetMaxVelocityAcceleration(const byte *data) {
 }
 
 void CommandProcessor::handleSetLeadScrewPitch(const byte *data) {
-  // data[2]: 协议轴; data[3..4]: 螺距×1000 (uint16, mm)
+  // data[2]: protocol axis; data[3..4]: pitch*1000 (uint16, mm)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
   Axis *axis = axisManager.findAxisByName(name);
@@ -405,11 +405,11 @@ void CommandProcessor::handleSetLeadScrewPitch(const byte *data) {
 }
 
 void CommandProcessor::handleSetOffsetVelocity(const byte *data) {
-  // 与旧架构 callback_set_offset_velocity 一致：
-  // 仅在 enable_offset_velocity 为 true 时存储值，供摇杆循环使用
+  // consistent with the old architecture callback_set_offset_velocity:
+  // only store the value when enable_offset_velocity is true, for use by the joystick loop
   if (!enable_offset_velocity) return;
 
-  // data[3..6]: int32 大端序 (μm/s), ÷1000000 → mm/s
+  // data[3..6]: int32 big-endian (um/s), /1000000 -> mm/s
   float velocityMM =
       float(int32_t(uint32_t(data[3]) << 24 | uint32_t(data[4]) << 16 |
                     uint32_t(data[5]) << 8 | uint32_t(data[6]))) /
@@ -422,7 +422,7 @@ void CommandProcessor::handleSetOffsetVelocity(const byte *data) {
 }
 
 void CommandProcessor::handleConfigureStagePID(const byte *data) {
-  // data[2]: 协议轴; data[3]: flip_direction; data[4:5]: transitions_per_rev (大端序)
+  // data[2]: protocol axis; data[3]: flip_direction; data[4:5]: transitions_per_rev (big-endian)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
   Axis *axis = axisManager.findAxisByName(name);
@@ -433,7 +433,7 @@ void CommandProcessor::handleConfigureStagePID(const byte *data) {
 }
 
 void CommandProcessor::handleEnableStagePID(const byte *data) {
-  // data[2]: 协议轴
+  // data[2]: protocol axis
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
   Axis *axis = axisManager.findAxisByName(name);
@@ -441,7 +441,7 @@ void CommandProcessor::handleEnableStagePID(const byte *data) {
 }
 
 void CommandProcessor::handleDisableStagePID(const byte *data) {
-  // data[2]: 协议轴
+  // data[2]: protocol axis
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
   Axis *axis = axisManager.findAxisByName(name);
@@ -449,7 +449,7 @@ void CommandProcessor::handleDisableStagePID(const byte *data) {
 }
 
 void CommandProcessor::handleSetHomeSafetyMargin(const byte *data) {
-  // data[2]: 协议轴; data[3..4]: 裕量×1000 (uint16, mm)
+  // data[2]: protocol axis; data[3..4]: margin*1000 (uint16, mm)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
   Axis *axis = axisManager.findAxisByName(name);
@@ -460,7 +460,7 @@ void CommandProcessor::handleSetHomeSafetyMargin(const byte *data) {
 }
 
 void CommandProcessor::handleSetPIDArguments(const byte *data) {
-  // data[2]: 协议轴; data[3:4]: P (大端序 uint16); data[5]: I (uint8); data[6]: D (uint8)
+  // data[2]: protocol axis; data[3:4]: P (big-endian uint16); data[5]: I (uint8); data[6]: D (uint8)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
   Axis *axis = axisManager.findAxisByName(name);
@@ -478,7 +478,7 @@ void CommandProcessor::handleSendHardwareTrigger(const byte *data) {
 
   noInterrupts();
 
-  // Level trigger 模式下，通道已在触发中则丢弃新命令，防止覆盖进行中的时序
+  // in Level trigger mode, if the channel is already triggering, drop the new command to avoid overwriting the in-progress timing
   if (trigger_mode != TRIGGER_MODE_NORMAL &&
       trigger_output_level[camera_channel] == LOW) {
     interrupts();
@@ -490,12 +490,12 @@ void CommandProcessor::handleSendHardwareTrigger(const byte *data) {
       (uint32_t(data[3]) << 24) | (uint32_t(data[4]) << 16) |
       (uint32_t(data[5]) << 8)  |  uint32_t(data[6]);
 
-  // 触发引脚拉 LOW（负脉冲起始）
+  // pull the trigger pin LOW (start of the negative pulse)
   digitalWrite(camera_trigger_pins[camera_channel], LOW);
   trigger_output_level[camera_channel] = LOW;
   timestamp_trigger_rising_edge[camera_channel] = micros();
 
-  // 频闪状态重置
+  // reset the strobe state
   strobe_on[camera_channel] = false;
 
   interrupts();
@@ -511,7 +511,7 @@ void CommandProcessor::handleSetStrobeDelay(const byte *data) {
 }
 
 void CommandProcessor::handleSetAxisDisableEnable(const byte *data) {
-  // data[2]: 协议轴; data[3]: 0=禁用, 1=启用
+  // data[2]: protocol axis; data[3]: 0=disable, 1=enable
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
   Axis *axis = axisManager.findAxisByName(name);
@@ -521,45 +521,45 @@ void CommandProcessor::handleSetAxisDisableEnable(const byte *data) {
 }
 
 void CommandProcessor::handleSetPinLevel(const byte *data) {
-  // 防御：若上位机请求的 pin 在 illumination_init 中未显式 OUTPUT，
-  // INPUT 模式下 digitalWrite 不改实际电平。第一次写入时强制配 OUTPUT。
+  // defensive: if the pin requested by the host was not explicitly set OUTPUT in illumination_init,
+  // digitalWrite in INPUT mode does not change the actual level. Force OUTPUT on the first write.
   pinMode(data[2], OUTPUT);
   digitalWrite(data[2], data[3]);
 }
 
 void CommandProcessor::handleInitFilterWheel(const byte *data) {
-  // 2026-05-26 修复字节级 drop-in 偏差：
-  // 旧 Squid callback_initfilterwheel (commands.cpp:188-192) 是原子操作：
+  // 2026-05-26 fix a byte-level drop-in deviation:
+  // legacy Squid callback_initfilterwheel (commands.cpp:188-192) is an atomic operation:
   //   enable_filterwheel = true;
-  //   init_filterwheel_axis(w);    // 仅 chip 重新配置（SW_RESET + 寄存器写）
-  // **不**触发 homing，**不**设 mcu_cmd_execution_in_progress = true。
-  // 实际 W homing 由后续 home_w() (HOME_OR_ZERO + AXIS_W) 单独触发。
+  //   init_filterwheel_axis(w);    // chip reconfiguration only (SW_RESET + register writes)
+  // does **not** trigger homing, does **not** set mcu_cmd_execution_in_progress = true.
+  // the actual W homing is triggered separately by a subsequent home_w() (HOME_OR_ZERO + AXIS_W).
   //
-  // 错误历史：之前在此处 axis->startHoming() 触发 W homing →
-  // 老 Squid software init_filter_wheel(W) + sleep(0.5) + configure_squidfilter(W) 时，
-  // octoaxes 让 wait_till_operation_is_completed 在 set_leadscrew_pitch 后 5s 超时
-  // （homing 期间 any_moving=true → status=IN_PROGRESS，wait 不被唤醒）。
+  // bug history: previously axis->startHoming() here triggered W homing ->
+  // during legacy Squid software's init_filter_wheel(W) + sleep(0.5) + configure_squidfilter(W),
+  // octoaxes caused wait_till_operation_is_completed to time out 5s after set_leadscrew_pitch
+  // (during homing any_moving=true -> status=IN_PROGRESS, so wait is not woken).
   //
-  // 修复：no-op + 日志。W 轴已在 axesmrg::beginAll 启动时配置为 filter wheel 模式
-  // (W_AXIS 模板)，chip 在 startup 已初始化。后续 configure_squidfilter 会重写
-  // microstep/current/VMAX/AMAX 等关键寄存器，无需此处重复初始化。
+  // fix: no-op + log. The W axis is already configured in filter-wheel mode at axesmrg::beginAll startup
+  // (W_AXIS template), and the chip is already initialized at startup. A subsequent configure_squidfilter rewrites
+  // key registers such as microstep/current/VMAX/AMAX, so no re-initialization is needed here.
   DEBUG_PRINTLN("INITFILTERWHEEL: no-op (W configured at startup; awaiting HOME_OR_ZERO for actual homing)");
 }
 
 void CommandProcessor::handleInitFilterWheelW2(const byte *data) {
-  // 同 handleInitFilterWheel：旧 Squid callback_initfilterwheel_w2 (commands.cpp:194-198)
-  // 仅 enable_filterwheel_w2=true + chip re-init，不触发 homing。详见 handleInitFilterWheel 注释。
+  // same as handleInitFilterWheel: legacy Squid callback_initfilterwheel_w2 (commands.cpp:194-198)
+  // only enable_filterwheel_w2=true + chip re-init, does not trigger homing. See the handleInitFilterWheel comment.
   DEBUG_PRINTLN("INITFILTERWHEEL_W2: no-op (W2 configured at startup; awaiting HOME_OR_ZERO for actual homing)");
 }
 
 void CommandProcessor::handleInitialize(const byte *data) {
-  // 对齐老 Squid 行为：cmd 254 INITIALIZE = 等价于"断电再上电"。
-  // 老 Squid 在 tmc4361A_tmc2660_init 第一行写 RESET_REG=0x52535400 做 chip 软复位，
-  // 然后重写全部配置。这样上位机重启 GUI（chip 不断电）后 XACTUAL/EVENTS/RAMPMODE
-  // 等残留状态被清掉，cmd 9 SET_LIM 和 cmd 29 HOME 才能从干净状态开始。
+  // matches legacy Squid behavior: cmd 254 INITIALIZE = equivalent to "power-cycle".
+  // legacy Squid writes RESET_REG=0x52535400 on the first line of tmc4361A_tmc2660_init to soft-reset the chip,
+  // then rewrites all configuration. This way, after the host restarts the GUI (chip not power-cycled), residual state such as XACTUAL/EVENTS/RAMPMODE
+  // is cleared, so cmd 9 SET_LIM and cmd 29 HOME can start from a clean state.
   //
-  // Axis::begin() 内 motor_initMotionController 第一行 SW_RESET = 0x52535400 等价。
-  // beginAll 后再调 handleReset 重置 C++ 软件状态机（_currentState/_isMoving 等）。
+  // equivalent to the SW_RESET = 0x52535400 on the first line of motor_initMotionController inside Axis::begin().
+  // after beginAll, handleReset is called to reset the C++ software state machine (_currentState/_isMoving, etc.).
   if (!axisManager.beginAll()) {
     DEBUG_PRINTLN("INITIALIZE: beginAll FAILED");
   }
@@ -568,7 +568,7 @@ void CommandProcessor::handleInitialize(const byte *data) {
     Axis *axis = axisManager.getAxis(i);
     if (axis) axis->handleReset();
   }
-  // DAC + trigger 重置
+  // DAC + trigger reset
   set_DAC8050x_config();
   set_DAC8050x_default_gain();
   trigger_mode = TRIGGER_MODE_NORMAL;
@@ -576,7 +576,7 @@ void CommandProcessor::handleInitialize(const byte *data) {
 }
 
 void CommandProcessor::handleReset(const byte *data) {
-  // 停止所有轴运动，复位触发状态
+  // stop all axis motion, reset the trigger state
   trigger_mode = TRIGGER_MODE_NORMAL;
   uint8_t count = axisManager.getAxisCount();
   for (uint8_t i = 0; i < count; i++) {

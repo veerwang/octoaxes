@@ -34,7 +34,7 @@ from utils.helpers import find_teensy_port  # noqa: E402
 
 
 # ============================================================================
-# 协议层（与 test_homing_with_vstop_latch.py 一致：8 字节命令 + 24 字节响应）
+# protocol layer (consistent with test_homing_with_vstop_latch.py: 8-byte command + 24-byte response)
 # ============================================================================
 
 CMD_MOVE = {"X": 0, "Y": 1, "Z": 2}
@@ -48,23 +48,23 @@ CMD_SET_LEAD_SCREW_PITCH = 23
 CMD_SET_HOME_SAFETY_MERGIN = 28
 RESPONSE_LEN = 24
 
-# SET_LIM 限位码（与固件 commandprocessor.cpp LIM_CODE_* 一致）
+# SET_LIM limit codes (consistent with the firmware commandprocessor.cpp LIM_CODE_*)
 LIM_X_POS, LIM_X_NEG = 0, 1
 LIM_Y_POS, LIM_Y_NEG = 2, 3
 LIM_Z_POS, LIM_Z_NEG = 4, 5
 
-# HOME_OR_ZERO 协议轴（与 firmware AxisProtocolMapping 一致）
+# HOME_OR_ZERO protocol axes (consistent with the firmware AxisProtocolMapping)
 HOME_AXIS = {"X": 0, "Y": 1, "Z": 2}
-# CONFIGURE_STEPPER_DRIVER / SET_LEAD_SCREW_PITCH 也用相同协议轴号
+# CONFIGURE_STEPPER_DRIVER / SET_LEAD_SCREW_PITCH also use the same protocol axis numbers
 AXIS_PROTOCOL = {"X": 0, "Y": 1, "Z": 2}
-HOME_POSITIVE = 0  # data[3]: 0=POSITIVE/FORWARD, 1=NEGATIVE/BACKWARD, 2=ZERO（仅清零不真 home）
+HOME_POSITIVE = 0  # data[3]: 0=POSITIVE/FORWARD, 1=NEGATIVE/BACKWARD, 2=ZERO (only zero, no real home)
 HOME_NEGATIVE = 1
-# 兼容性差异：
-#   - octoaxes firmware: 忽略 data[3]，按 _config.homing_direct 决定方向（X/Y/Z 都是 -1，即朝负方向）
-#   - 老 Squid firmware: 按 data[3] 决定方向，对 X 而言 0=朝+，1=朝-
-# 老 Squid 上位机的算法（microcontroller.py:88）：data[3] = (sign+1)/2
-#   X/Y sign=+1 → BACKWARD(1=朝-)，Z sign=-1 → FORWARD(0=朝+)
-# 与之对齐：本脚本用 movement_sign 派生 home direction，老 Squid firmware 上行为一致
+# compatibility differences:
+# - octoaxes firmware: ignores data[3], decides direction by _config.homing_direct (X/Y/Z are all -1, i.e. toward negative)
+# - legacy Squid firmware: decides direction by data[3]; for X, 0=toward +, 1=toward -
+# the legacy Squid host's algorithm (microcontroller.py:88): data[3] = (sign+1)/2
+# X/Y sign=+1 -> BACKWARD(1=toward -), Z sign=-1 -> FORWARD(0=toward +)
+# aligned with this: this script derives the home direction from movement_sign, so behavior matches on legacy Squid firmware
 
 
 def crc8(data):
@@ -132,9 +132,9 @@ class ResponseReader:
             if nl >= 0:
                 del self.buf[: nl + 1]
                 continue
-            # 不够一帧，等更多数据
+            # not a full frame, wait for more data
             if len(self.buf) > 4 * RESPONSE_LEN:
-                # 防止永久阻塞：丢一字节重新对齐
+                # prevent permanent blocking: drop one byte to re-align
                 del self.buf[0]
                 continue
             break
@@ -161,14 +161,14 @@ def wait_completed(reader, expected_cmd_id, timeout_s=15.0,
     deadline = time.perf_counter() + timeout_s
     last_pos = {"x": None, "y": None, "z": None, "w": None}
     idle_streak = 0
-    saw_in_progress = not expect_motion  # SET_LIM 等瞬时命令直接跳过 IN_PROGRESS 要求
+    saw_in_progress = not expect_motion  # instantaneous commands like SET_LIM skip the IN_PROGRESS requirement
     while time.perf_counter() < deadline:
         for resp in reader.drain():
             if not resp or resp.get("crc_error"):
                 continue
             last_pos = {k: resp[k] for k in "xyzw"}
             if resp["cmd_id"] != expected_cmd_id:
-                continue  # 别的 cmd 的 echo
+                continue  # echo of another cmd
             if resp["status"] == 1:
                 saw_in_progress = True
                 idle_streak = 0
@@ -177,29 +177,29 @@ def wait_completed(reader, expected_cmd_id, timeout_s=15.0,
                     idle_streak += 1
                     if idle_streak >= min_idle_frames:
                         return time.perf_counter(), last_pos
-                # expect_motion 模式下没看到 IN_PROGRESS 的 status=0 视为抖动，不计数
+                # in expect_motion mode, a status=0 without a preceding IN_PROGRESS is treated as jitter and not counted
         time.sleep(0.0005)
     return None, last_pos
 
 
 # ============================================================================
-# 轴参数（与 software/utils/constants.py / firmware/octoaxes/config.h 一致）
+# axis parameters (consistent with software/utils/constants.py / firmware/octoaxes/config.h)
 # ============================================================================
 
 AXIS_PARAMS = OrderedDict(
     [
-        # 与 software/utils/constants.py 的 AXIS_CONFIG 对齐。
-        # movement_sign: 上位机坐标系到 firmware 坐标系的方向映射
-        #   X/Y = +1（一致），Z = -1（GUI 的"上"对应 firmware 的负方向）
-        # MOVE/MOVETO 发给 firmware 前要乘 movement_sign。
-        # test_range_um: 上位机坐标系下的安全测试范围（home 后绝对位置 μm）
-        # 用户指定 2026-05-11：X 10mm-112mm / Y 6mm-76mm / Z 0.1mm-6.5mm
-        # vmax_mm_s / accel_mm_s2: 通过 SET_MAX_VELOCITY_ACCELERATION 强制下发，
-        # 让两个 firmware（octoaxes / 老 Squid）在同一组运动参数下公平对比。
-        # home_pol / home_margin_um: 通过 SET_LIM_SWITCH_POLARITY + SET_HOME_SAFETY_MERGIN
-        # 下发，对齐 configuration_HCS_v2.ini 的 [LIMIT_SWITCH_POLARITY]（X/Y=1, Z=0）。
-        # 老 Squid firmware 默认 polarity=0 (ACTIVE_LOW) 与实际硬件 ACTIVE_HIGH 不符
-        # 时 home limit 永不触发 → homing 卡死。
+        # aligned with the AXIS_CONFIG in software/utils/constants.py.
+        # movement_sign: the direction mapping from the host coordinate system to the firmware coordinate system
+        # X/Y = +1 (same), Z = -1 (the GUI's "up" corresponds to the firmware's negative direction)
+        # multiply MOVE/MOVETO by movement_sign before sending to the firmware.
+        # test_range_um: the safe test range in the host coordinate system (absolute position in um after homing)
+        # user-specified 2026-05-11: X 10mm-112mm / Y 6mm-76mm / Z 0.1mm-6.5mm
+        # vmax_mm_s / accel_mm_s2: forced via SET_MAX_VELOCITY_ACCELERATION,
+        # so both firmwares (octoaxes / legacy Squid) can be fairly compared under the same motion parameters.
+        # home_pol / home_margin_um: via SET_LIM_SWITCH_POLARITY + SET_HOME_SAFETY_MERGIN
+        # sent, aligned with configuration_HCS_v2.ini's [LIMIT_SWITCH_POLARITY] (X/Y=1, Z=0).
+        # legacy Squid firmware defaults to polarity=0 (ACTIVE_LOW), which does not match the actual hardware ACTIVE_HIGH
+        # so the home limit never triggers -> homing hangs.
         ("X", {"pitch_mm": 2.54, "microstepping": 256, "fs_per_rev": 200,
                "current_ma": 1000, "hold_ratio": 0.25,
                "movement_sign": 1,
@@ -220,8 +220,8 @@ AXIS_PARAMS = OrderedDict(
                "test_range_um": (100, 6_500)}),
     ]
 )
-# 测试 alternating +/- 模式下，d 必须 ≤ min(center-low, high-center) - SAFETY_MARGIN_UM
-SAFETY_MARGIN_UM = 1000  # 中心两侧各留 1mm 缓冲
+# in the alternating +/- test mode, d must be <= min(center-low, high-center) - SAFETY_MARGIN_UM
+SAFETY_MARGIN_UM = 1000  # leave a 1mm buffer on each side of the center
 
 
 def usteps_per_um(axis):
@@ -254,7 +254,7 @@ def fits_in_travel(axis, dist_um):
 
 
 # ============================================================================
-# 测试主流程
+# main test flow
 # ============================================================================
 
 DISTANCES_UM = [10, 100, 1000, 5000, 10000, 30000]  # 10μm / 100μm / 1mm / 5mm / 10mm / 30mm
@@ -407,11 +407,11 @@ def configure_actuators(ser, reader, axes, cmd_id):
                                              p["vmax_mm_s"], p["accel_mm_s2"])
         wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
         cmd_id = (cmd_id + 1) % 256
-        # SET_LIM_SWITCH_POLARITY（home switch 极性）
+        # SET_LIM_SWITCH_POLARITY (home switch polarity)
         _send_set_lim_switch_polarity(ser, cmd_id, AXIS_PROTOCOL[axis], p["home_pol"])
         wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
         cmd_id = (cmd_id + 1) % 256
-        # SET_HOME_SAFETY_MERGIN（home 安全余量，μm）
+        # SET_HOME_SAFETY_MERGIN (home safety margin, um)
         _send_set_home_safety_margin(ser, cmd_id, AXIS_PROTOCOL[axis], p["home_margin_um"])
         wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
         cmd_id = (cmd_id + 1) % 256
@@ -445,9 +445,9 @@ def home_all_axes(ser, reader, axes, cmd_id):
         if axis not in HOME_AXIS:
             print(f"  ⚠ 跳过 {axis}（不支持 home）")
             continue
-        # 按 movement_sign 派生 home direction（与老 Squid microcontroller.py:88 一致）：
-        #   sign = +1 → BACKWARD(1=朝-)  /  sign = -1 → FORWARD(0=朝+)
-        # 对 octoaxes firmware 无影响（忽略 data[3]）；对老 Squid firmware 关键
+        # derive the home direction from movement_sign (consistent with legacy Squid microcontroller.py:88):
+        # sign = +1 -> BACKWARD(1=toward -)  /  sign = -1 -> FORWARD(0=toward +)
+        # no effect on octoaxes firmware (ignores data[3]); critical for legacy Squid firmware
         sign = AXIS_PARAMS[axis]["movement_sign"]
         direction = HOME_NEGATIVE if sign == 1 else HOME_POSITIVE
         print(f"  [{axis}] HOME 开始（dir={'-' if direction == HOME_NEGATIVE else '+'}）...", end=" ", flush=True)
@@ -458,8 +458,8 @@ def home_all_axes(ser, reader, axes, cmd_id):
             print(f"\n  ❌ {axis} HOME 超时（>30s），中止")
             raise RuntimeError(f"{axis} HOME timeout")
         dt = (t_end - t0) * 1000
-        # 防御：HOME 完成后状态机还要走 STATE_LEAVING_HOME → STATE_IDLE，
-        # status=0 broadcast 可能在 STATE_LEAVING_HOME 期间也发出（isMoving=false 瞬间）
+        # defensive: after HOME completes the state machine still goes STATE_LEAVING_HOME -> STATE_IDLE,
+        # a status=0 broadcast may also be emitted during STATE_LEAVING_HOME (a moment when isMoving=false)
         time.sleep(0.3)
         axis_key = axis.lower()
         verify_pos = get_current_position(reader, ser, timeout_s=1.0)
@@ -486,7 +486,7 @@ def widen_soft_limits(ser, reader, cmd_id):
         ("Y", LIM_Y_NEG, LIM_Y_POS),
         ("Z", LIM_Z_NEG, LIM_Z_POS),
     ]:
-        wide_usteps = um_to_usteps(axis, 100_000)  # ±100mm 等效微步
+        wide_usteps = um_to_usteps(axis, 100_000)  # ±100mm equivalent microsteps
         for code, val in [(neg_code, -wide_usteps), (pos_code, +wide_usteps)]:
             _send_set_lim(ser, cmd_id, code, val)
             t_end, _ = wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
@@ -508,14 +508,14 @@ def move_to_center(ser, reader, axis, cmd_id, tolerance_um=500):
     if not pos:
         raise RuntimeError("无法读取当前位置")
     axis_key = axis.lower()
-    # firmware 位置 → 用户坐标系
+    # firmware position -> host coordinate system
     current_um = usteps_to_um(axis, pos[axis_key]) * sign
     target_um = axis_center_um(axis)
     if abs(current_um - target_um) <= tolerance_um:
         print(f"  [{axis}] 位置 {current_um:+.1f}μm 接近中心 {target_um:+.1f}μm，跳过 MOVETO")
         return cmd_id
     print(f"  [{axis}] 当前 {current_um:+.1f}μm → MOVETO 中心 {target_um:+.1f}μm")
-    # 用户坐标系 → firmware 坐标系
+    # host coordinate system -> firmware coordinate system
     target_usteps_firmware = um_to_usteps(axis, target_um) * sign
     send_cmd(ser, cmd_id, CMD_MOVETO[axis], target_usteps_firmware)
     t_end, end_pos = wait_completed(reader, cmd_id, timeout_s=30.0)
@@ -548,9 +548,9 @@ def benchmark_axis_distance(ser, reader, axis, dist_um, cmd_id):
 
     for trial in range(TRIALS_PER_DIR):
         for direction in (+1, -1):
-            # direction 是用户坐标系下的方向；乘 sign 转 firmware 坐标系
+            # direction is in the host coordinate system; multiply by sign to convert to the firmware coordinate system
             payload = dist_usteps * direction * sign
-            # 读 start 位置（firmware 坐标系 μstep，CSV 原始记录不转换）
+            # read the start position (firmware coordinate system, ustep; the CSV raw record is not converted)
             start_pos = get_current_position(reader, ser, timeout_s=0.3)
             start_usteps = start_pos[axis_key] if start_pos else 0
 
@@ -576,7 +576,7 @@ def benchmark_axis_distance(ser, reader, axis, dist_um, cmd_id):
             (pos_dt if direction > 0 else neg_dt).append(dt_ms)
             cmd_id = (cmd_id + 1) % 256
 
-    # 汇总
+    # summary
     def stats(lst):
         if not lst:
             return None
@@ -598,7 +598,7 @@ def benchmark_axis_distance(ser, reader, axis, dist_um, cmd_id):
 
 
 # ============================================================================
-# 报告输出
+# report output
 # ============================================================================
 
 
@@ -686,7 +686,7 @@ def get_firmware_commit():
 # ============================================================================
 
 def main():
-    global TRIALS_PER_DIR  # 允许 --trials 覆盖
+    global TRIALS_PER_DIR  # allow --trials to override
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", default=None, help="串口设备（默认自动查找）")
     parser.add_argument("--axes", default="X,Y,Z", help="测哪些轴，逗号分隔（默认 X,Y,Z）")
@@ -718,7 +718,7 @@ def main():
             print(f"❌ 未知轴: {a}")
             return 1
 
-    # 覆盖默认参数
+    # override the default parameters
     TRIALS_PER_DIR = args.trials
     distances = (
         [int(s.strip()) for s in args.distances.split(",") if s.strip()]
@@ -748,21 +748,21 @@ def main():
 
     cmd_id = 1
 
-    # 0a. 配置 actuator（对齐 GUI 启动序列，防止 firmware 残留异常微步配置）
+    # 0a. configure the actuator (aligned with the GUI startup sequence, to prevent leftover abnormal microstep config in firmware)
     cmd_id = configure_actuators(ser, reader, axes, cmd_id)
 
-    # 0b. 放宽 chip 软限位（消除 GUI 残留 SET_LIM 影响）
+    # 0b. loosen the chip soft limits (removing the effect of leftover GUI SET_LIM)
     cmd_id = widen_soft_limits(ser, reader, cmd_id)
 
     # 1. HOME XYZ
     if not args.skip_home:
         cmd_id = home_all_axes(ser, reader, axes, cmd_id)
 
-    # 2. 把各轴 MOVETO 到测试范围中心
+    # 2. MOVETO each axis to the center of the test range
     #
-    # 顺序强制为 Y → X → Z：真机上有上下料装置位于 X 路径上，HOME 完 Y=0 时
-    # X 直接走到 61mm 会撞到装置。必须先把 Y 移出装置遮挡区（41mm 中心），
-    # 然后 X 才能安全移到 61mm。Z 是垂直轴，不在 XY 平面，顺序无影响。
+    # force the order Y -> X -> Z: on the real machine there is a load/unload device on the X path; when HOME finishes with Y=0,
+    # X moving straight to 61mm would hit the device. Y must first move out of the device's blocking zone (41mm center),
+    # then X can safely move to 61mm. Z is the vertical axis, not in the XY plane, so its order does not matter.
     MOVE_TO_CENTER_ORDER = ["Y", "X", "Z"]
     if not args.no_move_to_center:
         print(f"\n[2] 把各轴移动到测试范围中心（顺序 Y → X → Z，避开上下料装置）")
@@ -778,7 +778,7 @@ def main():
         ser.close()
         return 0
 
-    # 步骤 2.5：人工确认 XYZ 是否真的到了中心位置
+    # step 2.5: manually confirm that XYZ actually reached the center position
     if not args.yes:
         print("\n──────────────────────────────────────────────────────────")
         print("⏸  请人工确认各轴是否真到了中心位置：")
@@ -799,7 +799,7 @@ def main():
             return 0
         print("──────────────────────────────────────────────────────────")
 
-    # 3. 逐轴 × 逐档位测试
+    # 3. test axis-by-axis x step-by-step
     print(f"\n[3] 开始测试，距离档位 {[fmt_dist(d) for d in distances]}，每方向 {TRIALS_PER_DIR} trial")
     all_rows = []
     summaries = []
@@ -828,7 +828,7 @@ def main():
                   f"+方向 mean={pos_mean:.1f}ms / −方向 mean={neg_mean:.1f}ms "
                   f"(块耗时 {t_block:.1f}s)")
 
-    # 4. 写报告
+    # 4. write the report
     print(f"\n[4] 写出报告")
     write_csv(csv_path, all_rows)
     meta = {"timestamp": ts, "firmware_commit": get_firmware_commit()}

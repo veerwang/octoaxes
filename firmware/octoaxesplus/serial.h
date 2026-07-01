@@ -7,69 +7,69 @@ class SerialProtocolHandler {
 public:
     SerialProtocolHandler();
     
-    // 初始化串口通信
+    // Initialize serial communication
     void begin(long baudRate = 2000000, uint32_t timeout = 200);
     
-    // 检查是否有新命令并处理
+    // Check for and process a new command
     bool checkForCommand();
     
-    // 获取命令ID
+    // Get the command ID
     byte getCommandId() const { return cmd_id; }
     
-    // 获取命令执行状态
+    // Get the command execution status
     bool isCommandInProgress() const { return mcu_cmd_execution_in_progress; }
     
-    // 获取校验和错误状态
+    // Get the checksum-error status
     bool hasChecksumError() const { return checksum_error; }
     
-    // 获取接收到的命令数据
+    // Get the received command data
     const byte* getCommandData() const { return buffer_rx; }
     
-    // 发送响应消息（24 字节，命令响应用，保持旧 Squid 兼容）
+    // Send a response message (24 bytes, for command responses, keeps legacy Squid compatibility)
     void sendResponse(byte cmd_id, byte status,
                       int32_t x_pos, int32_t y_pos, int32_t z_pos,
                       int32_t w_pos = 0,
                       bool joystick_button_pressed = false);
 
-    // 发送扩展位置广播（40 字节，octoaxesplus 周期性上报用）
-    // positions[] 必须包含 8 个 int32（按 firmware icID 索引）
-    // cmd_id 固定使用 EXTENDED_POS_CMD_ID = 0xFD
+    // Send an extended position broadcast (40 bytes, for octoaxesplus periodic reporting)
+    // positions[] must contain 8 int32 values (indexed by firmware icID)
+    // cmd_id always uses EXTENDED_POS_CMD_ID = 0xFD
     void sendExtendedResponse(byte status, const int32_t positions[8],
                               bool joystick_button_pressed = false);
 
-    // 10ms 周期位置上报（在 loop() 中调用）
+    // 10ms periodic position reporting (called in loop())
     void send_position_update();
     
-    // 发送调试信息
+    // Send debug info
     void sendDebugInfo(const char* format, ...);
     
-    // 设置命令执行完成状态
+    // Set the command-execution-completed status
     void setCommandInProgress(bool in_progress) { 
         mcu_cmd_execution_in_progress = in_progress; 
     }
     
-    // 获取命令长度
+    // Get the command length
     static int getCommandLength() { return CMD_LENGTH; }
 
-    // 获取消息长度
+    // Get the message length
     static int getMessageLength() { return MSG_LENGTH; }
     
-    // 串口调试信息处理函数
+    // Serial debug-info handler
     void processSerialCommands();
     void processSerialDebugCommands();
     void processSerialStandardCommands();
-    // CRC校验函数
+    // CRC checksum function
     uint8_t crc8ccitt(byte *data, uint8_t len);
 
 private:
     static const int CMD_LENGTH = 8;
-    static const int MSG_LENGTH = 24;            // 命令响应包长度（兼容旧 Squid）
-    static const int EXTENDED_MSG_LENGTH = 40;   // 扩展位置广播包长度（octoaxesplus 8 轴）
+    static const int MSG_LENGTH = 24;            // command-response packet length (compatible with legacy Squid)
+    static const int EXTENDED_MSG_LENGTH = 40;   // extended position broadcast packet length (octoaxesplus 8 axes)
 
-    // 协议标识符
+    // Protocol identifiers
     static const byte DEBUG_PROTOCOL_HEADER_1 = 0x55;
     static const byte DEBUG_PROTOCOL_HEADER_2 = 0xAA;
-    static const byte EXTENDED_POS_CMD_ID    = 0xFD;  // 扩展位置广播包 cmd_id
+    static const byte EXTENDED_POS_CMD_ID    = 0xFD;  // extended position broadcast packet cmd_id
     
     byte buffer_rx[512];
     volatile int buffer_rx_ptr;
@@ -77,11 +77,11 @@ private:
     bool mcu_cmd_execution_in_progress;
     bool checksum_error;
     elapsedMicros _us_since_last_pos_update;
-    // 上一次 send_position_update 计算的 any_moving，用于检测下降沿（移动完成边缘）
-    // 下降沿时立即额外发一帧 COMPLETED，省 0-10ms 心跳等待
+    // the any_moving computed by the previous send_position_update, used to detect the falling edge (movement-complete edge)
+    // on the falling edge, immediately send an extra COMPLETED frame, saving the 0-10ms heartbeat wait
     bool _last_any_moving = false;
     
-    // 调试命令缓冲区
+    // Debug-command buffer
     String debugCommandBuffer;
 };
 

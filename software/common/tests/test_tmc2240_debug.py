@@ -83,7 +83,7 @@ def main():
 
     try:
         # ============================================================
-        # 1. 发送 Engine Start，收集启动输出（含 TMC2240 DEBUG）
+        # 1. send Engine Start, collect the startup output (includes TMC2240 DEBUG)
         # ============================================================
         print("\n" + "=" * 60)
         print("  [1] Engine Start - 收集 TMC2240 初始化调试输出")
@@ -91,7 +91,7 @@ def main():
         send_cmd(ser, "S:Engine Start")
         lines = read_all(ser, timeout=5.0)
 
-        # 检查是否有 TMC2240 DEBUG 输出
+        # check whether there is TMC2240 DEBUG output
         debug_lines = [l for l in lines if "TMC2240" in l or "GCONF" in l
                        or "CHOPCONF" in l or "DRVSTATUS" in l or "IOIN" in l
                        or "SPI_OUT_CONF" in l or "SCALE_VALUES" in l
@@ -105,7 +105,7 @@ def main():
             print("  可能原因: W 轴不是 TMC2240 类型, 或 debug 打印被禁用")
 
         # ============================================================
-        # 2. 查询 W 轴当前位置
+        # 2. query the W axis's current position
         # ============================================================
         print("\n" + "=" * 60)
         print("  [2] 查询 W 轴状态")
@@ -115,7 +115,7 @@ def main():
         read_all(ser, timeout=1.0)
 
         # ============================================================
-        # 3. 发送 W 轴相对移动 (MOVE +10000 微步)
+        # 3. send a W-axis relative move (MOVE +10000 microsteps)
         # ============================================================
         print("\n" + "=" * 60)
         print("  [3] W 轴相对移动 +10000 微步")
@@ -126,7 +126,7 @@ def main():
         lines = read_all(ser, timeout=3.0)
 
         # ============================================================
-        # 4. 等待并检查位置变化
+        # 4. wait and check the position change
         # ============================================================
         print("\n" + "=" * 60)
         print("  [4] 检查移动结果")
@@ -136,7 +136,7 @@ def main():
         read_all(ser, timeout=1.0)
 
         # ============================================================
-        # 5. 反向移动回去
+        # 5. move back in reverse
         # ============================================================
         print("\n" + "=" * 60)
         print("  [5] W 轴相对移动 -10000 微步（回位）")

@@ -63,15 +63,15 @@ while time.perf_counter()-t0<30:
     time.sleep(0.25)
 e,x=enc(); print(f"    home 完成: XACTUAL={x} enc={e}")
 
-# 2) 放宽软下限（防 clamp）；上限保留
+# 2) loosen the soft lower limit (prevent clamp); keep the upper limit
 print("[2] 放宽软下限 SET_LIM Z_NEG=-5,000,000")
 setlim(5,-5000000); time.sleep(0.2)
-# 2b) 降速到 2mm/s（撞机械端更轻柔）SET_MAX_VELOCITY_ACCELERATION=22
+# 2b) reduce speed to 2mm/s (gentler when hitting the mechanical end) SET_MAX_VELOCITY_ACCELERATION=22
 vel=200; acc=200  # vel*100=2mm/s, acc*10=20mm/s^2
 cmd(22, b2=2, b3=(vel>>8)&0xFF, b4=vel&0xFF, b5=(acc>>8)&0xFF, b6=acc&0xFF)
 time.sleep(0.2); print("[2b] 搜索降速 2mm/s")
 
-# 3) 步进找上限位
+# 3) step to find the upper limit
 print("\n[3] 往行程方向(负向)步进，0.5mm/步：")
 print(f"{'步':>3} {'XACTUAL':>10} {'enc':>10} {'GUI_um':>9} {'Δenc':>8} {'STOPR':>6}")
 pe,px=enc(); target=px if px is not None else 0

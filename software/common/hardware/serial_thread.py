@@ -22,17 +22,17 @@ class SerialThread(QThread):
     """串口通信线程（支持字符串和二进制命令）"""
 
     data_received = pyqtSignal(str)
-    # 固件 24 字节二进制位置上报包（字节级，不进日志）
+    # firmware 24-byte binary position-report packet (byte-level, not logged)
     binary_response = pyqtSignal(bytes)
     error_occurred = pyqtSignal(str)
     debug_info = pyqtSignal(str)
-    # 添加定时器信号，用于在主线程启动定时器
+    # add a timer signal, used to start the timer on the main thread
     start_timer_signal = pyqtSignal()
 
-    # 固件响应包长度（与固件 MSG_LENGTH 一致）
-    RESPONSE_LENGTH = 24                  # 命令响应 / octoaxes 主线广播长度
-    EXTENDED_RESPONSE_LENGTH = 40         # octoaxesplus 扩展位置广播长度
-    EXTENDED_POS_CMD_ID = 0xFD            # 扩展位置广播 cmd_id 标识
+    # firmware response-packet length (consistent with the firmware MSG_LENGTH)
+    RESPONSE_LENGTH = 24                  # command response / octoaxes mainline broadcast length
+    EXTENDED_RESPONSE_LENGTH = 40         # octoaxesplus extended position broadcast length
+    EXTENDED_POS_CMD_ID = 0xFD            # extended position broadcast cmd_id marker
 
     def __init__(self, port, baudrate=115200):
         super().__init__()
@@ -49,32 +49,32 @@ class SerialThread(QThread):
 
         self.crc_calculator = CrcCalculator(Crc8.CCITT, table_based=True)
 
-        # FIFO命令缓冲区，存储元组 (command_type, command_data)
-        # command_type: 'S' 表示字符串命令，'B' 表示二进制命令
+        # FIFO command buffer, stores tuples (command_type, command_data)
+        # command_type: 'S' means a string command, 'B' means a binary command
         self._command_buffer = deque()
         self._buffer_lock = QMutex()
-        self._buffer_size = 100  # 缓冲区最大容量
+        self._buffer_size = 100  # maximum buffer capacity
 
-        # 发送定时器和间隔
+        # send timer and interval
         self._send_timer = None
-        self._send_interval_ms = 50  # 50ms发送间隔
+        self._send_interval_ms = 50  # 50ms send interval
         self._last_send_time = 0
 
-        # 调试信息
+        # debug info
         self._debug_buffer = []
         self._max_debug_buffer = 100
 
-        # 状态标志
+        # status flags
         self._port_open = False
 
-        # 连接信号，确保定时器在主线程创建和启动
+        # connect the signal to ensure the timer is created and started on the main thread
         self.start_timer_signal.connect(self._init_timer)
 
     def run(self):
         """主运行循环"""
         self._log_debug(f"Starting serial thread for port: {self.port}")
 
-        # 发射信号在主线程创建定时器
+        # emit the signal to create the timer on the main thread
         self.start_timer_signal.emit()
 
         while self.running and self._connection_retries < self._max_retries:
@@ -95,10 +95,10 @@ class SerialThread(QThread):
                     )
                     break
 
-                # 等待后重试
+                # wait and retry
                 time.sleep(2)
 
-        # 停止定时器
+        # stop the timer
         self._stop_timer()
 
     def _init_timer(self):
@@ -124,7 +124,7 @@ class SerialThread(QThread):
                 port=self.port, baudrate=self.baudrate, timeout=0.1, write_timeout=0.5
             )
 
-            # 等待串口稳定
+            # wait for the serial port to stabilize
             time.sleep(0.5)
 
             if self.ser and self.ser.is_open:
@@ -194,7 +194,7 @@ class SerialThread(QThread):
         ERL = self.EXTENDED_RESPONSE_LENGTH
         EXT_CMD = self.EXTENDED_POS_CMD_ID
         while len(buf) > 0:
-            # ── 先尝试匹配 40 字节扩展位置包（首字节 cmd_id=0xFD） ─────────
+            # first try to match the 40-byte extended position packet (first byte cmd_id=0xFD)
             if len(buf) >= ERL and buf[0] == EXT_CMD:
                 candidate = bytes(buf[:ERL])
                 if self._validate_response_crc(candidate):
@@ -202,7 +202,7 @@ class SerialThread(QThread):
                     del buf[:ERL]
                     continue
 
-            # ── 然后尝试匹配 24 字节包 ────────────────────────────────────
+            # then try to match the 24-byte packet
             if len(buf) >= RL:
                 candidate = bytes(buf[:RL])
                 if self._validate_response_crc(candidate):
@@ -210,7 +210,7 @@ class SerialThread(QThread):
                     del buf[:RL]
                     continue
 
-            # ── 尝试匹配 ASCII 文本行（以 \n 结尾）────────────────────────
+            # try to match an ASCII text line (ending with a newline)
             nl = buf.find(b'\n')
             if nl >= 0:
                 line = buf[:nl].decode('utf-8', errors='ignore').strip()
@@ -220,8 +220,8 @@ class SerialThread(QThread):
                     self._log_debug(f"Received: {line}")
                 continue
 
-            # ── 数据不足，等待更多字节 ─────────────────────────────────────
-            # 缓冲区上限：若超过 4×RL 且无法消费，丢弃最旧的一字节（防止永久阻塞）
+            # not enough data, wait for more bytes
+            # buffer cap: if it exceeds 4xRL and cannot be consumed, drop the oldest byte (prevents permanent blocking)
             if len(buf) > 4 * RL:
                 self._log_debug(f"Parse stall, dropping byte: 0x{buf[0]:02x}")
                 del buf[0]
@@ -248,7 +248,7 @@ class SerialThread(QThread):
         try:
             if self.ser and hasattr(self.ser, "in_waiting") and self.ser.is_open:
                 result = self.ser.in_waiting
-                # 确保返回整数
+                # ensure an integer is returned
                 return int(result) if result is not None else 0
             return 0
 
@@ -265,11 +265,11 @@ class SerialThread(QThread):
         self._connection_retries += 1
         self._port_open = False
 
-        # 清空命令缓冲区 - 使用 QMutexLocker
+        # clear the command buffer - using QMutexLocker
         locker = QMutexLocker(self._buffer_lock)
         self._command_buffer.clear()
 
-        # 尝试关闭串口
+        # try to close the serial port
         try:
             if self.ser and hasattr(self.ser, "close"):
                 self.ser.close()
@@ -286,18 +286,18 @@ class SerialThread(QThread):
             self._log_debug(f"Cannot send command, thread not running: {command}")
             return False
 
-        # 检查端口是否打开
+        # check whether the port is open
         if not self._port_open:
             self._log_debug(f"Cannot send command, port not open: {command}")
             return False
 
-        # 尝试直接发送（如果锁可用）
+        # try to send directly (if the lock is available)
         if self._send_lock.tryLock():
             success = self._send_string_command_direct(command)
             self._send_lock.unlock()
             return success
         else:
-            # 锁被占用，将命令放入缓冲区
+            # the lock is held, put the command into the buffer
             return self._buffer_command("S", command)
 
     def send_binary_command(self, binary_data):
@@ -306,18 +306,18 @@ class SerialThread(QThread):
             self._log_debug(f"Cannot send binary command, thread not running")
             return False
 
-        # 检查端口是否打开
+        # check whether the port is open
         if not self._port_open:
             self._log_debug(f"Cannot send binary command, port not open")
             return False
 
-        # 尝试直接发送（如果锁可用）
+        # try to send directly (if the lock is available)
         if self._send_lock.tryLock():
             success = self._send_binary_command_direct(binary_data)
             self._send_lock.unlock()
             return success
         else:
-            # 锁被占用，将命令放入缓冲区
+            # the lock is held, put the command into the buffer
             return self._buffer_command("B", binary_data)
 
     def _send_string_command_direct(self, command):
@@ -331,7 +331,7 @@ class SerialThread(QThread):
                     f"Sending string command #{self._command_count}: {command}"
                 )
 
-                # 添加换行符并编码
+                # append a newline and encode
                 encoded = b"\x55\xaa" + (command + "\n").encode("utf-8")
                 bytes_written = self.ser.write(encoded)
 
@@ -339,7 +339,7 @@ class SerialThread(QThread):
                     success = True
                     self._last_send_time = (
                         time.time() * 1000
-                    )  # 记录最后发送时间（毫秒）
+                    )  # record the last send time (ms)
                     self._log_debug(f"String command sent successfully: {command}")
                 else:
                     self._log_debug(
@@ -360,7 +360,7 @@ class SerialThread(QThread):
             self._log_debug(error_msg)
             self.error_occurred.emit(error_msg)
 
-            # 标记端口关闭
+            # mark the port as closed
             self._port_open = False
             success = False
 
@@ -377,27 +377,27 @@ class SerialThread(QThread):
         self._command_count += 1
         success = False
 
-        # 创建数据副本，避免修改原数组
+        # create a copy of the data to avoid modifying the original array
         data_to_send = bytearray(binary_data)
-        data_to_send[0] = 0x02  # 二进制命令前缀
+        data_to_send[0] = 0x02  # binary-command prefix
         data_to_send[-1] = self.crc_calculator.calculate_checksum(data_to_send[:-1])
 
         try:
             if self.ser and self._port_open:
-                # 记录二进制数据长度（用于调试）
+                # record the binary data length (for debugging)
                 data_length = len(data_to_send)
                 self._log_debug(
                     f"Sending binary command #{self._command_count}, length: {data_length}"
                 )
 
-                # 发送二进制数据副本
+                # send the binary data copy
                 bytes_written = self.ser.write(data_to_send)
 
                 if bytes_written == len(data_to_send):
                     success = True
                     self._last_send_time = (
                         time.time() * 1000
-                    )  # 记录最后发送时间（毫秒）
+                    )  # record the last send time (ms)
                     self._log_debug(
                         f"Binary command sent successfully, length: {data_length}"
                     )
@@ -420,7 +420,7 @@ class SerialThread(QThread):
             self._log_debug(error_msg)
             self.error_occurred.emit(error_msg)
 
-            # 标记端口关闭
+            # mark the port as closed
             self._port_open = False
             success = False
 
@@ -455,23 +455,23 @@ class SerialThread(QThread):
         if not self.running or not self._port_open:
             return
 
-        # 检查发送间隔
-        current_time = time.time() * 1000  # 当前时间（毫秒）
+        # check the send interval
+        current_time = time.time() * 1000  # current time (ms)
         if current_time - self._last_send_time < self._send_interval_ms:
             return
 
-        # 检查缓冲区是否有命令
+        # check whether the buffer has commands
         with_buffer_lock = False
         command_type = None
         command_data = None
 
-        # 使用 tryLock 而不是阻塞锁
+        # use tryLock instead of a blocking lock
         if self._buffer_lock.tryLock():
             try:
                 if not self._command_buffer:
                     return
 
-                # 从缓冲区取出一个命令
+                # take one command out of the buffer
                 command_type, command_data = self._command_buffer.popleft()
                 self._log_debug(f"Processing buffered command, type: {command_type}")
                 with_buffer_lock = True
@@ -480,9 +480,9 @@ class SerialThread(QThread):
         else:
             return
 
-        # 尝试获取发送锁
+        # try to acquire the send lock
         if not self._send_lock.tryLock():
-            # 如果获取发送锁失败，将命令放回缓冲区
+            # if acquiring the send lock fails, put the command back into the buffer
             if command_type is not None and command_data is not None:
                 locker = QMutexLocker(self._buffer_lock)
                 self._command_buffer.appendleft((command_type, command_data))
@@ -492,7 +492,7 @@ class SerialThread(QThread):
             return
 
         try:
-            # 根据命令类型调用不同的发送函数
+            # call different send functions based on the command type
             if command_type == "S":
                 self._send_string_command_direct(command_data)
             elif command_type == "B":
@@ -512,11 +512,11 @@ class SerialThread(QThread):
             timestamp = time.strftime("%H:%M:%S")
             print(f"[{timestamp}] [SerialThread] {message}")
 
-        # 发射调试信号（可选）
+        # emit the debug signal (optional)
         try:
             self.debug_info.emit(message)
         except RuntimeError:
-            # 信号可能在线程关闭时无效
+            # the signal may be invalid when the thread is shutting down
             pass
 
     def stop(self):
@@ -525,17 +525,17 @@ class SerialThread(QThread):
         self.running = False
         self._port_open = False
 
-        # 停止定时器
+        # stop the timer
         self._stop_timer()
 
-        # 清空命令缓冲区 - 使用 QMutexLocker
+        # clear the command buffer - using QMutexLocker
         locker = QMutexLocker(self._buffer_lock)
         self._command_buffer.clear()
 
-        # 等待一小段时间
+        # wait a short while
         time.sleep(0.2)
 
-        # 关闭串口
+        # close the serial port
         try:
             if self.ser and hasattr(self.ser, "close"):
                 self.ser.close()

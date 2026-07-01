@@ -34,7 +34,7 @@ BAUD = 115200
 RX_LEN = 24
 
 # ============================================================================
-# 协议层
+# protocol layer
 # ============================================================================
 
 CMD_MOVE_W = 4
@@ -48,28 +48,28 @@ CMD_ENABLE_STAGE_PID = 26
 CMD_DISABLE_STAGE_PID = 27
 CMD_SET_PID_ARGUMENTS = 29
 
-# W PID 默认参数（与旧 Squid _def.py PID_P_W / PID_I_W / PID_D_W 一致）
-W_PID_P = 8192      # 2026-05-27 P 扫描后选 8192（1024-32768 速度无差异；P=32768 末端异响，8192 实测安静）
+# W PID default parameters (consistent with legacy Squid _def.py PID_P_W / PID_I_W / PID_D_W)
+W_PID_P = 8192      # 2026-05-27 after a P sweep, chose 8192 (no speed difference across 1024-32768; P=32768 has end-of-move noise, 8192 measured quiet)
 W_PID_I = 1
 W_PID_D = 1
-W_ENCODER_TRANSITIONS_PER_REV = 4000   # 与 test_w_round_trip.py 一致
+W_ENCODER_TRANSITIONS_PER_REV = 4000   # consistent with test_w_round_trip.py
 W_ENCODER_FLIP_DIR = False
 
 AXIS_W = 5
 HOME_NEGATIVE = 1
 HOME_OR_ZERO_ZERO = 2
 
-# W 默认参数（与 firmware/octoaxes/config.h W_AXIS 一致）
+# W default parameters (consistent with firmware/octoaxes/config.h W_AXIS)
 W_PITCH_MM = 1.0
-W_MICROSTEPPING = 8    # 2026-05-27 临时回 ms=8 测试听感（搭配 P=8192 看 PID 调参是否能压制噪声）
+W_MICROSTEPPING = 8    # 2026-05-27 temporarily back to ms=8 for a listening test (with P=8192, to see if PID tuning can suppress the noise)
 W_CURRENT_MA = 3100
 W_HOLD_RATIO = 0.5
 W_VMAX_MM_S = 4.2
 W_ACCEL_MM_S2 = 400
 
-# W 量纲（从 W_MICROSTEPPING 派生，跟着 CLI 覆盖一起变）
+# W units (derived from W_MICROSTEPPING, follow CLI overrides)
 W_STEPS_PER_REV = 200 * W_MICROSTEPPING
-W_STEPS_PER_SLOT = W_STEPS_PER_REV // 8                                 # 8 槽位
+W_STEPS_PER_SLOT = W_STEPS_PER_REV // 8                                 # 8 slots
 W_OFFSET_MICROSTEPS = int(round(0.008 * W_STEPS_PER_REV / W_PITCH_MM))  # SQUID_FILTERWHEEL_OFFSET=0.008mm
 
 
@@ -269,14 +269,14 @@ def get_current_w(reader, ser, timeout_s=1.0):
 
 
 # ============================================================================
-# 测试主流程
+# main test flow
 # ============================================================================
 
-# 距离档位以角度定义，跨微步配置直接物理可比
+# distance steps are defined by angle, directly physically comparable across microstep configs
 DISTANCES_ANGLE_DEG = [1.4, 5.6, 22.5, 45.0, 90.0, 135.0, 180.0]
 DISTANCES_USTEPS = [max(1, int(round(deg / 360.0 * W_STEPS_PER_REV))) for deg in DISTANCES_ANGLE_DEG]
 TRIALS_PER_DIR = 10
-DEFAULT_IDLE_FRAMES = 5      # 全局默认；可通过 --idle-frames 覆盖
+DEFAULT_IDLE_FRAMES = 5      # global default; can be overridden via --idle-frames
 _IDLE_FRAMES = DEFAULT_IDLE_FRAMES
 
 
@@ -290,7 +290,7 @@ def configure_w(ser, reader, cmd_id):
     send_init_filter_wheel(ser, cmd_id)
     wait_completed(reader, cmd_id, timeout_s=2.0, expect_motion=False)
     cmd_id = (cmd_id + 1) % 256
-    time.sleep(0.5)  # 旧 Squid cephla.py 在 init_filter_wheel 后等 0.5s
+    time.sleep(0.5)  # legacy Squid cephla.py waits 0.5s after init_filter_wheel
 
     print("[2] 配置 W 轴（set_leadscrew_pitch / configure_motor_driver / set_max_velocity_acceleration）")
     for sender, args in [
@@ -341,7 +341,7 @@ def home_and_offset(ser, reader, cmd_id):
         raise RuntimeError("W offset MOVE 超时")
     print(f"  ✓ Offset 完成, W={w}")
     cmd_id = (cmd_id + 1) % 256
-    time.sleep(0.5)  # 让 chip 静稳
+    time.sleep(0.5)  # let the chip settle
     reader.drain()
     return cmd_id
 
@@ -389,7 +389,7 @@ def benchmark_distance(ser, reader, dist_usteps, cmd_id):
 
 
 # ============================================================================
-# 报告
+# report
 # ============================================================================
 
 
@@ -460,7 +460,7 @@ def write_markdown(path, summaries, meta):
 
 
 # ============================================================================
-# 入口
+# entry point
 # ============================================================================
 
 

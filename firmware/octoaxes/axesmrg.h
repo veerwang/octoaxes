@@ -7,36 +7,36 @@
 
 class AxisManager {
 private:
-  static const uint8_t MAX_AXES = 8;  // 最大支持8个轴
-  Axis* axes[MAX_AXES];              // 轴对象指针数组
-  uint8_t axisCount;                 // 当前轴数量
+  static const uint8_t MAX_AXES = 8;  // supports up to 8 axes
+  Axis* axes[MAX_AXES];              // array of axis object pointers
+  uint8_t axisCount;                 // current number of axes
   
 public:
   AxisManager();
   ~AxisManager();
   
-  // 添加轴到管理器
+  // Add an axis to the manager
   bool addAxis(Axis* axis);
-  
-  // 初始化所有轴
+
+  // Initialize all axes
   bool beginAll();
-  
-  // 更新所有轴状态机
+
+  // Update all axis state machines
   void updateAll();
-  
-  // 处理串口命令
+
+  // Process a serial command
   bool processCommand(const String& command);
-  
-  // 获取轴数量
+
+  // Get the number of axes
   uint8_t getAxisCount() const { return axisCount; }
-  
-  // 根据索引获取轴
+
+  // Get an axis by index
   Axis* getAxis(uint8_t index);
 
-  // 根据轴名称查找轴对象
+  // Find an axis object by name
   Axis* findAxisByName(const String& axisName);
 };
 
-extern AxisManager axisManager;  // 全局轴管理器实例
+extern AxisManager axisManager;  // global axis manager instance
 
 #endif

@@ -48,7 +48,7 @@ def main():
         return 2
 
     try:
-        time.sleep(2.0)  # Teensy USB 枚举
+        time.sleep(2.0)  # Teensy USB enumeration
         ser.reset_input_buffer()
 
         cmd = DEBUG_HEADER + f"S:SET_HOMING_VEL {args.axis} {args.vel:.3f}\n".encode("ascii")
@@ -59,10 +59,10 @@ def main():
         buf = ser.read(ser.in_waiting)
         print(f"收到 {len(buf)} 字节")
 
-        # firmware 响应是 ASCII 行（"S:SET_HOMING_VEL:OK:Y=15.000\n"），
-        # 会混在 10ms 周期的 24 字节二进制位置响应包之间。直接字节子串匹配。
+        # the firmware response is an ASCII line (S:SET_HOMING_VEL:OK:Y=15.000 + newline),
+        # interleaved among the 10ms periodic 24-byte binary position packets. Match directly as a byte substring.
         if b"S:SET_HOMING_VEL:OK" in buf:
-            # 提取并打印 OK 行
+            # extract and print the OK line
             start = buf.find(b"S:SET_HOMING_VEL:OK")
             end = buf.find(b"\n", start)
             ok_line = buf[start:end if end > 0 else start + 60]

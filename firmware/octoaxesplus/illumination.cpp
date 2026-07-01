@@ -4,7 +4,7 @@
 #include <SPI.h>
 
 // =============================================================================
-// 状态变量定义
+// State-variable definitions
 // =============================================================================
 
 int      illumination_source           = 0;
@@ -17,14 +17,14 @@ bool     illumination_is_on = false;
 bool     illumination_port_is_on[IlluminationConfig::NUM_PORTS]     = {false};
 uint16_t illumination_port_intensity[IlluminationConfig::NUM_PORTS] = {0};
 
-// LED 矩阵像素数组（APA102，BGR 顺序）
+// LED matrix pixel array (APA102, BGR order)
 static CRGB led_matrix[IlluminationConfig::NUM_LEDS];
 
-// 矩阵 addLeds 是否已注册（防止重复注册）
+// whether the matrix addLeds has been registered (prevents double registration)
 static bool s_matrix_inited = false;
 
 // =============================================================================
-// 初始化
+// Initialization
 // =============================================================================
 
 void illumination_init_matrix_early()
@@ -32,12 +32,12 @@ void illumination_init_matrix_early()
     if (s_matrix_inited) return;
     s_matrix_inited = true;
 
-    // FastLED addLeds：APA102 + BGR + 1 MHz SPI（与旧 Squid init.cpp:44 一致）
+    // FastLED addLeds: APA102 + BGR + 1 MHz SPI (consistent with legacy Squid init.cpp:44)
     FastLED.addLeds<APA102, Pins::LED_MATRIX_DATA, Pins::LED_MATRIX_CLOCK, BGR, 1>(
         led_matrix, IlluminationConfig::NUM_LEDS);
 
-    // APA102 上电默认输出未定义，许多批次默认全亮。多次推全 0 帧 + 短延迟，
-    // 强制 LED 锁存到关闭状态，对抗上电瞬态。
+    // the APA102 power-on default output is undefined and many batches default to fully lit. Push several all-zero frames + short delays
+    // to force the LEDs to latch into the off state, countering the power-on transient.
     for (int i = 0; i < IlluminationConfig::NUM_LEDS; i++)
         led_matrix[i].setRGB(0, 0, 0);
     for (int k = 0; k < 4; k++) {
@@ -48,46 +48,46 @@ void illumination_init_matrix_early()
 
 void illumination_init()
 {
-    // 安全联锁引脚
+    // safety interlock pin
     pinMode(Pins::ILLUMINATION_INTERLOCK, INPUT_PULLUP);
 
-    // TTL 端口引脚：初始 LOW（关闭）
+    // TTL port pins: initially LOW (off)
     pinMode(Pins::ILLUMINATION_D1, OUTPUT); digitalWrite(Pins::ILLUMINATION_D1, LOW);
     pinMode(Pins::ILLUMINATION_D2, OUTPUT); digitalWrite(Pins::ILLUMINATION_D2, LOW);
     pinMode(Pins::ILLUMINATION_D3, OUTPUT); digitalWrite(Pins::ILLUMINATION_D3, LOW);
     pinMode(Pins::ILLUMINATION_D4, OUTPUT); digitalWrite(Pins::ILLUMINATION_D4, LOW);
     pinMode(Pins::ILLUMINATION_D5, OUTPUT); digitalWrite(Pins::ILLUMINATION_D5, LOW);
-    // squid++ 双相机扩展到 8 路 TTL 端口
+    // squid++ dual-camera extends to 8 TTL ports
     pinMode(Pins::ILLUMINATION_D6, OUTPUT); digitalWrite(Pins::ILLUMINATION_D6, LOW);
     pinMode(Pins::ILLUMINATION_D7, OUTPUT); digitalWrite(Pins::ILLUMINATION_D7, LOW);
     pinMode(Pins::ILLUMINATION_D8, OUTPUT); digitalWrite(Pins::ILLUMINATION_D8, LOW);
 
-    // 通用数字输出引脚：与旧 Squid `init_io()` (init.cpp:74) 行为一致。
-    // 包含激光对焦 AF_LASER（pin 15，旧 Squid `MCU_PINS.AF_LASER`），
-    // 上位机通过 cmd 41 SET_PIN_LEVEL 控制。必须显式 OUTPUT，否则 pin 处于
-    // INPUT 高阻态时控制板内部上拉会让激光默认开启，且 digitalWrite 在
-    // INPUT 模式下不改变实际电平 → 关不掉。
+    // general-purpose digital output pins: behavior consistent with legacy Squid `init_io()` (init.cpp:74).
+    // includes the autofocus laser AF_LASER (pin 15, legacy Squid `MCU_PINS.AF_LASER`),
+    // controlled by the host via cmd 41 SET_PIN_LEVEL. Must be explicitly OUTPUT, otherwise while the pin is in
+    // the INPUT high-impedance state the control board's internal pull-up turns the laser on by default, and digitalWrite in
+    // INPUT mode does not change the actual level -> cannot turn it off.
     static const int kDigitalOutputPins[] = {6, 9, 10, 15};
     for (size_t i = 0; i < sizeof(kDigitalOutputPins)/sizeof(kDigitalOutputPins[0]); i++) {
         pinMode(kDigitalOutputPins[i], OUTPUT);
         digitalWrite(kDigitalOutputPins[i], LOW);
     }
 
-    // LED 驱动 SYNC：2 MHz PWM，50% 占空比
+    // LED driver SYNC: 2 MHz PWM, 50% duty cycle
     pinMode(Pins::LED_DRIVER_SYNC, OUTPUT);
     analogWriteFrequency(Pins::LED_DRIVER_SYNC, 2000000);
     analogWrite(Pins::LED_DRIVER_SYNC, 128);
 
-    // LED 矩阵初始化（幂等：若已在 setup 早期调用过 early 版本则跳过）
+    // LED matrix init (idempotent: skip if the early version was already called earlier in setup)
     illumination_init_matrix_early();
 
-    // DAC 初始化
+    // DAC init
     set_DAC8050x_config();
     set_DAC8050x_default_gain();
-    // ttl_test bring-up 验证：DAC 通道开机零位，避免上电瞬态影响激光板
+    // ttl_test bring-up verification: zero the DAC channels at power-on to avoid the power-on transient affecting the laser board
     dac_zero_all();
 
-    // 状态变量初始化
+    // state-variable init
     illumination_intensity_factor = IlluminationConfig::DEFAULT_INTENSITY_FACTOR;
     illumination_is_on = false;
     for (int i = 0; i < IlluminationConfig::NUM_PORTS; i++) {
@@ -99,7 +99,7 @@ void illumination_init()
 }
 
 // =============================================================================
-// 安全联锁
+// Safety interlock
 // =============================================================================
 
 bool illumination_interlock_ok()
@@ -112,25 +112,25 @@ bool illumination_interlock_ok()
 }
 
 // =============================================================================
-// DAC80508 驱动
+// DAC80508 driver
 // =============================================================================
 
 void set_DAC8050x_gain(uint8_t div, uint8_t gains)
 {
     uint16_t value = (uint16_t(div) << 8) | gains;
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
-    // DAC80508_1 片选走 74HC154 通道 2（Pins::DAC8050x_CS）
+    // the DAC80508_1 chip-select goes through 74HC154 channel 2 (Pins::DAC8050x_CS)
     Pins::hc154_select(Pins::DAC8050x_CS);
     SPI.transfer(IlluminationConfig::DAC_GAIN_ADDR);
     SPI.transfer16(value);
-    // 归零到空闲通道（EXPAND_NSCS1）释放 DAC 片选
+    // return to the idle channel (EXPAND_NSCS1) to release the DAC chip-select
     Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
     SPI.endTransaction();
 }
 
 void set_DAC8050x_default_gain()
 {
-    // ttl_test bring-up 验证：GAIN 写两次中间留 2ms，规避 SPI 首事务偶发被丢
+    // ttl_test bring-up verification: write GAIN twice with a 2ms gap to work around the occasional dropped first SPI transaction
     set_DAC8050x_gain(IlluminationConfig::DAC_DEFAULT_DIV,
                       IlluminationConfig::DAC_DEFAULT_GAINS);
     delay(2);
@@ -147,9 +147,9 @@ void dac_zero_all()
 
 uint16_t read_DAC8050x_reg(uint8_t addr)
 {
-    // DAC80508 两帧读协议（datasheet §9.5.2）：
-    //   帧 1：[R/W=1 | addr] + 16-bit 占位 → 请求读
-    //   帧 2：NOP (0x00 + 16 bit 0) → SDO 输出请求寄存器值
+    // DAC80508 two-frame read protocol (datasheet section 9.5.2):
+    //   frame 1: [R/W=1 | addr] + 16-bit placeholder -> request read
+    //   frame 2: NOP (0x00 + 16 zero bits) -> SDO outputs the requested register value
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
     Pins::hc154_select(Pins::DAC8050x_CS);
     SPI.transfer(0x80 | (addr & 0x0F));
@@ -161,8 +161,8 @@ uint16_t read_DAC8050x_reg(uint8_t addr)
 
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
     Pins::hc154_select(Pins::DAC8050x_CS);
-    SPI.transfer(0x00);                       // NOP 命令字节，丢弃返回的状态字节
-    uint16_t value = SPI.transfer16(0x0000);  // 接收 16-bit 寄存器数据
+    SPI.transfer(0x00);                       // NOP command byte, discard the returned status byte
+    uint16_t value = SPI.transfer16(0x0000);  // receive the 16-bit register data
     Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
     SPI.endTransaction();
 
@@ -171,13 +171,13 @@ uint16_t read_DAC8050x_reg(uint8_t addr)
 
 void illumination_update()
 {
-    // ttl_test bring-up 验证：setup-time SPI 写偶发被丢，进 loop 后再保险同步一次
+    // ttl_test bring-up verification: setup-time SPI writes are occasionally dropped, so sync once more as a safeguard after entering loop
     static bool dac_sync_done = false;
     if (!dac_sync_done) {
         delay(10);
         set_DAC8050x_config();
         delay(2);
-        set_DAC8050x_default_gain();   // 内部已两次写 + delay
+        set_DAC8050x_default_gain();   // GAIN is already written twice + delay internally
         dac_zero_all();
         dac_sync_done = true;
     }
@@ -187,33 +187,33 @@ void set_DAC8050x_config()
 {
     uint16_t value = 0;
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
-    // DAC80508_1 片选走 74HC154 通道 2（Pins::DAC8050x_CS）
+    // the DAC80508_1 chip-select goes through 74HC154 channel 2 (Pins::DAC8050x_CS)
     Pins::hc154_select(Pins::DAC8050x_CS);
     SPI.transfer(IlluminationConfig::DAC_CONFIG_ADDR);
     SPI.transfer16(value);
-    // 归零到空闲通道（EXPAND_NSCS1）释放 DAC 片选
+    // return to the idle channel (EXPAND_NSCS1) to release the DAC chip-select
     Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
     SPI.endTransaction();
 }
 
 void set_DAC8050x_output(int channel, uint16_t value)
 {
-    // 入口校验：DAC80508 仅 8 个 DAC 通道（0-7）。channel 作为寄存器地址偏移
-    // (DAC_DAC_ADDR + channel)，越界会写到 CONFIG/GAIN 等控制寄存器，可能锁死器件。
+    // entry validation: the DAC80508 has only 8 DAC channels (0-7). channel is used as a register address offset
+    // (DAC_DAC_ADDR + channel); out-of-range would write to control registers like CONFIG/GAIN and could lock up the device.
     if (channel < 0 || channel > 7)
         return;
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE2));
-    // DAC80508_1 片选走 74HC154 通道 2（Pins::DAC8050x_CS）
+    // the DAC80508_1 chip-select goes through 74HC154 channel 2 (Pins::DAC8050x_CS)
     Pins::hc154_select(Pins::DAC8050x_CS);
     SPI.transfer(IlluminationConfig::DAC_DAC_ADDR + channel);
     SPI.transfer16(value);
-    // 归零到空闲通道（EXPAND_NSCS1）释放 DAC 片选
+    // return to the idle channel (EXPAND_NSCS1) to release the DAC chip-select
     Pins::hc154_select((uint8_t)Pins::HC154_EXPAND_NSCS1);
     SPI.endTransaction();
 }
 
 // =============================================================================
-// LED 矩阵辅助函数（内部使用）
+// LED matrix helper functions (internal use)
 // =============================================================================
 
 static void led_set_all(uint8_t r, uint8_t g, uint8_t b)
@@ -295,7 +295,7 @@ static void led_set_right_dot(uint8_t r, uint8_t g, uint8_t b)
 }
 
 // =============================================================================
-// LED 矩阵公共函数
+// LED matrix public functions
 // =============================================================================
 
 void clear_matrix()
@@ -305,14 +305,14 @@ void clear_matrix()
     FastLED.show();
 }
 
-// LED 矩阵 R/G 通道字节映射：
-//   默认（无 LED_MATRIX_SWAP_RG 宏）：按字面顺序 (r, g) 调用 led_set_*，
-//   配合 FastLED BGR 模板 + 标准 APA102 灯珠（字节排列 B/G/R）颜色正确。
-//   定义 -D LED_MATRIX_SWAP_RG：r/g 实参对调，兼容旧硬件批次（字节排列
-//   B/R/G）。等价于 2026-05-15 前历史行为，与旧 Squid functions.cpp 一致。
+// LED matrix R/G channel byte mapping:
+// default (no LED_MATRIX_SWAP_RG macro): call led_set_* in literal order (r, g),
+// which, with the FastLED BGR template + standard APA102 LEDs (byte order B/G/R), gives correct colors.
+// with -D LED_MATRIX_SWAP_RG defined: swap the r/g arguments, for compatibility with the old hardware batch (byte order
+// B/R/G). Equivalent to the pre-2026-05-15 historical behavior, consistent with legacy Squid functions.cpp.
 //
-// 历史：旧 Squid + 旧硬件灯珠时代代码用 (g, r) 对调补偿硬件 BRG 排列；
-// 新批次灯珠改回标准 BGR 后，对调反而让用户输入 R/G 颠倒显示。详见 SESSION.md。
+// history: in the legacy Squid + old-hardware-LED era the code used a (g, r) swap to compensate for the hardware BRG order;
+// after the new LED batch reverted to standard BGR, the swap instead made the user's R/G input display reversed. See SESSION.md.
 #ifdef LED_MATRIX_SWAP_RG
   #define LED_RG_ARGS(r_val, g_val) (g_val), (r_val)
 #else
@@ -321,12 +321,12 @@ void clear_matrix()
 
 void turn_on_LED_matrix_pattern(int pattern, uint8_t r, uint8_t g, uint8_t b)
 {
-    // 强度缩放（0-255 → 0-LED_MAX_INTENSITY），注意：APA102 BGR 顺序
+    // intensity scaling (0-255 -> 0-LED_MAX_INTENSITY), note: APA102 BGR order
     uint8_t scaled_g = uint8_t(float(g) / 255.0f * IlluminationConfig::LED_MAX_INTENSITY * IlluminationConfig::GREEN_ADJUSTMENT);
     uint8_t scaled_r = uint8_t(float(r) / 255.0f * IlluminationConfig::LED_MAX_INTENSITY * IlluminationConfig::RED_ADJUSTMENT);
     uint8_t scaled_b = uint8_t(float(b) / 255.0f * IlluminationConfig::LED_MAX_INTENSITY * IlluminationConfig::BLUE_ADJUSTMENT);
 
-    led_set_all(0, 0, 0);  // 先清空
+    led_set_all(0, 0, 0);  // clear first
 
     switch (pattern)
     {
@@ -356,7 +356,7 @@ void turn_on_LED_matrix_pattern(int pattern, uint8_t r, uint8_t g, uint8_t b)
 }
 
 // =============================================================================
-// 端口映射工具
+// Port-mapping helpers
 // =============================================================================
 
 int illumination_source_to_port_index(int source)
@@ -365,8 +365,8 @@ int illumination_source_to_port_index(int source)
     {
         case IlluminationConfig::D1: return 0;  // 11 → 0
         case IlluminationConfig::D2: return 1;  // 12 → 1
-        case IlluminationConfig::D3: return 2;  // 14 → 2（非顺序！）
-        case IlluminationConfig::D4: return 3;  // 13 → 3（非顺序！）
+        case IlluminationConfig::D3: return 2;  // 14 -> 2 (out of order!)
+        case IlluminationConfig::D4: return 3;  // 13 -> 3 (out of order!)
         case IlluminationConfig::D5: return 4;  // 15 → 4
         case IlluminationConfig::D6: return 5;  // 16 → 5（squid++）
         case IlluminationConfig::D7: return 6;  // 17 → 6（squid++）
@@ -393,21 +393,21 @@ int port_index_to_pin(int port_index)
 
 int port_index_to_dac_channel(int port_index)
 {
-    // squid++ DAC80508_1 有 8 通道 (0-7)，对应 D1-D8
+    // the squid++ DAC80508_1 has 8 channels (0-7), corresponding to D1-D8
     if (port_index >= 0 && port_index < 8)
         return port_index;
     return -1;
 }
 
 // =============================================================================
-// 旧版照明 API
+// Legacy illumination API
 // =============================================================================
 
 void turn_on_illumination()
 {
     illumination_is_on = true;
 
-    // 同步多端口状态（向后兼容）
+    // sync the multi-port state (backward compatible)
     int port_index = illumination_source_to_port_index(illumination_source);
     if (port_index >= 0)
         illumination_port_is_on[port_index] = true;
@@ -466,7 +466,7 @@ void turn_on_illumination()
 
 void turn_off_illumination()
 {
-    // 同步多端口状态（向后兼容）
+    // sync the multi-port state (backward compatible)
     int port_index = illumination_source_to_port_index(illumination_source);
     if (port_index >= 0)
         illumination_port_is_on[port_index] = false;
@@ -504,12 +504,12 @@ void set_illumination(int source, uint16_t intensity)
     illumination_source    = source;
     illumination_intensity = uint16_t(intensity * illumination_intensity_factor);
 
-    // 同步多端口强度（向后兼容）
+    // sync the multi-port intensity (backward compatible)
     int port_index = illumination_source_to_port_index(source);
     if (port_index >= 0)
         illumination_port_intensity[port_index] = intensity;
 
-    // 写 DAC
+    // write the DAC
     switch (source)
     {
         case IlluminationConfig::D1: set_DAC8050x_output(0, illumination_intensity); break;
@@ -523,26 +523,26 @@ void set_illumination(int source, uint16_t intensity)
         default: break;
     }
 
-    // 若已开灯，立即更新输出
+    // if the light is already on, update the output immediately
     if (illumination_is_on)
         turn_on_illumination();
 }
 
 void set_illumination_led_matrix(int source, uint8_t r, uint8_t g, uint8_t b)
 {
-    // 与旧 Squid functions.cpp:359-368 一致：仅缓存参数，不立即点亮、不动
-    // illumination_is_on。上位机启动时常用此命令"预设"明场颜色/pattern，
-    // 立即点亮会导致后续切到 D 通道时矩阵仍亮（双开）。
+    // consistent with legacy Squid functions.cpp:359-368: only cache the parameters, do not light immediately, do not touch
+    // illumination_is_on. The host often uses this command at startup to "preset" the brightfield color/pattern,
+    // lighting immediately would leave the matrix lit when later switching to a D channel (both on).
     illumination_source = source;
     led_matrix_r = r;
     led_matrix_g = g;
     led_matrix_b = b;
     if (illumination_is_on)
-        turn_on_illumination();  // 当前已开灯时才把内容刷到当前 source
+        turn_on_illumination();  // only flush the content to the current source when the light is currently on
 }
 
 // =============================================================================
-// 新版多端口 API
+// New multi-port API
 // =============================================================================
 
 void turn_on_port(int port_index)
@@ -575,7 +575,7 @@ void set_port_intensity(int port_index, uint16_t intensity)
     if (dac_ch < 0) return;
     uint16_t scaled = uint16_t(intensity * illumination_intensity_factor);
     set_DAC8050x_output(dac_ch, scaled);
-    illumination_port_intensity[port_index] = intensity;  // 存原始值
+    illumination_port_intensity[port_index] = intensity;  // store the raw value
 }
 
 void turn_off_all_ports()
@@ -592,7 +592,7 @@ void turn_off_all_ports()
 }
 
 // =============================================================================
-// 串口看门狗
+// Serial watchdog
 // =============================================================================
 
 uint32_t last_serial_message_time = 0;
@@ -620,6 +620,6 @@ void watchdog_check()
 {
     if (watchdog_enabled && (millis() - last_serial_message_time >= watchdog_timeout_ms)) {
         turn_off_all_ports();
-        watchdog_enabled = false;  // 单次触发，不重复
+        watchdog_enabled = false;  // single-shot, do not repeat
     }
 }

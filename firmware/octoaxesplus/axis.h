@@ -4,16 +4,16 @@
 #include "tmc/motion/MotorControl.h"
 #include <SPI.h>
 
-// 限位开关和方向常量
+// Limit switch and direction constants
 #define LEFT_SW 0b01
 #define RGHT_SW 0b10
 #define LEFT_DIR -1
 #define RGHT_DIR 1
-#define OBSW_SW 0b01 // 用于 Objectives 类
+#define OBSW_SW 0b01 // used by the Objectives class
 
-// 驱动芯片类型: DRIVER_TMC2660 / DRIVER_TMC2240 (定义在 MotorControl.h)
+// Driver chip type: DRIVER_TMC2660 / DRIVER_TMC2240 (defined in MotorControl.h)
 
-// 状态定义 - 使用更明确的状态命名
+// State definitions - using more explicit state names
 enum AxisState {
   STATE_IDLE,
   STATE_HOMING_INIT,
@@ -27,17 +27,18 @@ enum AxisState {
 class Axis {
 
 public:
-  // 配置参数
+  // Configuration parameters
   struct AxisConfig {
     uint32_t clockFrequency;
     uint8_t homingSwitch;
     uint8_t leftSwitchPolarity;
     uint8_t rightSwitchPolarity;
-    // 主机 cmd 20 (SET_LIM_SWITCH_POLARITY) 是否允许把极性写进芯片 REFERENCE_CONF。
-    // 仅 Z=true（极性随新旧 Z 变体变、需软件运行时下发）；X/Y 等固定硬件极性轴=false：
-    // cmd 20 只改结构体不碰芯片，与旧 Squid 固件行为一致（旧 Squid cmd 20 也只设软件变量、
-    // 从不写芯片），避免旧 Squid 下发的 X/Y 极性(active-high)误翻 octoaxes 硬件(active-low)。
-    bool polarityAffectsChip = false;   // 默认 false（省略此字段的轴=不写芯片）；仅 Z_AXIS 显式置 true
+    // Whether the host cmd 20 (SET_LIM_SWITCH_POLARITY) is allowed to write the polarity into the chip REFERENCE_CONF.
+    // Only Z=true (polarity changes with the old/new Z variant and must be sent by software at runtime); axes with
+    // fixed hardware polarity such as X/Y=false: cmd 20 only updates the struct and does not touch the chip, matching
+    // the legacy Squid firmware behavior (legacy Squid cmd 20 also only sets a software variable and never writes the
+    // chip), which avoids the X/Y polarity (active-high) sent by legacy Squid wrongly flipping the octoaxes hardware (active-low).
+    bool polarityAffectsChip = false;   // default false (axes that omit this field = do not write the chip); only Z_AXIS sets it true explicitly
     uint8_t leftIsInactive;
     uint8_t rightIsInactive;
     bool leftFlipped;
@@ -48,138 +49,140 @@ public:
     float screwPitchMM;
     int fullStepsPerRev;
     int microstepping;
-    int homingMicrostepping;     // homing 时使用的细分，默认 256
+    int homingMicrostepping;     // microstepping used during homing, default 256
     float maxVelocityMM;
     float maxAccelerationMM;
     float homingVelocityMM;
-    float motorCurrentMA;           // 峰值电流 (mA), I_rms = I_peak / √2
+    float motorCurrentMA;           // peak current (mA), I_rms = I_peak / √2
     float holdCurrent;
     float homeSafetyMarginMM;
     float homeSafetyPositionMM;
     bool enableStallSensitivity;
     int stallSensitivity;
-    bool useSShapedRamp;         // true=S形斜坡, false=梯形斜坡
-    float astartMM;              // 起始加速度 (mm/s²), 0=不使用
-    float dfinalMM;              // 终止减速度 (mm/s²), 0=同 astart
+    bool useSShapedRamp;         // true=S-shaped ramp, false=trapezoidal ramp
+    float astartMM;              // start acceleration (mm/s²), 0=unused
+    float dfinalMM;              // final deceleration (mm/s²), 0=same as astart
     uint32_t homing_timeout_ms;
     int8_t homing_direct;
-    uint8_t driverType;          // 驱动芯片型号，默认 DRIVER_TMC2660
-    uint8_t currentRange;        // TMC2240 CURRENT_RANGE: 0=1A, 1=2A, 2=3A (TMC2660 时忽略)
-    bool enableEncoder;          // 是否启用 ABN 编码器，默认 false
-    uint16_t encoderLinesPerRev; // 编码器线数 (每转), 如 4000。直接作为 transitions 使用
-    bool invertEncoderDir;       // 反转编码器计数方向，默认 false
-    bool invert_direction;       // 2026-05-25 硬件方向反相：true 时所有 MOVE/HOMING 命令在
-                                 // firmware 层反 payload，让镜像装配的硬件（home 标志位与
-                                 // 旧 Squid 设计相反）能用相同的上位机命令到达正确物理位置。
-                                 // moveTo/moveRelative 反 target/delta；
-                                 // getCurrentPositionMicrosteps 反 chip XACTUAL；
-                                 // filterwheel.cpp homing search 反速度方向。
-                                 // 默认 false（与旧 Squid 行为完全一致）。
+    uint8_t driverType;          // driver chip model, default DRIVER_TMC2660
+    uint8_t currentRange;        // TMC2240 CURRENT_RANGE: 0=1A, 1=2A, 2=3A (ignored for TMC2660)
+    bool enableEncoder;          // whether to enable the ABN encoder, default false
+    uint16_t encoderLinesPerRev; // encoder lines (per revolution), e.g. 4000. Used directly as transitions
+    bool invertEncoderDir;       // reverse the encoder counting direction, default false
+    bool invert_direction;       // 2026-05-25 hardware direction inversion: when true, all MOVE/HOMING commands
+                                 // invert their payload at the firmware level, so mirror-assembled hardware (whose
+                                 // home flag bit is opposite to the legacy Squid design) reaches the correct physical
+                                 // position using the same host commands.
+                                 // moveTo/moveRelative invert target/delta;
+                                 // getCurrentPositionMicrosteps inverts the chip XACTUAL;
+                                 // filterwheel.cpp homing search inverts the velocity direction.
+                                 // default false (fully consistent with legacy Squid behavior).
   };
 
 protected:
-  // 保护成员变量，派生类可以访问
+  // Protected member variables, accessible to derived classes
   uint8_t _csPin;
   uint8_t _axisIndex;
   const char *_axisName;
 
-  // IC 标识符
+  // IC identifier
   uint8_t _icID;
 
-  // 运动参数
+  // Motion parameters
   uint32_t _maxVelocityMicrosteps;
   uint32_t _maxAccelerationMicrosteps;
 
-  // 新增：状态变化检测
-  AxisState _lastReportedState;       // 上次上报的状态
-  bool _stateChanged;                 // 状态是否发生变化标志
-  unsigned long _lastStateReportTime; // 上次状态上报时间
+  // Added: state-change detection
+  AxisState _lastReportedState;       // last reported state
+  bool _stateChanged;                 // flag for whether the state changed
+  unsigned long _lastStateReportTime; // time of the last state report
 
-  // 状态变量
+  // State variables
   AxisState _currentState;
   AxisState _previousState;
   unsigned long _stateStartTime;
   bool _homeFound;
 
-  // 新增：移动状态标志
+  // Added: movement state flags
   bool _isMoving;
   int32_t _moveDirection;
-  unsigned long _cmdRecvMicros;   // 命令接收时间 (micros)
-  unsigned long _moveStartMicros; // 移动开始时间 (micros)
+  unsigned long _cmdRecvMicros;   // command-received time (micros)
+  unsigned long _moveStartMicros; // movement-start time (micros)
 
-  // 新增：轴使能状态
+  // Added: axis enable state
   bool _isEnabled;
 
-  // 软限位状态追踪（homing 后自动恢复用）
+  // Soft-limit state tracking (for automatic restore after homing)
   bool _softLimitsEnabled;
 
-  // 软限位方向感知闸门的 shadow state：
-  // SET_LIM 单边设置后记录上位机意图，与 chip 寄存器解耦。
-  // 即使 motor_moveToMicrosteps recovery 临时清掉 chip 上的 EN 位，
-  // 这里仍保留「该侧是否被设置过」的语义，用于 isMoveAllowedByDirection()。
+  // Shadow state for the direction-aware soft-limit gate:
+  // After a one-sided SET_LIM, record the host's intent, decoupled from the chip registers.
+  // Even if motor_moveToMicrosteps recovery temporarily clears the chip's EN bit,
+  // this still preserves the "was this side ever set" semantics, used by isMoveAllowedByDirection().
   struct SoftLimitShadow {
-    bool leftEnabled;        // X-/Y-/Z- 是否被 SET_LIM 设置过
-    bool rightEnabled;       // X+/Y+/Z+ 是否被 SET_LIM 设置过
-    int32_t leftValue;       // VIRT_STOP_LEFT 的最新设置值（微步）
-    int32_t rightValue;      // VIRT_STOP_RIGHT 的最新设置值（微步）
+    bool leftEnabled;        // whether X-/Y-/Z- was set by SET_LIM
+    bool rightEnabled;       // whether X+/Y+/Z+ was set by SET_LIM
+    int32_t leftValue;       // latest set value of VIRT_STOP_LEFT (microsteps)
+    int32_t rightValue;      // latest set value of VIRT_STOP_RIGHT (microsteps)
   };
   SoftLimitShadow _softLimits = {false, false, INT32_MIN, INT32_MAX};
 
-  // 虚拟限位 recovery 后延迟恢复标志
-  // motor_moveToMicrosteps() 在 VSTOP 恢复时禁用限位，
-  // 需等电机离开边界后（STATUS 中 VSTOP flags 清除）才能重新使能
+  // Flag for delayed re-enable after virtual-limit recovery
+  // motor_moveToMicrosteps() disables limits during VSTOP recovery,
+  // so they can only be re-enabled after the motor leaves the boundary (VSTOP flags cleared in STATUS)
   bool _needReenableLimits;
 
-  // PID 状态（每轴独立）
+  // PID state (independent per axis)
   struct PIDState {
-    bool enabled;         // PID 当前是否活跃
-    uint16_t p;           // 缓存的 P 参数
-    uint8_t  i;           // 缓存的 I 参数
-    uint8_t  d;           // 缓存的 D 参数
+    bool enabled;         // whether PID is currently active
+    uint16_t p;           // cached P parameter
+    uint8_t  i;           // cached I parameter
+    uint8_t  d;           // cached D parameter
   } _pidState = {false, 0, 0, 0};
 
   AxisConfig _config;
 
-  // 超时设置
+  // Timeout settings
   static const unsigned long LEAVING_HOME_TIMEOUT_MS = 5000;
   static const unsigned long MOVEMENT_TIMEOUT_MS = 5000;
 
   elapsedMicros _checkHomeReachTimeout;
 
-  // STATE_MOVING checkLimitPosition 节流（对齐旧 Squid check_limits 10ms 节流，
-  // 减少 SPI bus 抢占；hard limit 完成判定容忍 0-10ms 延迟，chip 内部已物理停止）
+  // Throttle for STATE_MOVING checkLimitPosition (matches legacy Squid check_limits 10ms throttle,
+  // reduces SPI bus contention; the hard-limit completion check tolerates a 0-10ms delay since the
+  // chip has already physically stopped internally)
   // (#5, 2026-05-19)
   elapsedMicros _limitCheckThrottle;
 
   uint32_t _homing_timeout_ms;
 
 public:
-  // 构造函数
+  // Constructor
   Axis(uint8_t csPin, uint8_t axisIndex, const char *axisName);
 
-  // 虚析构函数
+  // Virtual destructor
   virtual ~Axis() = default;
 
-  // 初始化函数
+  // Initialization function
   virtual bool begin(const AxisConfig &config);
 
-  // 状态机更新 - 声明为虚函数以便派生类重写
+  // State-machine update - declared virtual so derived classes can override
   virtual void update();
 
-  // 极限位置检查
+  // Limit-position check
   virtual void checkLimitPosition();
 
-  // 新增：中断服务函数中调用的移动状态检测
+  // Added: movement-complete detection called inside the ISR
   virtual void checkMovementComplete();
 
-  // 命令处理 - 返回处理结果
+  // Command processing - returns the result
   virtual bool processCommand(const String &command);
 
-  // 新增：状态上报控制
+  // Added: state-report control
   virtual void reportStateIfChanged(bool force = false);
   virtual void setStateChangeFlag() { _stateChanged = true; }
 
-  // 运动控制
+  // Motion control
   virtual bool moveToPosition(float positionMM);
   virtual bool moveRelative(float distanceMM);
   virtual bool moveToPositionMicrosteps(int32_t targetMicrosteps);
@@ -190,7 +193,7 @@ public:
   void disableAxis();
   void enableAxis();
 
-  // 位置控制
+  // Position control
   virtual void setCurrentPosition(float positionMM);
   virtual float getCurrentPositionMM() const;
   virtual int32_t getCurrentPosition() const;
@@ -199,77 +202,77 @@ public:
   virtual void setMotionParameters(float maxVelocityMM,
                                    float maxAccelerationMM);
 
-  // 归位控制
+  // Homing control
   virtual bool startHoming();
   virtual bool handleReset();
   virtual bool handleDebugReg();
   virtual bool isHomingInProgress() const;
   virtual bool isMovementComplete() const;
 
-  // 新增：移动状态查询
+  // Added: movement-state query
   virtual bool isMoving() const { return _isMoving; }
 
-  // 新增：使能状态查询
+  // Added: enable-state query
   virtual bool isEnabled() const { return _isEnabled; }
 
-  // 软限位状态查询
+  // Soft-limit state query
   bool isSoftLimitsEnabled() const { return _softLimitsEnabled; }
 
-  // 限位设置
+  // Limit configuration
   virtual void setSoftLimits(float lowerLimitMM, float upperLimitMM);
   virtual void enableSoftLimits(bool enable);
   void setOneSoftLimit(int direction, int32_t valueMicrosteps);
 
-  // 方向感知 clamp：把 target 截到「朝更安全方向移动」原则允许的范围
-  // 当前位置 C、target T、_softLimits 中 leftValue=L / rightValue=R：
-  //   effective_lower = (C ≤ L) ? C : L  // 越下限时禁止再下；安全区时下界=L
-  //   effective_upper = (C ≥ R) ? C : R  // 对称
-  //   返回 clamp(T, effective_lower, effective_upper)
-  // 未启用的那一侧不参与限制。截到边界后让电机停在边界，与旧 Squid 兼容
-  // （旧 Squid 在固件 callback_move_x/y/z 里也做 min/max clamp）
+  // Direction-aware clamp: clamp the target to the range allowed by the "move toward the safer direction" principle
+  // With current position C, target T, and _softLimits leftValue=L / rightValue=R:
+  //   effective_lower = (C ≤ L) ? C : L  // when past the lower limit, forbid going further down; in the safe zone, lower bound = L
+  //   effective_upper = (C ≥ R) ? C : R  // symmetric
+  //   returns clamp(T, effective_lower, effective_upper)
+  // The side that is not enabled does not participate in clamping. After clamping to the boundary the motor stops at
+  // the boundary, compatible with legacy Squid (legacy Squid also does min/max clamp in firmware callback_move_x/y/z)
   int32_t clampTargetByDirection(int32_t targetMicrosteps) const;
 
-  // PID 控制
+  // PID control
   void configureStagePID(bool flip_direction, uint16_t transitions_per_rev);
   void enableStagePID();
   void disableStagePID();
   void setPIDArguments(uint16_t p, uint8_t i, uint8_t d);
   bool isPIDEnabled() const { return _pidState.enabled; }
 
-  // 运行时配置更新
+  // Runtime configuration updates
   void setLeadScrewPitch(float pitchMM);
   void configureDriver(uint16_t microstepping, float currentMA,
                         float holdCurrentRatio);
   void setHomeSafetyMargin(float marginMM);
-  // 运行时把 _config 里的限位极性/翻转/使能/homingSwitch 重新写进芯片 REFERENCE_CONF。
-  // begin() 只在开机配置一次，cmd 20 (SET_LIM_SWITCH_POLARITY) 改完结构体后须调本方法才真正生效。
+  // Re-write the limit polarity/flip/enable/homingSwitch from _config into the chip REFERENCE_CONF at runtime.
+  // begin() only configures once at boot; after cmd 20 (SET_LIM_SWITCH_POLARITY) updates the struct, this method must be called for it to actually take effect.
   void reapplyLimitSwitches();
 
-  // 配置访问
+  // Configuration access
   uint8_t getIcID() const { return _icID; }
   const AxisConfig &getConfig() const { return _config; }
   AxisConfig &getMutableConfig() { return _config; }
 
-  // 状态查询
+  // State query
   virtual AxisState getCurrentState() const;
   virtual const char *getAxisName() const;
   uint8_t getDriverType() const { return _config.driverType; }
   virtual bool isInErrorState() const;
   virtual uint32_t readAxisEvent() const;
 
-  // 限位开关状态
+  // Limit-switch state
   virtual uint8_t readLimitSwitches() const;
   virtual uint8_t readSwitchEvent() const;
 
-  // 移动轴的接口
+  // Axis-move interface
   bool moveAxis(int32_t value);
 
 protected:
-  // 保护成员方法，派生类可以访问
+  // Protected member methods, accessible to derived classes
   virtual void performHomingSequence() = 0;
   virtual void performLeavingHome() = 0;
 
-  // Homing 细分切换
+  // Homing microstepping switch
   void switchToHomingMicrosteps();
   void restoreNormalMicrosteps();
 
@@ -278,7 +281,7 @@ protected:
   virtual bool checkTimeout(unsigned long timeoutMs) const;
   virtual int32_t hexStringToInt32(String hex);
 
-  // 命令处理辅助方法
+  // Command-handling helper methods
   virtual bool handleGetPosition();
   virtual bool handleSetLimits(const String &command) = 0;
   virtual bool handleMoveAxis(const String &command);
@@ -288,17 +291,17 @@ protected:
   virtual bool handleEmergency();
   virtual bool handleAxisAbilityToggle(bool);
 
-  // 单位转换
+  // Unit conversion
   virtual int32_t mmToMicrosteps(float mm) const;
   virtual float microstepsToMM(int32_t microsteps) const;
   virtual uint32_t velocityMMToMicrosteps(float velocityMM) const;
   virtual uint32_t accelerationMMToMicrosteps(float accelerationMM) const;
 
-  // 运动检查
+  // Motion checks
   virtual bool isValidPosition(float positionMM) const;
   virtual bool isWithinSoftLimits(int32_t microsteps) const;
 
-  // 新增：移动状态管理
+  // Added: movement-state management
   virtual void startMovement();
   virtual void completeMovement();
 };

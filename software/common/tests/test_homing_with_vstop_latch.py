@@ -111,7 +111,7 @@ def wait_for_cmd_complete(ser, expected_cmd_id, timeout=10.0):
             if resp["cmd_id"] == expected_cmd_id and resp["status"] == 0:
                 print(f"  ✓ cmd_id={expected_cmd_id} COMPLETED at pos=X{resp['x']} Y{resp['y']} Z{resp['z']}")
                 return True
-        # 节流打印进度
+        # throttle the progress printing
         now = time.time()
         if now - last_print > 1.0 and last_pos:
             elapsed = now - (deadline - timeout)
@@ -133,10 +133,10 @@ def main():
 
     cmd_id = 1
 
-    # ----- 1. 配置 X/Y/Z 螺距与 microstepping（与旧 Squid 一致 16 microstepping）-----
+    # ----- 1. configure X/Y/Z pitch and microstepping (consistent with legacy Squid, 16 microstepping) -----
     print("\n[1] SET_LEAD_SCREW_PITCH (X=2.54, Y=2.54, Z=0.3)")
     for axis_idx, pitch_mm in [(0, 2.54), (1, 2.54), (2, 0.3)]:
-        pitch_int = int(pitch_mm * 1000)  # mm 单位 *1000 转整数
+        pitch_int = int(pitch_mm * 1000)  # mm unit *1000 to integer
         b = bytearray(6)
         b[0] = CMD_SET.SET_LEAD_SCREW_PITCH
         b[1] = axis_idx
@@ -152,7 +152,7 @@ def main():
         b = bytearray(6)
         b[0] = CMD_SET.CONFIGURE_STEPPER_DRIVER
         b[1] = axis_idx
-        # microstepping 是 0-8 的指数（1=2,...,8=256），16=4
+        # microstepping is an exponent 0-8 (1=2,...,8=256), 16=4
         b[2] = 4  # 2^4 = 16
         b[3] = (current_ma >> 8) & 0xFF
         b[4] = current_ma & 0xFF
@@ -162,16 +162,16 @@ def main():
             return 1
         cmd_id = (cmd_id + 1) % 256
 
-    # ----- 3. 读当前 X 位置（确认是否为 0）-----
+    # ----- 3. read the current X position (confirm it is 0) -----
     print("\n[3] 读取启动后 X 位置")
     for resp in read_response(ser, timeout=1.0):
         if resp and "x" in resp:
             print(f"  当前 XACTUAL = {resp['x']} (期望 0)")
             break
 
-    # ----- 4. SET_LIM 设置 X_NEG_LIMIT = 5mm = 6299 微步（让 X=0 越界） -----
-    # 微步换算：1mm = 200 * 16 / 2.54 = 1259.84 微步
-    # 5mm = 6299 微步
+    # ----- 4. SET_LIM set X_NEG_LIMIT = 5mm = 6299 microsteps (making X=0 out of bounds) -----
+    # microstep conversion: 1mm = 200 * 16 / 2.54 = 1259.84 microsteps
+    # 5mm = 6299 microsteps
     print("\n[4] SET_LIM X_NEG_LIMIT = 5mm = 6299 微步（让 X=0 立即触发 VSTOPL）")
     b = bytearray(6)
     b[0] = CMD_SET.SET_LIM
@@ -187,15 +187,15 @@ def main():
         return 1
     cmd_id = (cmd_id + 1) % 256
 
-    # ----- 5. 发 HOME_OR_ZERO X，看是否能完成 -----
+    # ----- 5. send HOME_OR_ZERO X and see whether it completes -----
     print("\n[5] HOME_OR_ZERO X (期望：解锁 hard-stop latch 后 X 真正开始移动 home)")
     b = bytearray(6)
     b[0] = CMD_SET.HOME_OR_ZERO
     b[1] = AXIS.X  # 0
-    b[2] = 0  # HOME_POSITIVE (方向由固件决定)
+    b[2] = 0  # HOME_POSITIVE (direction decided by the firmware)
     send_cmd(ser, cmd_id, b)
 
-    # 这里用更长 timeout，X home 实际可能需要 3-10 秒
+    # use a longer timeout here; X home may actually take 3-10 seconds
     print("  监听 X 位置变化（关键判据：X 必须开始变化才说明 hard-stop 解锁了）")
     if wait_for_cmd_complete(ser, cmd_id, timeout=15.0):
         print("\n✓ X home 完成 — hard-stop latch 解锁成功")

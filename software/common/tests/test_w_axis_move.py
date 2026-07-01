@@ -13,10 +13,10 @@ import struct
 import serial
 import serial.tools.list_ports
 
-# 滤光轮配置
-FILTERWHEEL_HOLE_DISTANCE_MM = 12.5  # 每个孔位的距离 (mm)
+# filter-wheel config
+FILTERWHEEL_HOLE_DISTANCE_MM = 12.5  # distance of each slot (mm)
 
-# 串口配置
+# serial-port config
 BAUDRATE = 115200
 TIMEOUT = 0.1
 
@@ -153,12 +153,12 @@ class WAxisMoveTest:
 
     def int_to_hex(self, value):
         """将有符号整数转换为十六进制字符串（大端序）"""
-        packed = struct.pack("!i", value)  # 大端序有符号 32 位整数
+        packed = struct.pack("!i", value)  # big-endian signed 32-bit integer
         return packed.hex()
 
     def move_forward_one_hole(self):
         """向前移动一个孔位（正方向）"""
-        distance_um = int(FILTERWHEEL_HOLE_DISTANCE_MM * 1000)  # 转换为微米
+        distance_um = int(FILTERWHEEL_HOLE_DISTANCE_MM * 1000)  # convert to micrometers
         hex_value = self.int_to_hex(distance_um)
         self.send_command(f"W:MOVE_AXIS int {hex_value}")
         time.sleep(0.1)
@@ -166,7 +166,7 @@ class WAxisMoveTest:
 
     def move_backward_one_hole(self):
         """向后移动一个孔位（负方向）"""
-        distance_um = int(-FILTERWHEEL_HOLE_DISTANCE_MM * 1000)  # 转换为微米（负值）
+        distance_um = int(-FILTERWHEEL_HOLE_DISTANCE_MM * 1000)  # convert to micrometers (negative)
         hex_value = self.int_to_hex(distance_um)
         self.send_command(f"W:MOVE_AXIS int {hex_value}")
         time.sleep(0.1)
@@ -184,16 +184,16 @@ class WAxisMoveTest:
             return False
 
         try:
-            # 初始化系统
+            # initialize the system
             self.send_engine_start()
             time.sleep(2.0)
 
-            # 获取初始状态
+            # get the initial state
             print("\n[INFO] 获取初始状态...")
             self.get_w_axis_status()
             time.sleep(0.5)
 
-            # 测试 1: 向前移动一个孔（第一次）
+            # test 1: move forward one slot (first time)
             print("\n" + "=" * 50)
             print("测试 1: 向前移动一个孔（第一次）")
             print("=" * 50)
@@ -203,7 +203,7 @@ class WAxisMoveTest:
             self.get_w_axis_status()
             time.sleep(1.0)
 
-            # 测试 2: 向前移动一个孔（第二次）
+            # test 2: move forward one slot (second time)
             print("\n" + "=" * 50)
             print("测试 2: 向前移动一个孔（第二次）")
             print("=" * 50)
@@ -213,7 +213,7 @@ class WAxisMoveTest:
             self.get_w_axis_status()
             time.sleep(1.0)
 
-            # 测试 3: 向后移动一个孔（第一次）
+            # test 3: move back one slot (first time)
             print("\n" + "=" * 50)
             print("测试 3: 向后移动一个孔（第一次）")
             print("=" * 50)
@@ -223,7 +223,7 @@ class WAxisMoveTest:
             self.get_w_axis_status()
             time.sleep(1.0)
 
-            # 测试 4: 向后移动一个孔（第二次）
+            # test 4: move back one slot (second time)
             print("\n" + "=" * 50)
             print("测试 4: 向后移动一个孔（第二次）")
             print("=" * 50)
@@ -233,7 +233,7 @@ class WAxisMoveTest:
             self.get_w_axis_status()
             time.sleep(0.5)
 
-            # 总结
+            # summary
             print("\n" + "=" * 60)
             print("    测试完成")
             print("=" * 60)

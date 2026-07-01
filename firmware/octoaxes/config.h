@@ -39,37 +39,37 @@ namespace Commands {
     const int SET_STROBE_DELAY = 31;
     const int SET_AXIS_DISABLE_ENABLE = 32;
     const int SET_TRIGGER_MODE = 33;
-    // 多端口照明命令（v1.0+）
+    // Multi-port illumination commands (v1.0+)
     const int SET_PORT_INTENSITY = 34;
     const int TURN_ON_PORT = 35;
     const int TURN_OFF_PORT = 36;
     const int SET_PORT_ILLUMINATION = 37;
     const int SET_MULTI_PORT_MASK = 38;
     const int TURN_OFF_ALL_PORTS = 39;
-    // 安全与心跳
-    const int SET_WATCHDOG_TIMEOUT = 40;  // 设置串口看门狗超时（ms），使能后通信中断自动关灯
+    // Safety and heartbeat
+    const int SET_WATCHDOG_TIMEOUT = 40;  // set the serial watchdog timeout (ms); once enabled, a communication loss automatically turns off the lights
     const int SET_PIN_LEVEL = 41;
-    const int HEARTBEAT = 42;             // 空操作心跳（看门狗靠收包重置，不靠此命令）
-    // 2026-05-29 E1 物镜转换器专属运动命令（octoaxes 扩展，旧 Squid 不发，不破坏 drop-in）。
-    // MOVE_W/MOVETO_W 硬编码到 "W"，无轴索引，无法兼用；故仿 W2 给 E1 独立命令。
-    const int MOVE_TURRET   = 44;             // E1 相对运动，data[2..5] = int32 微步大端
-    const int MOVETO_TURRET = 45;             // E1 绝对运动
+    const int HEARTBEAT = 42;             // no-op heartbeat (the watchdog is reset by received packets, not by this command)
+    // 2026-05-29 E1 objective-changer-specific motion commands (octoaxes extension; legacy Squid does not send them, so drop-in is preserved).
+    // MOVE_W/MOVETO_W are hardcoded to "W" with no axis index and cannot be reused; so, like W2, give E1 its own commands.
+    const int MOVE_TURRET   = 44;             // E1 relative move, data[2..5] = int32 microsteps big-endian
+    const int MOVETO_TURRET = 45;             // E1 absolute move
     const int INITFILTERWHEEL_W2 = 252;
     const int INITFILTERWHEEL = 253;
     const int INITIALIZE = 254;
     const int RESET = 255;
 }
 
-// 引脚定义
+// Pin definitions
 namespace Pins {
     const int DAC8050x_CS = 33;
     const int POWER_GOOD = 0;
     const int TMC4361_STANDARD_CLK = 37;
     const int TMC4361_EXPAND_CLK = 28;
 
-    // 注意：X_AXIS_CS / Y_AXIS_CS 常量名是按 PCB 引脚标号的历史遗留命名，
-    // 与物理 X/Y 电机的 chip 不直接对应（硬件接线由 octoaxes.ino 中
-    // axisName ↔ CS 引脚的映射决定，详见 octoaxes.ino:86-90 注释）。
+    // Note: the X_AXIS_CS / Y_AXIS_CS constant names are legacy names based on the PCB pin labels,
+    // and do not directly correspond to the chips of the physical X/Y motors (the hardware wiring is determined by the
+    // axisName <-> CS pin mapping in octoaxes.ino, see the comment at octoaxes.ino:86-90).
     const int X_AXIS_CS = 41;
     const int Y_AXIS_CS = 36;
     const int Z_AXIS_CS = 35;
@@ -80,48 +80,48 @@ namespace Pins {
     const int EXPAND3_AXIS_CS = 17;
     const int EXPAND4_AXIS_CS = 16;
 
-    // W2 (第二滤光转盘) 复用原 EXPAND4 硬件：CS=pin 16, CLK=pin 28 (TMC4361_EXPAND_CLK)。
-    // 与旧 Squid pin_TMC4361_CS[4]=16 / pin_TMC4361_CLK_W2=28 完全一致。
+    // W2 (the second filter wheel) reuses the original EXPAND4 hardware: CS=pin 16, CLK=pin 28 (TMC4361_EXPAND_CLK).
+    // fully consistent with legacy Squid pin_TMC4361_CS[4]=16 / pin_TMC4361_CLK_W2=28.
     const int W2_AXIS_CS = EXPAND4_AXIS_CS;
 
-    // 控制引脚数组
+    // Control-pin arrays
     const uint8_t CONTROL_PINS[] = {EXPAND1_AXIS_CS, EXPAND2_AXIS_CS, EXPAND3_AXIS_CS, EXPAND4_AXIS_CS};
     const uint8_t STANDARD_CONTROL_PINS[] = {W_AXIS_CS, Z_AXIS_CS, Y_AXIS_CS, X_AXIS_CS};
     const size_t NUM_CONTROL_PINS = 4;
     const size_t NUM_STANDARD_CONTROL_PINS = 4;
 
-    // 照明 TTL 端口（D1-D5）
-    // 注意：D3/D4 引脚非顺序排列，与旧版光源码一致
+    // Illumination TTL ports (D1-D5)
+    // Note: the D3/D4 pins are not in sequential order, consistent with the legacy light-source codes
     const int ILLUMINATION_D1 = 5;
     const int ILLUMINATION_D2 = 4;
     const int ILLUMINATION_D3 = 22;
     const int ILLUMINATION_D4 = 3;
     const int ILLUMINATION_D5 = 23;
 
-    // 激光安全联锁（LOW = 安全）
+    // Laser safety interlock (LOW = safe)
     const int ILLUMINATION_INTERLOCK = 2;
 
-    // LED 矩阵（APA102，128 像素）
+    // LED matrix (APA102, 128 pixels)
     const int LED_MATRIX_DATA  = 26;
     const int LED_MATRIX_CLOCK = 27;
 
-    // LED 驱动 LT3932 SYNC（16 MHz PWM）
+    // LED driver LT3932 SYNC (16 MHz PWM)
     const int LED_DRIVER_SYNC = 25;
 
-    // 相机触发
+    // Camera trigger
     const int CAMERA_TRIGGER_1 = 29;
     const int CAMERA_TRIGGER_2 = 30;
     const int CAMERA_TRIGGER_3 = 31;
     const int CAMERA_TRIGGER_4 = 32;
 }
 
-// 系统配置
+// System configuration
 namespace SystemConfig {
     const uint32_t TMC4361_CLOCK_FREQUENCY = 16000000;
     const unsigned long LIMIT_CHECK_INTERVAL = 3000;
 }
 
-// 轴常量定义
+// Axis constant definitions
 namespace AxisConstDefinition {
 		const float R_sense_xy = 0.22;
 		const float R_sense_z = 0.43;
@@ -137,33 +137,33 @@ namespace AxisConstDefinition {
 
 		const float SCREW_PITCH_X_MM = 2.54;
 		const float SCREW_PITCH_Y_MM = 2.54;
-		const float SCREW_PITCH_Z_MM = 0.3;   // 旧 Z 保守默认。新 Z (LE143S-W0601 导程 1mm) 由 GUI 启动 SET_LEAD_SCREW_PITCH 下发覆盖（见 software Z_AXIS_VARIANT）
-		const float SCREW_PITCH_FILTERWHEEL_MM = 1;   // 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1（chip 端微步语义与 GUI 算法一致）
+		const float SCREW_PITCH_Z_MM = 0.3;   // conservative default for the old Z. The new Z (LE143S-W0601, 1mm pitch) is overridden by SET_LEAD_SCREW_PITCH sent at GUI startup (see software Z_AXIS_VARIANT)
+		const float SCREW_PITCH_FILTERWHEEL_MM = 1;   // 2026-05-21 matches legacy Squid SCREW_PITCH_W_MM=1 (chip-side microstep semantics consistent with the GUI algorithm)
 		const float SCREW_PITCH_OBJECTIVES_MM = 1;
 
 		const int MICROSTEPPING_X = 256;
 		const int MICROSTEPPING_Y = 256;
 		const int MICROSTEPPING_Z = 256;
-		const int MICROSTEPPING_FILTERWHEEL = 8;      // 2026-05-26 路径 C 速度优化 v2：16→8（BOW 截断从 7× 进一步缓解到 3.6×，匹配 2026-02 历史最优 microstep=8 配置，1 slot 物理底线 ~70ms）
+		const int MICROSTEPPING_FILTERWHEEL = 8;      // 2026-05-26 path C speed optimization v2: 16->8 (BOW truncation further eased from 7x to 3.6x, matching the historically best microstep=8 config from 2026-02, physical floor ~70ms per slot)
 		const int MICROSTEPPING_OBJECTIVES = 64;
 
-		// 编码器分辨率 (μm/pulse)
+		// encoder resolution (um/pulse)
 		const float ENCODER_RESOLUTION_UM_X = 0.05;
 		const float ENCODER_RESOLUTION_UM_Y = 0.05;
 		const float ENCODER_RESOLUTION_UM_Z = 0.1;
 
-		// Homing 细分（默认 256）
+		// Homing microstepping (default 256)
 		const int HOMING_MICROSTEPPING_X = 256;
 		const int HOMING_MICROSTEPPING_Y = 256;
 		const int HOMING_MICROSTEPPING_Z = 256;
 		const int HOMING_MICROSTEPPING_FILTERWHEEL = 256;
 		const int HOMING_MICROSTEPPING_OBJECTIVES = 256;
 
-		// 2026-05-11 速度优化第一轮：对齐老 Squid HCS v2 配置
-		// 老 Squid configuration_HCS_v2.ini: max_velocity_x/y/z_mm = 30/30/3.8
-		// AMAX_Z 100 实测反而让 Z 1mm 时间从 697→1569ms（+125%），疑似
-		// motor_adjustBows 自动算出的 BOW 过大 + 电机扭矩不够导致 ramp 异常。
-		// 保留 vmax 提升，Z 加速度回退到原值 20 mm/s²。
+		// 2026-05-11 first speed-optimization round: matches legacy Squid HCS v2 config
+		// legacy Squid configuration_HCS_v2.ini: max_velocity_x/y/z_mm = 30/30/3.8
+		// AMAX_Z 100 measured to actually increase Z 1mm time from 697->1569ms (+125%), suspected to be
+		// motor_adjustBows auto-computing too large a BOW + insufficient motor torque causing an abnormal ramp.
+		// keep the vmax increase, roll Z acceleration back to the original 20 mm/s2.
 		const float MAX_VELOCITY_X_mm = 30;
 		const float MAX_VELOCITY_Y_mm = 30;
 		const float MAX_VELOCITY_Z_mm = 3.8;
@@ -174,39 +174,39 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_Y_mm = 500;
 		const float MAX_ACCELERATION_Z_mm = 20;
 		const float MAX_ACCELERATION_FILTERWHEEL_mm = 400 * SCREW_PITCH_FILTERWHEEL_MM;
-		// 2026-05-29 objectives 分支：实测 200 mm/s² 配 1A 弱电流丢步严重，
-		// 降到 80 mm/s² 留 margin。配合 EXPAND1_AXIS.currentRange=1 (2A) + motorCurrentMA=1800。
+		// 2026-05-29 objectives branch: measured 200 mm/s2 with the weak 1A current loses steps badly,
+		// lowered to 80 mm/s2 to leave margin. Used together with EXPAND1_AXIS.currentRange=1 (2A) + motorCurrentMA=1800.
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;
 
 		const float HOMING_VELOCITY_X_MM = 10;
-		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 实测确定：256 微步 + 30 mm/s 最安静
-		const float HOMING_VELOCITY_Z_MM = 1;   // 开机安全默认=1mm/s（旧 Z 历史值，drop-in 等价；旧 Squid 无 homing 速度下发通道，只能用此默认）。新 Z 由 octoaxes GUI 启动按变体下发 S:SET_HOMING_VEL 提到 2mm/s（避免长行程回零超时）
+		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 measured: 256 microsteps + 30 mm/s is quietest
+		const float HOMING_VELOCITY_Z_MM = 1;   // safe boot default = 1mm/s (old Z historical value, drop-in equivalent; legacy Squid has no channel to send the homing speed, so this default is all it can use). For the new Z, the octoaxes GUI sends S:SET_HOMING_VEL per variant at startup to raise it to 2mm/s (avoiding long-travel homing timeouts)
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
 
-		// 电机电流设置 (mA) — 峰值电流，非 RMS
-		// TMC2660 公式: I_peak = (CS+1)/32 × V_FS/R_sense, I_rms = I_peak/√2
-		// CS 范围 0~31，超出会被 clamp，实际峰值受 R_sense 限制
-		// 芯片绝对上限: 4A 峰值 (2.8A RMS)
-		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
-		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
-		// 2026-06-03 newz 分支：Z 默认取保守旧值（500mA），新 Z (LE143S-W0601 额定 1.5A) 的电流
-		// 由 GUI 启动 CONFIGURE_STEPPER_DRIVER 下发覆盖（见 software Z_AXIS_VARIANT="new" → 1500mA）。
-		// 这样一个固件同时支持新旧 Z 板：开机瞬间(GUI 配置前)新电机仅 500mA=弱但安全，避免旧电机被过流。
-		// 驱动板自动识别 (DRIVER_AUTO)：旧 Z=TMC2660 走 R_sense；新 Z=TMC2240 走 ICS+currentRange。
-		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // 保守默认 R=0.43Ω → CS=21, 实际 0.47A（新 Z 由 GUI 升到 1500mA）
-		const float FILTERWHEEL_MOTOR_PEAK_CURRENT_mA = 3100; // R=0.10Ω → CS=31(满), 实际 3.1A
-		// 2026-05-29 objectives 分支：1A 弱电流配齿轮减速物镜丢步。提到 1800mA。
-		// 物镜驱动板 R_sense=0.22Ω（仅 TMC2660 路径生效；TMC2240 用集成电流传感 ICS 忽略此电阻）。
-		// EXPAND1_AXIS.driverType=DRIVER_AUTO 上电自动识别芯片后选路径：
-		//   - TMC2240 (ICS):  currentRange=1 → I_FS=2A, IRUN=(1800/1000)/2×32-1=28 → 1.81A 峰值
-		//   - TMC2660 (R_S):  r_sense=0.22Ω, 1800mA → CS≈16 → ~1.7A 峰值
-		// 两路径电流接近 (~1.7-1.8A)，齿轮减速物镜扭矩够用。换 R_sense≠0.22Ω 驱动板需重算 CS。
+		// motor current setting (mA) -- peak current, not RMS
+		// TMC2660 formula: I_peak = (CS+1)/32 * V_FS/R_sense, I_rms = I_peak/sqrt(2)
+		// CS range 0~31, out-of-range is clamped, the actual peak is limited by R_sense
+		// chip absolute max: 4A peak (2.8A RMS)
+		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22ohm -> CS=9, actual 0.97A
+		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22ohm -> CS=9, actual 0.97A
+		// 2026-06-03 newz branch: Z defaults to the conservative old value (500mA); the current of the new Z (LE143S-W0601, rated 1.5A)
+		// is overridden by CONFIGURE_STEPPER_DRIVER sent at GUI startup (see software Z_AXIS_VARIANT="new" -> 1500mA).
+		// This lets one firmware support both old and new Z boards: at the boot instant (before GUI config) the new motor gets only 500mA = weak but safe, avoiding overcurrent on the old motor.
+		// driver auto-detect (DRIVER_AUTO): old Z=TMC2660 uses R_sense; new Z=TMC2240 uses ICS+currentRange.
+		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // conservative default R=0.43ohm -> CS=21, actual 0.47A (the new Z is raised to 1500mA by the GUI)
+		const float FILTERWHEEL_MOTOR_PEAK_CURRENT_mA = 3100; // R=0.10ohm -> CS=31 (max), actual 3.1A
+		// 2026-05-29 objectives branch: the weak 1A current loses steps with the gear-reduced objective. Raised to 1800mA.
+		// objective driver board R_sense=0.22ohm (only effective on the TMC2660 path; TMC2240 uses the integrated current sense ICS and ignores this resistor).
+		// EXPAND1_AXIS.driverType=DRIVER_AUTO auto-detects the chip on power-up, then selects the path:
+		// - TMC2240 (ICS):  currentRange=1 -> I_FS=2A, IRUN=(1800/1000)/2*32-1=28 -> 1.81A peak
+		// - TMC2660 (R_S):  r_sense=0.22ohm, 1800mA -> CS~=16 -> ~1.7A peak
+		// the two paths give similar current (~1.7-1.8A), enough torque for the gear-reduced objective. A driver board with R_sense != 0.22ohm requires recomputing CS.
 		const float OBJECTIVES_MOTOR_PEAK_CURRENT_mA = 1800;
 
 		const float X_MOTOR_I_HOLD = 0.25;
 		const float Y_MOTOR_I_HOLD = 0.25;
-		const float Z_MOTOR_I_HOLD = 0.5;    // 保守默认（新 Z 由 GUI 升到 0.75，竖直防下坠）
+		const float Z_MOTOR_I_HOLD = 0.5;    // conservative default (the new Z is raised to 0.75 by the GUI, to resist sag on the vertical axis)
 		const float FILTERWHEEL_MOTOR_I_HOLD = 0.5;
 		const float OBJECTIVES_MOTOR_I_HOLD = 0.5;
 
@@ -223,32 +223,32 @@ namespace AxisConstDefinition {
 		const float OBJECTIVES_SAFEPOSITION = 0;
 }
 
-// 照明系统配置
+// Illumination-system configuration
 namespace IlluminationConfig {
-    // DAC80508 寄存器地址
+    // DAC80508 register addresses
     const uint8_t DAC_CONFIG_ADDR = 0x03;
     const uint8_t DAC_GAIN_ADDR   = 0x04;
     const uint8_t DAC_DAC_ADDR    = 0x08;
 
-    // 默认 DAC 增益：div=0x00, gains=0x80（通道 0-6 增益 1，通道 7 增益 2）
+    // default DAC gain: div=0x00, gains=0x80 (channels 0-6 gain 1, channel 7 gain 2)
     const uint8_t DAC_DEFAULT_DIV   = 0x00;
     const uint8_t DAC_DEFAULT_GAINS = 0x80;
 
-    // LED 矩阵（APA102，128 像素，BGR 顺序）
+    // LED matrix (APA102, 128 pixels, BGR order)
     const int   NUM_LEDS          = 128;
     const int   LED_MAX_INTENSITY = 100;
     const float GREEN_ADJUSTMENT  = 1.0f;
     const float RED_ADJUSTMENT    = 1.0f;
     const float BLUE_ADJUSTMENT   = 1.0f;
 
-    // 默认全局强度因子（Squid LED 0-1.5V）
+    // default global intensity factor (Squid LED 0-1.5V)
     const float DEFAULT_INTENSITY_FACTOR = 0.6f;
 
-    // 端口数量（D1-D16）
+    // number of ports (D1-D16)
     const int NUM_PORTS = 16;
 
-    // 照明光源码（旧版 API，与协议保持一致）
-    // LED 矩阵图案：0-8
+    // illumination light-source codes (legacy API, kept consistent with the protocol)
+    // LED matrix patterns: 0-8
     const int LED_ARRAY_FULL       = 0;
     const int LED_ARRAY_LEFT_HALF  = 1;
     const int LED_ARRAY_RIGHT_HALF = 2;
@@ -259,18 +259,18 @@ namespace IlluminationConfig {
     const int LED_ARRAY_TOP_HALF   = 7;
     const int LED_ARRAY_BOTTOM_HALF = 8;
     const int LED_EXTERNAL_FET     = 20;
-    // TTL 端口光源码（注意 D3/D4 非顺序！）
+    // TTL-port light-source codes (note: D3/D4 are out of order!)
     const int D1 = 11;
     const int D2 = 12;
-    const int D3 = 14;  // 非顺序！
-    const int D4 = 13;  // 非顺序！
+    const int D3 = 14;  // out of order!
+    const int D4 = 13;  // out of order!
     const int D5 = 15;
 }
 
-// 轴配置
+// Axis configuration
 namespace AxisConfigs {
 
-    // X轴配置
+    // X-axis configuration
     const Axis::AxisConfig X_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = LEFT_SW,
@@ -294,8 +294,8 @@ namespace AxisConfigs {
         .holdCurrent = AxisConstDefinition::X_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::X_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::X_SAFEPOSITION,
-        // StallGuard 参数（仅 TMC2660 SG2 用，TMC2240 SG4 在 axis.cpp 启用处
-        // 暂跳过，参数保留待 SG4 调优后启用）
+        // StallGuard parameters (only used by TMC2660 SG2; TMC2240 SG4 is
+        // temporarily skipped where it is enabled in axis.cpp, parameters kept to enable after SG4 tuning)
         .enableStallSensitivity = true,
         .stallSensitivity = 12,
         .useSShapedRamp = true,
@@ -308,10 +308,10 @@ namespace AxisConfigs {
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_X_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_X),
         .invertEncoderDir = false,
-        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
+        .invert_direction = false   // 2026-05-25 hardware direction inversion, default false
     };
 
-    // Y轴配置
+    // Y-axis configuration
     const Axis::AxisConfig Y_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = LEFT_SW,
@@ -335,7 +335,7 @@ namespace AxisConfigs {
         .holdCurrent = AxisConstDefinition::Y_MOTOR_I_HOLD,
         .homeSafetyMarginMM = AxisConstDefinition::Y_SAFEMARGIN,
         .homeSafetyPositionMM = AxisConstDefinition::Y_SAFEPOSITION,
-        // 同 X 轴：StallGuard 参数仅 TMC2660 用，TMC2240 在启用处跳过
+        // same as X: StallGuard parameters only used by TMC2660; TMC2240 is skipped where enabled
         .enableStallSensitivity = true,
         .stallSensitivity = 12,
         .useSShapedRamp = true,
@@ -348,32 +348,32 @@ namespace AxisConfigs {
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Y_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Y),
         .invertEncoderDir = false,
-        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
+        .invert_direction = false   // 2026-05-25 hardware direction inversion, default false
     };
 
-    // Z轴配置
+    // Z-axis configuration
     // ───────────────────────────────────────────────────────────────────
-    // ★ Z 变体软件化：新旧 Z 切换只改 software/octoaxes/constants.py 的 Z_AXIS_VARIANT 一行
-    //   （GUI 启动下发 pitch/电流/微步 + 限位极性 cmd 20），【无需重烧固件、无需编译开关】。
-    //   06-09 正负限位传感器物理对调后，新旧 Z 在固件侧唯一差异 = 限位极性(new=1/old=0)，该极性
-    //   由上位机 cmd 20 (SET_LIM_SWITCH_POLARITY) 下发 + reapplyLimitSwitches() 重写芯片覆盖，
-    //   故已删除原 #define Z_VARIANT_NEW 编译开关（2026-06-09）。下面字段是「开机窗口默认」
-    //   （GUI 配置前生效，配置后被下发覆盖）；homingSwitch/翻转/enable/invertEncoder 新旧 Z 取值
-    //   本就一致，仅极性需软件区分，此处填 new 默认值 1。
-    //   pitch/电流/微步由 GUI 下发覆盖、currentRange=1 两板通用。
-    //   ⚠️ octoaxes 主线板新 Z 限位行为尚未在该板上机实测（另一连接器/接线）——若实测发现 homingSwitch/
-    //      翻转需与此默认不同，用 software/common/tests/z_limit_monitor.py 核实后再调（参考 Turret 反面教材）。
+    // * Z-variant software switch: switching old/new Z only changes one line, Z_AXIS_VARIANT in software/octoaxes/constants.py
+    // (the GUI sends pitch/current/microstepping at startup + limit polarity via cmd 20); [no firmware reflash needed, no compile switch needed].
+    // After the positive/negative limit sensors were physically swapped on 06-09, the only firmware-side difference between old/new Z = limit polarity (new=1/old=0), which
+    // is sent by the host via cmd 20 (SET_LIM_SWITCH_POLARITY) and overridden by reapplyLimitSwitches() re-writing the chip,
+    // so the original #define Z_VARIANT_NEW compile switch was removed (2026-06-09). The fields below are the "boot-window defaults"
+    // (effective before GUI config, overridden by what is sent afterward); homingSwitch/flip/enable/invertEncoder values for old/new Z
+    // are already identical; only the polarity needs software differentiation, so the new default value 1 is used here.
+    // pitch/current/microstepping are overridden by the GUI; currentRange=1 is common to both boards.
+    // (WARNING) the new-Z limit behavior on the octoaxes mainline board has not yet been tested on that board (different connector/wiring) -- if testing finds homingSwitch/
+    // flip must differ from these defaults, verify with software/common/tests/z_limit_monitor.py before adjusting (see the Turret cautionary example).
     const Axis::AxisConfig Z_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
-        .homingSwitch = RGHT_SW,         // 开机默认（新旧 Z 都 RGHT_SW；06-09 传感器对调后 home 接 STOPR 引脚不翻转、直接读作 STOPR 位）
-        .leftSwitchPolarity = 0,         // 开机默认=旧 Z(0, active-low)——octoaxes 主线实装旧 Z，固件须默认支持旧 Z；新 Z(1) 由 GUI 启动 cmd 20 下发切换
+        .homingSwitch = RGHT_SW,         // boot default (both old/new Z use RGHT_SW; after the 06-09 sensor swap, home connects to the STOPR pin without flipping and is read directly as the STOPR bit)
+        .leftSwitchPolarity = 0,         // boot default = old Z (0, active-low) -- the octoaxes mainline has the old Z installed, so the firmware must default to supporting the old Z; the new Z (1) is switched via cmd 20 sent at GUI startup
         .rightSwitchPolarity = 0,
-        .polarityAffectsChip = true,     // 仅 Z：允许 cmd 20 把极性写芯片（Z 变体软件化，新 Z 下发 1 覆盖开机默认 0）；X/Y 等省略=false 不写芯片，保旧 Squid drop-in
+        .polarityAffectsChip = true,     // Z only: allow cmd 20 to write the polarity to the chip (Z-variant software switch; the new Z sends 1 to override the boot default 0); X/Y etc. omit it = false, not writing the chip, preserving legacy Squid drop-in
         .leftIsInactive = 0,
         .rightIsInactive = 0,
-        .leftFlipped = false,    // 新旧 Z 都 false（06-09 传感器对调抵消坐标翻转，无需 INVERT_STOP_DIRECTION）
+        .leftFlipped = false,    // false for both old/new Z (the 06-09 sensor swap cancels the coordinate inversion, so INVERT_STOP_DIRECTION is not needed)
         .rightFlipped = false,
-        .enableLeftLimitSwitch = true,   // 新旧 Z 都 true（chip 上下硬停正常）
+        .enableLeftLimitSwitch = true,   // true for both old/new Z (the chip's upper/lower hard stops work fine)
         .enableRightLimitSwitch = true,
         .r_sense = AxisConstDefinition::R_sense_z,
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_Z_MM,
@@ -392,24 +392,24 @@ namespace AxisConfigs {
         .useSShapedRamp = true,
         .astartMM = 0,
         .dfinalMM = 0,
-        .homing_timeout_ms = 60000,   // 60s：给「新 Z + 旧 Squid」(只能用默认 1mm/s、行程 ~34.5mm、最坏 ~34.5s) 留足余量。加大超时无副作用
+        .homing_timeout_ms = 60000,   // 60s: leaves ample margin for new-Z + legacy-Squid (can only use the default 1mm/s, ~34.5mm travel, ~34.5s worst case). Increasing the timeout has no side effects
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
-        .currentRange = 1,         // 2026-06-03 newz：TMC2240 ICS I_FS=2A（新 Z 1.5A 需要）。对新旧 Z 板都安全：旧 Z=TMC2660 忽略此字段（走 R_sense），新 Z=TMC2240 用它 → 一个固件通吃
+        .currentRange = 1,         // 2026-06-03 newz: TMC2240 ICS I_FS=2A (needed for the new Z's 1.5A). Safe for both Z boards: old Z=TMC2660 ignores this field (uses R_sense), new Z=TMC2240 uses it -> one firmware fits both
         .enableEncoder = false,
         .encoderLinesPerRev = (uint16_t)(AxisConstDefinition::SCREW_PITCH_Z_MM * 1000 / AxisConstDefinition::ENCODER_RESOLUTION_UM_Z),
-        .invertEncoderDir = true,   // boot 默认（ENC-3，当前 enableEncoder=false 时不生效）；runtime 由 GUI CONFIGURE_STAGE_PID 按 constants.py encoder_flip_direction 覆盖
-        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
+        .invertEncoderDir = true,   // boot default (ENC-3, not effective while enableEncoder=false); at runtime overridden by GUI CONFIGURE_STAGE_PID per constants.py encoder_flip_direction
+        .invert_direction = false   // 2026-05-25 hardware direction inversion, default false
     };
 
-    // W轴4配置 (filter wheel)
-    // 2026-05-26 W .invert_direction 改回 false：让 octoaxes firmware 与旧 Squid firmware 字节级一致。
-    // 旧决策（2026-05-25 设 true）意图是修正本硬件镜像装配后 home+offset 落在 1 号孔位中心，
-    // 但代价是所有 MOVE_W (next/previous)、MOVETO_W 物理方向也反，与旧 Squid 不一致，
-    // 违反 CLAUDE.md 的"字节级 drop-in replacement"目标。
-    // 现回归 byte-level 一致：home+offset 物理位置与旧 Squid 完全相同（你硬件上 +2.87°，
-    // 不在 1 号孔位中心 — 这是旧 Squid 在本硬件上的固有行为，由硬件镜像装配引起，
-    // 不是 octoaxes 的 bug）。slot 1 精准对齐需要硬件层修复（重新装配 wheel）。
+    // W axis 4 configuration (filter wheel)
+    // 2026-05-26 W .invert_direction reverted to false: makes octoaxes firmware byte-level identical to legacy Squid firmware.
+    // the old decision (set true on 2026-05-25) intended to correct home+offset to land at the center of slot 1 after this hardware's mirror assembly,
+    // but at the cost of also inverting the physical direction of all MOVE_W (next/previous) and MOVETO_W, inconsistent with legacy Squid,
+    // violating the CLAUDE.md "byte-level drop-in replacement" goal.
+    // now reverted to byte-level consistency: the home+offset physical position is exactly the same as legacy Squid (+2.87 deg on your hardware,
+    // not centered on slot 1 -- this is legacy Squid's inherent behavior on this hardware, caused by the hardware mirror assembly,
+    // not an octoaxes bug). Precise slot-1 alignment requires a hardware-level fix (reassembling the wheel).
     const Axis::AxisConfig W_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = LEFT_SW,
@@ -436,8 +436,8 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 路径 C v2：ASTART=22.5 rev/s²，等效 microstep=8 时代历史最优 chip 寄存器值 288,000 µstep/s²（历史 180 rev/s² × 1600 µstep/rev = 288K; 当前需 22.5 × 12800 = 288K）。短距离避免过冲，长距离仍有 jerk-start 加速优势。
-        .dfinalMM = 0,                                   // 同 astart
+        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 path C v2: ASTART=22.5 rev/s2, equivalent to the historically best chip register value 288,000 ustep/s2 in the microstep=8 era (history: 180 rev/s2 * 1600 ustep/rev = 288K; now needs 22.5 * 12800 = 288K). Avoids overshoot at short distances, still gains jerk-start acceleration at long distances.
+        .dfinalMM = 0,                                   // same as astart
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
@@ -445,14 +445,14 @@ namespace AxisConfigs {
         .enableEncoder = false,
         .encoderLinesPerRev = 4000,
         .invertEncoderDir = false,
-        .invert_direction = false   // 2026-05-26 回归字节级 drop-in：与旧 Squid firmware 物理方向一致（详见本 struct 上方注释）
+        .invert_direction = false   // 2026-05-26 reverted to byte-level drop-in: physical direction consistent with legacy Squid firmware (see the comment above this struct)
     };
 
-    // 扩展轴1配置 (objectives 物镜转换器)
-    // 2026-05-29 objectives 分支实测移植：本电路板物镜 home sensor 物理接到 TMC4361A 的
-    // RIGHT 输入引脚（dump_axis_state.py 验证：home 位 STOPR_ACTIVE_F=1 / 离开=0）。
-    // 故 homingSwitch=RGHT_SW，enableRight=true、enableLeft=false。
-    // Objectives::performHomingSequence 已改为读 _config.homingSwitch 动态判定（不再硬编码 OBSW_SW）。
+    // Expansion axis 1 configuration (objectives turret)
+    // 2026-05-29 ported from the objectives branch after on-hardware testing: this board's objective home sensor is physically connected to the TMC4361A's
+    // RIGHT input pin (verified with dump_axis_state.py: at home STOPR_ACTIVE_F=1 / leaving=0).
+    // so homingSwitch=RGHT_SW, enableRight=true, enableLeft=false.
+    // Objectives::performHomingSequence was changed to dynamically use _config.homingSwitch (no longer hardcoding OBSW_SW).
     const Axis::AxisConfig EXPAND1_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = RGHT_SW,
@@ -484,14 +484,14 @@ namespace AxisConfigs {
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
-        .currentRange = 1,         // 2026-05-29 TMC2240 I_FS=2A（原 0=1A 配齿轮减速物镜丢步）
+        .currentRange = 1,         // 2026-05-29 TMC2240 I_FS=2A (the original 0=1A lost steps with the gear-reduced objective)
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
         .invertEncoderDir = false,
-        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
+        .invert_direction = false   // 2026-05-25 hardware direction inversion, default false
     };
 
-    // 扩展轴3配置 (Z轴配置)
+    // Expansion axis 3 configuration (Z-axis configuration)
     const Axis::AxisConfig EXPAND3_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = RGHT_SW,
@@ -523,14 +523,14 @@ namespace AxisConfigs {
         .homing_timeout_ms = 20000,
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
-        .currentRange = 1,         // 审计 F-8：与 Z_AXIS 统一为 1。EXPAND3 复用 Z 模板，若接 1.5A 新 Z（TMC2240 I_FS=2A）需此值才算对电流；旧 Z TMC2660 忽略此字段，安全。EXPAND3 当前未实例化
+        .currentRange = 1,         // audit F-8: unified to 1 with Z_AXIS. EXPAND3 reuses the Z template; if a 1.5A new Z (TMC2240 I_FS=2A) is connected, this value is needed for correct current; old Z TMC2660 ignores this field, safe. EXPAND3 is currently not instantiated
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
         .invertEncoderDir = false,
-        .invert_direction = false   // 2026-05-25 硬件方向反相，默认 false
+        .invert_direction = false   // 2026-05-25 hardware direction inversion, default false
     };
 
-    // 扩展轴4配置 (filter wheel)
+    // Expansion axis 4 configuration (filter wheel)
     const Axis::AxisConfig EXPAND4_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = LEFT_SW,
@@ -557,7 +557,7 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 路径 C v2：W2 同 W (22.5 rev/s² ≈ 288K µstep/s² chip 寄存器，详见 W_AXIS 注释)
+        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 path C v2: W2 same as W (22.5 rev/s2 ~= 288K ustep/s2 chip register, see the W_AXIS comment)
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
@@ -566,7 +566,7 @@ namespace AxisConfigs {
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
         .invertEncoderDir = false,
-        .invert_direction = false   // 2026-05-26 W2 同 W 回归字节级 drop-in（详见 W_AXIS 上方注释）
+        .invert_direction = false   // 2026-05-26 W2 same as W, reverted to byte-level drop-in (see the comment above W_AXIS)
     };
 }
 

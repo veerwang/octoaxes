@@ -15,7 +15,7 @@ AXIS = "Z"
 def send_command(ser, cmd, wait=0.3):
     """发送命令并读取响应（带协议头）"""
     print(f"[TX] {cmd}")
-    # 添加协议头 0x55 0xAA
+    # add the protocol header 0x55 0xAA
     data = b'\x55\xAA' + cmd.encode() + b'\n'
     ser.write(data)
     time.sleep(wait)
@@ -67,21 +67,21 @@ def main():
         print("[1] Engine Start")
         send_command(ser, "S:Engine Start", 3)
 
-        # 获取当前位置
+        # get the current position
         print("\n[2] 读取当前位置")
         current_pos = get_position(ser)
         print(f"当前位置: {current_pos:.3f}mm")
 
-        # 读取寄存器状态
+        # read the register state
         print("\n[3] 读取关键寄存器")
         for line in send_command(ser, f"{AXIS}:DEBUG_REG", 1):
             if any(x in line for x in ["RAMPMODE", "STATUS", "XACTUAL", "VMAX"]):
                 if "SCALE" not in line:
                     print(f"  {line}")
 
-        # 小距离相对移动测试
+        # small-distance relative-move test
         print("\n[4] 相对移动测试")
-        move_distance = 0.05  # mm (降低一半)
+        move_distance = 0.05  # mm (halved)
 
         resp = input(f"准备向正方向移动 {move_distance}mm，按 Enter 继续，'q' 退出: ")
         if resp.lower() == 'q':
@@ -89,19 +89,19 @@ def main():
             ser.close()
             return
 
-        # 计算目标位置 (微米)
+        # compute the target position (micrometers)
         target_um = int((current_pos + move_distance) * 1000)
         print(f"\n发送 MOVETO 命令: 目标 {target_um}um ({target_um/1000:.3f}mm)")
         send_command(ser, f"{AXIS}:MOVETO_AXIS INT32 {target_um:08X}", 0.5)
 
-        # 监控移动
+        # monitor the move
         print("\n监控移动过程...")
         for i in range(20):
             time.sleep(0.3)
             pos = get_position(ser)
             print(f"  [{i*0.3:.1f}s] 位置: {pos:.4f}mm")
 
-            # 检查是否完成
+            # check whether complete
             for line in send_command(ser, f"{AXIS}:GET_DATA", 0.1):
                 if "STATE:" in line:
                     state = line.split(",")[0].split(":")[1]
@@ -115,7 +115,7 @@ def main():
                 continue
             break
 
-        # 反向移动
+        # reverse move
         print("\n[5] 反向移动测试")
         resp = input(f"准备向负方向移动 {move_distance}mm (返回原位)，按 Enter 继续，'q' 退出: ")
         if resp.lower() == 'q':
@@ -127,7 +127,7 @@ def main():
         print(f"\n发送 MOVETO 命令: 目标 {target_um}um ({target_um/1000:.3f}mm)")
         send_command(ser, f"{AXIS}:MOVETO_AXIS INT32 {target_um:08X}", 0.5)
 
-        # 监控移动
+        # monitor the move
         print("\n监控移动过程...")
         for i in range(20):
             time.sleep(0.3)
@@ -147,7 +147,7 @@ def main():
                 continue
             break
 
-        # 最终状态
+        # final state
         print("\n" + "=" * 40)
         print("测试结束 - 最终状态")
         print("=" * 40)

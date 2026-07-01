@@ -3,9 +3,9 @@
 卡死现场取证：发送 S:DUMPREGS [axis] 命令打印 TMC4361A 关键寄存器
 
 用法：
-  python3 software/tests/dump_axis_state.py X         # dump X 轴
-  python3 software/tests/dump_axis_state.py X,Y,Z     # 多轴
-  python3 software/tests/dump_axis_state.py           # 所有轴
+  python3 software/tests/dump_axis_state.py X         # dump the X axis
+  python3 software/tests/dump_axis_state.py X,Y,Z     # multiple axes
+  python3 software/tests/dump_axis_state.py           # all axes
 
 解读关键字段（参考 TMC4361A datasheet）：
 
@@ -68,7 +68,7 @@ def read_until_end(ser, end_marker=b"S:DUMPREGS:END", timeout=5.0):
                 nl = buf.find(b"\n")
                 line = bytes(buf[:nl]).rstrip(b"\r")
                 del buf[: nl + 1]
-                # 过滤掉 24 字节二进制位置上报（不会有 \n 在前 22 字节，所以多半是 ASCII）
+                # filter out the 24-byte binary position reports (there is no newline in the first 22 bytes, so it is mostly ASCII)
                 try:
                     text = line.decode("utf-8")
                     if text.strip():
@@ -76,13 +76,13 @@ def read_until_end(ser, end_marker=b"S:DUMPREGS:END", timeout=5.0):
                         if end_marker.decode() in text:
                             return lines
                 except UnicodeDecodeError:
-                    pass  # 跳过含二进制的行
+                    pass  # skip lines containing binary
         else:
             time.sleep(0.005)
     return lines
 
 
-# STATUS 寄存器 (0x0F) 位解码 — 参考 TMC4361A_HW_Abstraction.h
+# STATUS register (0x0F) bit decode — see TMC4361A_HW_Abstraction.h
 STATUS_BITS = [
     (0,  "TARGET_REACHED_F",   "XACTUAL == XTARGET"),
     (1,  "POS_COMP_REACHED_F", "位置比较点到达"),
@@ -98,7 +98,7 @@ STATUS_BITS = [
     (15, "N_ACTIVE_F",         "N(zero) 标志"),
 ]
 
-# EVENTS 寄存器 (0x0E) 位解码（sticky，读后自动清）
+# EVENTS register (0x0E) bit decode (sticky, auto-cleared on read)
 EVENT_BITS = [
     (7,  "POS_REACHED_EVENT",  "位置到达事件"),
     (11, "STOPL_EVENT",        "物理 left 限位触发事件"),
@@ -120,7 +120,7 @@ def decode_bits(value, bits, label_prefix=""):
 
 def parse_and_diagnose(lines):
     """从 S:DUMP 行解析寄存器，输出诊断结论。"""
-    # 期望 4 行/轴：STATUS+EVENTS+RAMPMODE, XACTUAL+XTARGET+VACTUAL+VMAX, VSTOP_L+VSTOP_R+REFCONF+STEP_CONF, isMoving+state...
+    # expect 4 lines/axis: STATUS+EVENTS+RAMPMODE, XACTUAL+XTARGET+VACTUAL+VMAX, VSTOP_L+VSTOP_R+REFCONF+STEP_CONF, isMoving+state...
     by_axis = {}
     for line in lines:
         if not line.startswith("S:DUMP "):
@@ -135,7 +135,7 @@ def parse_and_diagnose(lines):
             if "=" in tok:
                 k, v = tok.split("=", 1)
                 try:
-                    by_axis[axis][k] = int(v, 0)  # 自动判别 0x / 十进制
+                    by_axis[axis][k] = int(v, 0)  # auto-detect 0x / decimal
                 except ValueError:
                     by_axis[axis][k] = v
 
@@ -155,34 +155,34 @@ def parse_and_diagnose(lines):
         for line in decode_bits(events, EVENT_BITS, "EVENTS "):
             print(line)
 
-        # 自动诊断
+        # auto-diagnose
         xa = regs.get("XACTUAL", 0)
         xt = regs.get("XTARGET", 0)
         va = regs.get("VACTUAL", 0)
         vmax = regs.get("VMAX", 0)
         sw_state = regs.get("state", -1)
-        # STATUS 位 — 参考 TMC4361A_HW_Abstraction.h
+        # STATUS bits — see TMC4361A_HW_Abstraction.h
         vstopL_f = bool(status & 0x200)   # bit 9
         vstopR_f = bool(status & 0x400)   # bit 10
         active_stall = bool(status & 0x800)   # bit 11
         home_error = bool(status & 0x1000)    # bit 12
         stopL_active = bool(status & 0x80)    # bit 7
         stopR_active = bool(status & 0x100)   # bit 8
-        # EVENTS 位
+        # EVENTS bits
         stopL_evt = bool(events & (1 << 11))
         stopR_evt = bool(events & (1 << 12))
         stall_evt = bool(events & (1 << 23))
         vstopL_l = regs.get("VSTOP_L", 0)
         vstopR_l = regs.get("VSTOP_R", 0)
         print("  诊断：")
-        # 状态机
+        # state machine
         STATE_NAMES = {0: "IDLE", 1: "HOMING_INIT", 2: "HOMING_SEARCH",
                        3: "HOMING_SET_ZERO", 4: "LEAVING_HOME", 5: "MOVING", 6: "ERROR"}
         if sw_state >= 0:
             sn = STATE_NAMES.get(sw_state, "?")
             marker = " ⚠" if sw_state == 6 else ""
             print(f"    软件状态：state={sw_state} ({sn}){marker}")
-        # latch 类型
+        # latch type
         if active_stall:
             print(f"    ⚠⚠ ACTIVE_STALL_F latched — StallGuard 误触发（TMC2240 用 StallGuard4 与 TMC2660 算法不同）")
             print(f"       chip 拒绝启动 ramp，必须清 latch 或 SW_RESET")
@@ -201,7 +201,7 @@ def parse_and_diagnose(lines):
             print(f"    ⚠ EVENTS: STOP{'L' if stopL_evt else 'R'}_EVENT sticky（物理限位曾被压下）")
         if stall_evt:
             print(f"    ⚠ EVENTS: ACTIVE_STALL_EVENT sticky")
-        # VMAX/运动状态
+        # VMAX/motion state
         if vmax == 0:
             print(f"    ⚠ VMAX=0 — chip 无法启动新的 ramp（handleError → motor_stop 把 VMAX 清零了）")
         if va == 0 and xa != xt:
@@ -236,7 +236,7 @@ def main():
         print(f"\n>>> {cmd}")
         send_debug_cmd(ser, cmd)
         lines = read_until_end(ser, timeout=3.0)
-        # 只打印 S:DUMP 开头的行
+        # only print lines starting with S:DUMP
         dump_lines = [l for l in lines if l.startswith("S:DUMP")]
         for line in dump_lines:
             print(line)

@@ -8,12 +8,12 @@ import serial
 import sys
 import time
 
-# 调试协议头
+# debug protocol header
 DEBUG_HEADER = bytes([0x55, 0xAA])
 
 def send_debug_command(ser, command):
     """发送调试协议命令"""
-    # 格式: 0x55 0xAA + 命令 + 换行
+    # format: 0x55 0xAA + command + newline
     data = DEBUG_HEADER + command.encode('utf-8') + b'\n'
     print(f"[TX] {data.hex()} ({command})")
     ser.write(data)
@@ -27,7 +27,7 @@ def read_response(ser, timeout=2.0):
         if ser.in_waiting > 0:
             chunk = ser.read(ser.in_waiting)
             response += chunk
-            # 检查是否收到换行符
+            # check whether a newline was received
             if b'\n' in response:
                 break
         time.sleep(0.01)
@@ -45,7 +45,7 @@ def test_version_query(port_name, baudrate=2000000):
             timeout=1
         )
 
-        # 等待初始化
+        # wait for initialization
         time.sleep(0.5)
         ser.reset_input_buffer()
 
@@ -54,10 +54,10 @@ def test_version_query(port_name, baudrate=2000000):
         print("发送版本查询命令...")
         print("-" * 40)
 
-        # 发送版本查询
+        # send the version query
         send_debug_command(ser, "S:VERSION")
 
-        # 读取响应
+        # read the response
         response = read_response(ser, timeout=2.0)
 
         if response:
@@ -94,7 +94,7 @@ def main():
     print("=" * 60)
     print()
 
-    # 从命令行获取端口，或使用默认值
+    # get the port from the command line, or use the default
     if len(sys.argv) > 1:
         port = sys.argv[1]
     else:

@@ -10,7 +10,7 @@ static uint8_t crc8_ccitt(const uint8_t *data, uint8_t n);
 PacketSerial packetSerial;
 TM1650 d;
 
-// CRC-8-CCITT 查表 (poly 0x07, init 0x00) — 与 firmware/octoaxes/serial.cpp 同款
+// CRC-8-CCITT lookup table (poly 0x07, init 0x00) — same as firmware/octoaxes/serial.cpp
 static const uint8_t CRC_TABLE[256] = {
     0x00, 0x07, 0x0E, 0x09, 0x1C, 0x1B, 0x12, 0x15, 0x38, 0x3F, 0x36, 0x31,
     0x24, 0x23, 0x2A, 0x2D, 0x70, 0x77, 0x7E, 0x79, 0x6C, 0x6B, 0x62, 0x65,
@@ -142,7 +142,7 @@ void loop()
   if(input_sensitivity_z>8)
     input_sensitivity_z = 8;
     
-  int step = 1 << input_sensitivity_z;  // 2^input_sensitivity_z，整数运算
+  int step = 1 << input_sensitivity_z;  // 2^input_sensitivity_z, integer arithmetic
   if (step > 256) step = 256;
   encoder_step_size = step;
 
@@ -171,8 +171,8 @@ void loop()
   // debouncing to be added
 
   // send to controller
-  int32_t encoder_pos_ = encoder_pos / 4; // 降低分辨率
-  // 对齐到 16 的整数倍，控制焦点轮最小步进粒度
+  int32_t encoder_pos_ = encoder_pos / 4; // reduce resolution
+  // align to a multiple of 16 to set the minimum step granularity of the focus wheel
   encoder_pos_ = (encoder_pos_ / 16) * 16;
   tmp_uint32 = twos_complement(encoder_pos_,4); 
   packet[0] = byte(tmp_uint32>>24);
@@ -192,7 +192,7 @@ void loop()
   //  if(i_testing==255)
   //    i_testing = 0;
 
-  // CRC-8-CCITT over packet[0..8]，0x00 映射为 0x01 以保留 0 作为 legacy 标识
+  // CRC-8-CCITT over packet[0..8]; map 0x00 to 0x01 to reserve 0 as the legacy marker
   uint8_t crc = crc8_ccitt(packet, 9);
   if (crc == 0x00) crc = 0x01;
   packet[9] = crc;

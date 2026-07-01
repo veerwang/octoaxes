@@ -24,15 +24,15 @@ CMD_CONFIGURE_STAGE_PID = 25
 
 HOME_NEGATIVE = 1
 
-# W 量纲（与 software 配置一致）
+# W units (consistent with the software config)
 W_STEPS_PER_REV = 200 * 64       # = 12800
-W_STEPS_PER_SLOT = W_STEPS_PER_REV // 8   # = 1600 (8 槽)
+W_STEPS_PER_SLOT = W_STEPS_PER_REV // 8   # = 1600 (8 slots)
 W_OFFSET_MICROSTEPS = 102        # SQUID_FILTERWHEEL_OFFSET = 0.008 mm
-TOLERANCE_MICROSTEPS = 30        # ±30 µstep ≈ ±0.84° 视觉无法察觉
+TOLERANCE_MICROSTEPS = 30        # ±30 ustep ≈ ±0.84° visually imperceptible
 
-# 测试参数
-TEST_ROUNDS = 10         # 总轮数
-SLOTS_PER_DIRECTION = 7  # 每轮 next ×7, previous ×7 (完整一圈)
+# test parameters
+TEST_ROUNDS = 10         # total rounds
+SLOTS_PER_DIRECTION = 7  # each round: next x7, previous x7 (a full circle)
 
 
 def crc8(data):
@@ -137,14 +137,14 @@ def main():
         seq[0] = (s + 1) & 0xFF
         return s
 
-    # Step 1: 启用编码器
+    # Step 1: enable the encoder
     print(f"\n[STEP] 启用 W 编码器 (CONFIGURE_STAGE_PID, tpr=4000)")
     send_cmd(ser, next_seq(), CMD_CONFIGURE_STAGE_PID,
              b2=AXIS_W, b3=0, b4=0x0F, b5=0xA0)
     time.sleep(0.5)
     reader.drain()
 
-    # Step 2: send_homing 完整流程（与 GUI main_window.py:send_homing 一致）
+    # Step 2: the full send_homing flow (consistent with GUI main_window.py:send_homing)
     #   = HOME_OR_ZERO → wait_until_idle → MOVE_W (offset) → wait_until_idle
     print(f"\n[STEP] send_homing (HOME + offset，与 GUI 完全一致)")
     send_cmd(ser, next_seq(), CMD_HOME_OR_ZERO, b2=AXIS_W, b3=HOME_NEGATIVE)
@@ -153,18 +153,18 @@ def main():
         print(f"  ✗ Homing 超时")
         return 1
     print(f"  ✓ Homing {elapsed_home*1000:.0f} ms, W={w_home}")
-    # GUI send_homing 紧接着发 offset MOVE_W（在同函数内，无 sleep 分隔）
+    # GUI send_homing immediately sends the offset MOVE_W (in the same function, no sleep in between)
     send_move_w(ser, next_seq(), W_OFFSET_MICROSTEPS)
     ok, elapsed_off, w = wait_until_idle(reader, timeout_s=10)
     print(f"  ✓ Offset MOVE_W +{W_OFFSET_MICROSTEPS} {elapsed_off*1000:.0f} ms, W={w}")
-    # GUI run_w_test 在 send_homing 后 sleep(1.0) 让 chip 完全静稳
-    # (GUI 后接的 wait_until_idle 是 polling 已 IDLE 立即返回 True，相当于 no-op，省略)
+    # GUI run_w_test sleeps(1.0) after send_homing to let the chip fully settle
+    # (the GUI's subsequent wait_until_idle polls and returns True immediately if already IDLE, effectively a no-op, omitted)
     time.sleep(1.0)
-    reader.drain()  # 清掉等待期间的位置包
+    reader.drain()  # discard the position packets received during the wait
 
-    expected_pos = w  # 从实测位置开始算（包含 offset 完成后的精确值）
+    expected_pos = w  # start counting from the measured position (including the precise value after the offset completes)
 
-    # Step 3: 循环 next × M / previous × M (与 GUI run_w_test 一致，每步 sleep 0.5)
+    # Step 3: loop next x M / previous x M (consistent with GUI run_w_test, sleep 0.5 per step)
     fail_count = 0
     total_count = 0
     for round_idx in range(1, TEST_ROUNDS + 1):
@@ -172,7 +172,7 @@ def main():
 
         # Next ×M
         for i in range(1, SLOTS_PER_DIRECTION + 1):
-            time.sleep(0.5)   # ★ GUI run_w_test 同款间隔
+            time.sleep(0.5)   # * the same interval as GUI run_w_test
             send_move_w(ser, next_seq(), W_STEPS_PER_SLOT)
             ok, elapsed, w = wait_until_idle(reader, timeout_s=5)
             expected_pos += W_STEPS_PER_SLOT
@@ -189,7 +189,7 @@ def main():
 
         # Previous ×M
         for i in range(1, SLOTS_PER_DIRECTION + 1):
-            time.sleep(0.5)   # ★ GUI run_w_test 同款间隔
+            time.sleep(0.5)   # * the same interval as GUI run_w_test
             send_move_w(ser, next_seq(), -W_STEPS_PER_SLOT)
             ok, elapsed, w = wait_until_idle(reader, timeout_s=5)
             expected_pos -= W_STEPS_PER_SLOT

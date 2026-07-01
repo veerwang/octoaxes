@@ -8,10 +8,10 @@ import serial
 import sys
 import time
 
-# 调试协议头
+# debug protocol header
 DEBUG_HEADER = bytes([0x55, 0xAA])
 
-# 可用的轴名称
+# available axis names
 AXIS_NAMES = ['X', 'Y', 'Z', 'W', 'Turret', 'E3', 'E4']
 
 def send_debug_command(ser, command):
@@ -51,20 +51,20 @@ def test_axis_status(ser, axis_name):
     """测试单个轴的状态"""
     print(f"\n--- 测试轴: {axis_name} ---")
 
-    # 清空缓冲区
+    # flush the buffer
     ser.reset_input_buffer()
 
-    # 发送 GET_DATA 命令
+    # send the GET_DATA command
     send_debug_command(ser, f"{axis_name}:GET_DATA")
 
-    # 读取响应
+    # read the response
     responses = read_all_responses(ser, timeout=1.0)
 
     if not responses:
         print(f"  [WARN] 无响应")
         return False, "no_response"
 
-    # 分析响应
+    # analyze the response
     has_position = False
     has_limit = False
     has_state = False
@@ -97,9 +97,9 @@ def test_axis_status(ser, axis_name):
             except:
                 pass
 
-    # 判断通信状态
+    # determine the communication status
     if has_position and has_limit:
-        # 检查是否是异常值 (例如全 0xFF 表示通信失败)
+        # check for abnormal values (e.g. all 0xFF means communication failure)
         if position_value is not None and abs(position_value) > 0x7FFFFFFF:
             print(f"  [FAIL] 位置值异常: {position_value}")
             return False, "bad_position"
@@ -124,7 +124,7 @@ def test_tmc_communication(port_name, baudrate=2000000):
         time.sleep(0.5)
         ser.reset_input_buffer()
 
-        # 先发送 Engine Start (如果需要)
+        # send Engine Start first (if needed)
         print("\n发送 Engine Start...")
         send_debug_command(ser, "S:Engine Start")
         time.sleep(1.0)
@@ -132,7 +132,7 @@ def test_tmc_communication(port_name, baudrate=2000000):
         for resp in responses:
             print(f"  [RX] {resp}")
 
-        # 测试各轴
+        # test each axis
         results = {}
         print("\n" + "=" * 50)
         print("测试各轴 TMC 通信状态")
@@ -145,7 +145,7 @@ def test_tmc_communication(port_name, baudrate=2000000):
 
         ser.close()
 
-        # 汇总结果
+        # summarize results
         print("\n" + "=" * 50)
         print("测试结果汇总")
         print("=" * 50)

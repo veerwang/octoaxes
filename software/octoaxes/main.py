@@ -24,12 +24,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SOFTWARE_ROOT = os.path.dirname(HERE)
 COMMON = os.path.join(SOFTWARE_ROOT, "common")
 
-# 共享模块（gui/, hardware/, utils/, define.py 等）走 common
+# shared modules (gui/, hardware/, utils/, define.py, etc.) come from common
 sys.path.insert(0, COMMON)
-# 本 profile 目录优先（含 constants.py）
+# this profile's directory takes priority (contains constants.py)
 sys.path.insert(0, HERE)
 
-# 把 profile 的 constants 注册为 utils.constants 别名，共享代码无需改 import
+# register the profile's constants as the utils.constants alias, so shared code needs no import changes
 import constants as _profile_constants  # noqa: E402
 import utils  # noqa: E402
 sys.modules["utils.constants"] = _profile_constants

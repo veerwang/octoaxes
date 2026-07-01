@@ -44,38 +44,38 @@ def main():
     print("\n[1] Engine Start")
     send_cmd(ser, "S:Engine Start", 3)
 
-    # 读取初始状态
+    # read the initial state
     print("\n[2] 初始寄存器状态")
     send_cmd(ser, "Z:DEBUG_REG", 1)
 
-    # 直接发送速度模式测试命令
-    # 我们需要一个固件命令来直接调用 motor_setVelocityInternal
-    # 暂时用 HOMING 命令，但立刻检查寄存器
+    # send the velocity-mode test command directly
+    # we need a firmware command to directly call motor_setVelocityInternal
+    # for now use the HOMING command, but check the registers immediately
 
     print("\n[3] 发送 HOMING 命令（触发速度模式）")
     send_cmd(ser, "Z:HOMING", 0.5)
 
-    # 立刻读取寄存器
+    # read the registers immediately
     print("\n[4] HOMING 后立刻检查寄存器")
     for line in send_cmd(ser, "Z:DEBUG_REG", 0.5):
         if any(x in line for x in ["RAMPMODE", "VMAX", "XACTUAL", "VACTUAL"]):
             print(f"  >>> {line}")
 
-    # 监控位置变化
+    # monitor the position change
     print("\n[5] 监控 XACTUAL 变化 (5秒)")
     for i in range(10):
         time.sleep(0.5)
-        # 直接读取 XACTUAL
+        # read XACTUAL directly
         for line in send_cmd(ser, "Z:DEBUG_REG", 0.3):
             if "XACTUAL" in line:
                 print(f"  [{i*0.5:.1f}s] {line}")
                 break
 
-    # 发送 RESET 停止
+    # send RESET to stop
     print("\n[6] 发送 RESET 停止电机")
     send_cmd(ser, "Z:RESET", 1)
 
-    # 最终状态
+    # final state
     print("\n[7] 最终寄存器状态")
     for line in send_cmd(ser, "Z:DEBUG_REG", 1):
         if any(x in line for x in ["RAMPMODE", "VMAX", "XACTUAL", "VACTUAL", "STATUS", "EVENTS"]):

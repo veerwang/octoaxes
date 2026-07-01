@@ -5,17 +5,17 @@
 
 class StepAxis : public Axis {
 public:
-  // 构造函数
+  // Constructor
   StepAxis(uint8_t csPin, uint8_t axisIndex, const char* axisName);
   
-  // 重写基类的初始化函数，添加步进轴特有配置
+  // Override the base-class init function to add stepper-axis-specific configuration
   bool begin(const AxisConfig& config) override;
   
-  // 步进轴特有功能
+  // Stepper-axis-specific features
   void setBacklashCompensation(float backlashMM);
   void enableBacklashCompensation(bool enable);
   
-  // 重写运动控制函数，添加步进轴特有逻辑
+  // Override the motion-control functions to add stepper-axis-specific logic
   bool moveToPosition(float positionMM) override;
   bool moveRelative(float distanceMM) override;
   
@@ -25,7 +25,7 @@ private:
   float _backlashMM;
   bool _backlashCompensationEnabled;
   
-  // 步进轴特有方法
+  // Stepper-axis-specific methods
   void applyBacklashCompensation(int32_t direction);
 
 	void performHomingSequence() override;

@@ -18,7 +18,7 @@ def setup_exception_handler():
         traceback.print_tb(tb)
         print("=" * 80)
 
-        # 调用默认处理器
+        # Call the default handler
         sys.__excepthook__(exctype, value, tb)
 
     sys.excepthook = exception_handler

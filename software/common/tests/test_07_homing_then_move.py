@@ -11,10 +11,10 @@ import sys
 import time
 import argparse
 
-# 调试协议头
+# debug protocol header
 DEBUG_HEADER = bytes([0x55, 0xAA])
 
-# Homing 状态
+# homing status
 HOMING_STATES = ["HOMING_INIT", "HOMING_SEARCH", "HOMING_SET_ZERO", "LEAVING_HOME"]
 
 def send_debug_command(ser, command):
@@ -150,7 +150,7 @@ def run_homing_test(port_name, axis_name, distance_um=500, baudrate=2000000):
         for resp in responses:
             print(f"  [RX] {resp}")
 
-        # 检查当前状态
+        # check the current status
         data = get_axis_state(ser, axis_name)
         print(f"\n  当前状态: {data['state']}")
         print(f"  当前位置: {data['pos_mm']:.3f} mm")
@@ -160,19 +160,19 @@ def run_homing_test(port_name, axis_name, distance_um=500, baudrate=2000000):
         print_section("Step 3: 开始 Homing")
         # ============================================================
 
-        # 记录初始位置
+        # record the initial position
         initial_pos_mm = data['pos_mm'] if data['pos_mm'] is not None else 0.0
 
         ser.reset_input_buffer()
         send_debug_command(ser, f"{axis_name}:HOMING")
         time.sleep(0.3)
 
-        # 读取响应
+        # read the response
         responses = read_all_responses(ser, timeout=0.5)
         for resp in responses:
             print(f"  [RX] {resp}")
 
-        # 检查是否开始homing
+        # check whether homing started
         data = get_axis_state(ser, axis_name)
         if data['state'] not in HOMING_STATES:
             print(f"\n  [WARN] Homing 可能未启动，当前状态: {data['state']}")
@@ -206,19 +206,19 @@ def run_homing_test(port_name, axis_name, distance_um=500, baudrate=2000000):
         print_section(f"Step 6: 移动 {distance_um} 微米")
         # ============================================================
 
-        # 获取当前位置 (homing 后应该是 0)
+        # get the current position (should be 0 after homing)
         data = get_axis_state(ser, axis_name)
         current_pos_mm = data['pos_mm'] if data['pos_mm'] is not None else 0.0
         current_pos_um = int(current_pos_mm * 1000)
 
-        # 计算目标位置
+        # compute the target position
         target_pos_um = current_pos_um + distance_um
 
         print(f"\n  当前位置: {current_pos_mm:.3f} mm ({current_pos_um} 微米)")
         print(f"  移动距离: {distance_um} 微米 ({distance_um/1000:.3f} mm)")
         print(f"  目标位置: {target_pos_um} 微米 ({target_pos_um/1000:.3f} mm)")
 
-        # 发送移动命令 (MOVETO_AXIS 接受微米值的十六进制)
+        # send the move command (MOVETO_AXIS takes a hex micrometer value)
         if target_pos_um < 0:
             hex_val = (1 << 32) + target_pos_um
         else:
@@ -257,11 +257,11 @@ def run_homing_test(port_name, axis_name, distance_um=500, baudrate=2000000):
 
             elapsed = time.time() - start_time
 
-            # 检测是否有移动
+            # detect whether there was movement
             if pos_mm is not None and abs(pos_mm - prev_pos_mm) > 0.0001:
                 movement_detected = True
 
-            # 打印状态
+            # print the status
             pos_str = f"{pos_mm:.3f}" if pos_mm is not None else "?"
             delta_str = f"Δ={((pos_mm - prev_pos_mm)*1000):+.0f}um" if pos_mm is not None else ""
             print(f"  [{elapsed:5.1f}s] POS={pos_str:>10}mm {delta_str:>12}  STATE={state}  MOVING={is_moving}  LIM={limit_sw}")
@@ -269,9 +269,9 @@ def run_homing_test(port_name, axis_name, distance_um=500, baudrate=2000000):
             if pos_mm is not None:
                 prev_pos_mm = pos_mm
 
-            # 如果进入 IDLE/ERROR 状态，停止监控
+            # stop monitoring if the IDLE/ERROR state is entered
             if state == "IDLE" or state == "ERROR":
-                if i > 0:  # 第一次不算
+                if i > 0:  # skip the first iteration
                     break
 
         # ============================================================
@@ -290,12 +290,12 @@ def run_homing_test(port_name, axis_name, distance_um=500, baudrate=2000000):
         print()
         if movement_detected:
             error_um = abs(pos_delta_um - distance_um)
-            if error_um < 10:  # 10微米以内误差认为正常
+            if error_um < 10:  # an error within 10 micrometers is considered normal
                 print("  [OK] 运动正常完成")
                 result = True
             else:
                 print(f"  [WARN] 运动完成但位置不准确 (误差: {error_um} 微米)")
-                result = True  # 有移动就算部分成功
+                result = True  # any movement counts as partial success
         else:
             print("  [FAIL] 电机未移动")
             result = False

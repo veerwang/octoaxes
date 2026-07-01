@@ -11,7 +11,7 @@
 #include "tmc/motion/MotorControl.h"
 #include "tmc/ic/TMC4361A/TMC4361A.h"
 #include "utils.h"
-#include "mcp23s17.h"  // squid++：MCP23S17_1 扩展 IO（8 轴 INTR/TARGET 输入）
+#include "mcp23s17.h"  // squid++: MCP23S17_1 expansion IO (8-axis INTR/TARGET inputs)
 
 void initializeClock(uint8_t clk_pin, uint32_t frequence) {
   pinMode(clk_pin, OUTPUT);
@@ -20,27 +20,27 @@ void initializeClock(uint8_t clk_pin, uint32_t frequence) {
 }
 
 void initializeSPIAndPins() {
-  // squid++ 双相机：所有 SPI 设备片选走 74HC154，无需单独 pinMode
-  // 提前 hc154_init() 以便 illumination_init 的 DAC 通信可用
-  // （tmc_spi_init 内部会再调一次，幂等）
+  // squid++ dual-camera: all SPI device chip-selects go through the 74HC154, no separate pinMode needed
+  // call hc154_init() early so illumination_init's DAC communication is available
+  // (tmc_spi_init calls it again internally, idempotent)
   Pins::hc154_init();
 
-  // 初始化SPI
+  // Initialize SPI
   SPI.begin();
-  delay(50); // 50ms延迟，使用明确的时间单位
+  delay(50); // 50ms delay, using explicit time units
 }
 
 bool initializePowerManagement() {
   pinMode(Pins::POWER_GOOD, INPUT_PULLUP);
 
-  // DAC80508_1 片选走 74HC154（Pins::DAC8050x_CS = 通道 2），不再直接操控 GPIO
+  // the DAC80508_1 chip-select goes through the 74HC154 (Pins::DAC8050x_CS = channel 2), no longer directly driving GPIO
 
   delay(100);
 
-  // 等待电源就绪
+  // Wait for power to be ready
   unsigned long startTime = millis();
   while (!digitalRead(Pins::POWER_GOOD)) {
-    if (millis() - startTime > 5000) { // 5秒超时
+    if (millis() - startTime > 5000) { // 5-second timeout
       DEBUG_PRINTLN("Power management initialization timeout");
       return false;
     }
@@ -51,58 +51,58 @@ bool initializePowerManagement() {
 }
 
 bool initializeSystem() {
-  // 初始化电源管理
+  // Initialize power management
   if (!initializePowerManagement()) {
     return false;
   }
 
-  // 初始化时钟（squid++ 单套时钟，取消 EXPAND_CLK 避免与 TTL5 共用 pin 28）
+  // Initialize the clock (squid++ single clock set; EXPAND_CLK removed to avoid sharing pin 28 with TTL5)
   initializeClock(Pins::TMC4361_STANDARD_CLK,
                   SystemConfig::TMC4361_CLOCK_FREQUENCY);
 
-  // 初始化SPI和引脚
+  // Initialize SPI and pins
   initializeSPIAndPins();
 
-  // 初始化扩展 IO（MCP23S17_1，CS 走 HC154 通道 0；8 轴 INTR/TARGET 输入）
+  // Initialize the expansion IO (MCP23S17_1, CS via HC154 channel 0; 8-axis INTR/TARGET inputs)
   mcp23s17_init();
 
-  // 初始化照明系统（引脚、LED矩阵、DAC、联锁）
+  // Initialize the illumination system (pins, LED matrix, DAC, interlock)
   illumination_init();
 
-  // 初始化触发系统（引脚、频闪定时器）
+  // Initialize the trigger system (pins, strobe timer)
   trigger_init();
 
-  // 初始化新架构的运动控制子系统
+  // Initialize the new-architecture motion-control subsystem
   motor_initSubsystem();
 
-  // 创建轴对象并添加到管理器
+  // Create axis objects and add them to the manager
   //
-  // squid++ 双相机硬件不需要 octoaxes 主线的 X/Y swap：
-  // squid++ HC154 片选通道命名与物理硬件接线对齐（HC154_AXIS_X=10 直接驱动物理 X 电机），
-  // tmc_ic_configs[] 中 icID=0 → HC154_AXIS_Y, icID=1 → HC154_AXIS_X，
-  // 故 axisName="Y" + icID=0 + Y_AXIS_CS、axisName="X" + icID=1 + X_AXIS_CS 即正确映射。
-  // (octoaxes 主线的 swap 是为了兼容老 Squid PCB 的反向接线，详见 octoaxes/octoaxes.ino)
+  // squid++ dual-camera hardware does not need the octoaxes mainline's X/Y swap:
+  // the squid++ HC154 chip-select channel names align with the physical wiring (HC154_AXIS_X=10 directly drives the physical X motor),
+  // in tmc_ic_configs[], icID=0 -> HC154_AXIS_Y, icID=1 -> HC154_AXIS_X,
+  // so axisName="Y" + icID=0 + Y_AXIS_CS and axisName="X" + icID=1 + X_AXIS_CS is the correct mapping.
+  // (the octoaxes mainline swap is to be compatible with the legacy Squid PCB's reversed wiring, see octoaxes/octoaxes.ino)
   //
   // ──────────────────────────────────────────────────────────────────────
-  // 当前模式：XYZW1W2 五轴（2026-05-15 起）
+  // current mode: XYZW1W2 five axes (since 2026-05-15)
   // ──────────────────────────────────────────────────────────────────────
-  // 启用 X / Y / Z / W1 / W2 五轴：
-  //   W1 / W2 为滤光转盘（FilterWheel），CS 占用原 squid++ 8 轴方案的 Z2/T 通道：
-  //     W1: HC154 通道 6（原 AXIS_Z2 资源）
-  //     W2: HC154 通道 4（原 AXIS_T  资源）
-  // Z 轴 axisName 用 "Z"（与上位机一致；axesmrg.cpp::beginAll 同时支持 "Z"/"Z1"）。
+  // enable the five axes X / Y / Z / W1 / W2:
+  // W1 / W2 are filter wheels (FilterWheel); their CS uses the Z2/T channels of the original squid++ 8-axis scheme:
+  // W1: HC154 channel 6 (original AXIS_Z2 resource)
+  // W2: HC154 channel 4 (original AXIS_T resource)
+  // the Z axis uses axisName "Z" (consistent with the host; axesmrg.cpp::beginAll supports both "Z"/"Z1").
   // ──────────────────────────────────────────────────────────────────────
-  Axis *yAxis  = new StepAxis    (Pins::Y_AXIS_CS,  0, "Y");    // icID=0, HC154 ch9  = 物理 Y 电机
-  Axis *xAxis  = new StepAxis    (Pins::X_AXIS_CS,  1, "X");    // icID=1, HC154 ch10 = 物理 X 电机
-  Axis *zAxis  = new StepAxis    (Pins::Z_AXIS_CS,  2, "Z");    // icID=2, HC154 ch8  = 主焦点 Z
-  Axis *w1Axis = new FilterWheel (Pins::W1_AXIS_CS, 3, "W1");   // icID=3, HC154 ch6  = 滤光转盘 1
-  Axis *w2Axis = new FilterWheel (Pins::W2_AXIS_CS, 4, "W2");   // icID=4, HC154 ch4  = 滤光转盘 2
-  // 2026-06-02 E1 物镜转换器（4 物镜）：CS=R_AXIS_CS (HC154 ch3)，复用 octoaxes E1 协议
-  // （axisName="Turret" + MOVE_TURRET=44/MOVETO_TURRET=45 + 协议轴码 7）。beginAll 用 EXPAND1_AXIS 模板。
-  Axis *turretAxis = new Objectives  (Pins::R_AXIS_CS, 5, "Turret", 4);  // icID=5, HC154 ch3 = 物镜转换器
+  Axis *yAxis  = new StepAxis    (Pins::Y_AXIS_CS,  0, "Y");    // icID=0, HC154 ch9  = physical Y motor
+  Axis *xAxis  = new StepAxis    (Pins::X_AXIS_CS,  1, "X");    // icID=1, HC154 ch10 = physical X motor
+  Axis *zAxis  = new StepAxis    (Pins::Z_AXIS_CS,  2, "Z");    // icID=2, HC154 ch8  = main focus Z
+  Axis *w1Axis = new FilterWheel (Pins::W1_AXIS_CS, 3, "W1");   // icID=3, HC154 ch6  = filter wheel 1
+  Axis *w2Axis = new FilterWheel (Pins::W2_AXIS_CS, 4, "W2");   // icID=4, HC154 ch4  = filter wheel 2
+  // 2026-06-02 E1 objective turret (4 objectives): CS=R_AXIS_CS (HC154 ch3), reusing the octoaxes E1 protocol
+  // (axisName="Turret" + MOVE_TURRET=44/MOVETO_TURRET=45 + protocol axis code 7). beginAll uses the EXPAND1_AXIS template.
+  Axis *turretAxis = new Objectives  (Pins::R_AXIS_CS, 5, "Turret", 4);  // icID=5, HC154 ch3 = objective turret
 
-  // 按 axisIndex 顺序添加；顺序必须与 tmc/hal/TMC_SPI.cpp 的 tmc_ic_configs[] HC154 分支一致
-  // tmc_ic_configs[] 数组保持 8 项（icID 6-7 槽位空置但不被访问，无副作用）
+  // add in axisIndex order; the order must match the HC154 branch of tmc_ic_configs[] in tmc/hal/TMC_SPI.cpp
+  // the tmc_ic_configs[] array keeps 8 entries (icID 6-7 slots are empty but never accessed, no side effects)
   if (!axisManager.addAxis(yAxis)  || !axisManager.addAxis(xAxis)  ||
       !axisManager.addAxis(zAxis)  || !axisManager.addAxis(w1Axis) ||
       !axisManager.addAxis(w2Axis) || !axisManager.addAxis(turretAxis)) {
@@ -110,42 +110,42 @@ bool initializeSystem() {
     return false;
   }
 
-  // 初始化所有轴
-  // 注意：beginAll() 返回 false 表示**至少一根轴 begin 失败**（典型场景：
-  // TMC4361A SPI 无响应导致 motor_initMotionController 写 SW_RESET 后读
-  // VERSION_NO 返回 0/-1）。**不再视为致命错误** —— 串口通信和调试命令
-  // (S:VERSION / S:HWINFO / S:SPITEST / S:DUMPREGS) 必须保持可用，否则
-  // bring-up 期间无法定位 SPI 失败的根因。失败轴的标识已由 axis.cpp 中的
-  // DEBUG_PRINT(_axisName + ":BEGIN_FAIL ...") 打印到串口。
+  // Initialize all axes
+  // Note: beginAll() returning false means **at least one axis failed begin** (typical case:
+  // TMC4361A SPI not responding, so after motor_initMotionController writes SW_RESET, reading
+  // VERSION_NO returns 0/-1). **No longer treated as fatal** -- serial communication and debug commands
+  // (S:VERSION / S:HWINFO / S:SPITEST / S:DUMPREGS) must remain available, otherwise
+  // the SPI failure root cause cannot be located during bring-up. The failed axis is already identified by axis.cpp's
+  // DEBUG_PRINT(_axisName + ":BEGIN_FAIL ...") printed to the serial port.
   if (!axisManager.beginAll()) {
     DEBUG_PRINTLN("WARNING: beginAll() reported partial axis failure (see :BEGIN_FAIL above). Continuing so serial diagnostics remain available.");
   }
 
-  // 初始化手控盒（Serial5 + PacketSerial）
+  // Initialize the hand controller (Serial5 + PacketSerial)
   joystick_init();
 
   return true;
 }
 
 void setup() {
-  // 初始化串口
+  // Initialize the serial port
   serialProtocol.begin(115200, 300);
 
-  // 初始化状态指示灯
+  // Initialize the status indicator LED
   initializeStartupLED();
 
-  // 尽早把 APA102 矩阵清零，最小化"启动亮"窗口。
-  // 之后的 initializePowerManagement (等 PG) + delay + clock + SPI 初始化
-  // 累计可能数百 ms~5s，APA102 在此期间处于上电默认亮态。
+  // clear the APA102 matrix as early as possible to minimize the "startup glow" window.
+  // the subsequent initializePowerManagement (waiting for PG) + delay + clock + SPI init
+  // may total hundreds of ms to 5s, during which the APA102 stays in its power-on default lit state.
   illumination_init_matrix_early();
 
   DEBUG_PRINTLN("Initializing system...");
 
-  // 初始化系统
+  // Initialize the system
   if (!initializeSystem()) {
     DEBUG_PRINTLN("System initialization failed!");
     while (1) {
-      delay(1000); // 停止执行
+      delay(1000); // halt execution
     }
   }
 
@@ -155,12 +155,12 @@ void setup() {
 void loop() {
   static bool firstLoop = true;
   if (firstLoop) {
-    DEBUG_PRINTLN("MAIN_LOOP_ENTERED");  // 确认进入主循环
+    DEBUG_PRINTLN("MAIN_LOOP_ENTERED");  // confirm entry into the main loop
     firstLoop = false;
   }
 
-  // 安全联锁检查：联锁断开时直接拉低所有 TTL 激光端口（硬编码 GPIO，零开销）
-  // squid++ 双相机：D1-D8 共 8 路 TTL
+  // Safety interlock check: when the interlock opens, directly pull all TTL laser ports low (hardcoded GPIO, zero overhead)
+  // squid++ dual-camera: D1-D8, 8 TTL lines total
   if (!illumination_interlock_ok()) {
     digitalWrite(Pins::ILLUMINATION_D1, LOW);
     digitalWrite(Pins::ILLUMINATION_D2, LOW);
@@ -172,25 +172,25 @@ void loop() {
     digitalWrite(Pins::ILLUMINATION_D8, LOW);
   }
 
-  // 串口看门狗：通信中断超时后自动关闭所有照明
+  // Serial watchdog: automatically turn off all illumination after a communication-loss timeout
   watchdog_check();
 
-  // 更新触发脉冲恢复
+  // Update trigger-pulse recovery
   trigger_update();
 
-  // 主循环钩子：DAC 一次性 fallback 同步（ttl_test bring-up 验证）
+  // main-loop hook: one-time DAC fallback sync (verified during ttl_test bring-up)
   illumination_update();
 
-  // 处理串口调试命令
+  // Process serial debug commands
   serialProtocol.processSerialCommands();
 
-  // 10ms 周期位置上报（与旧 Squid 协议兼容）
+  // 10ms periodic position reporting (compatible with the legacy Squid protocol)
   serialProtocol.send_position_update();
 
-  // 更新手控盒（PacketSerial 接收 + 摇杆/焦点轮控制）
+  // Update the hand controller (PacketSerial receive + joystick/focus-wheel control)
   joystick_update();
 
-  // 更新所有轴状态机
+  // Update all axis state machines
   axisManager.updateAll();
 
 }

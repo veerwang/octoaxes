@@ -12,14 +12,14 @@ PORT = "/dev/ttyACM0"
 BAUDRATE = 115200
 AXIS = "Z"
 
-# Z 轴参数
-STEPS_PER_MM = 170666.67  # 根据实际配置调整
+# Z-axis parameters
+STEPS_PER_MM = 170666.67  # adjust to the actual configuration
 
 def send_command(ser, cmd, wait=0.3, show=True):
     """发送命令并读取响应（带协议头）"""
     if show:
         print(f"[TX] {cmd}")
-    # 添加协议头 0x55 0xAA
+    # add the protocol header 0x55 0xAA
     data = b'\x55\xAA' + cmd.encode() + b'\n'
     ser.write(data)
     time.sleep(wait)
@@ -82,7 +82,7 @@ def main():
         state, pos, lim = get_status(ser)
         print(f"\n当前状态: {state}, 位置: {pos:.3f}mm, 限位: 0x{lim:X}")
 
-        # Step 3: 检查是否在限位
+        # Step 3: check whether at a limit
         print("\n" + "=" * 40)
         print("Step 3: 检查限位状态")
         print("=" * 40)
@@ -91,7 +91,7 @@ def main():
             print("!! 右限位已激活 - 电机可能在限位位置")
             resp = wait_for_key("是否尝试手动移动离开限位? (y/n): ")
             if resp.lower() == 'y':
-                # 尝试小距离负方向移动
+                # try a small negative-direction move
                 print("尝试向负方向移动 0.5mm...")
                 target_um = int((pos - 0.5) * 1000)
                 send_command(ser, f"{AXIS}:MOVETO_AXIS INT32 {target_um:08X}", 2)
@@ -102,7 +102,7 @@ def main():
         else:
             print("限位未激活，可以安全进行 homing")
 
-        # Step 4: 开始 Homing
+        # Step 4: start homing
         print("\n" + "=" * 40)
         print("Step 4: 开始 Homing (可随时按 Ctrl+C 中止)")
         print("=" * 40)
@@ -111,7 +111,7 @@ def main():
 
         send_command(ser, f"{AXIS}:HOMING", 0.5)
 
-        # 监控 homing 过程
+        # monitor the homing process
         print("\n监控 Homing 过程 (按 Ctrl+C 发送 RESET 停止)...")
         try:
             for i in range(60):
@@ -119,7 +119,7 @@ def main():
                 state, pos, lim = get_status(ser)
                 print(f"  [{i*0.5:4.1f}s] STATE={state:15s} POS={pos:8.3f}mm LIM=0x{lim:X}")
 
-                # 读取串口输出
+                # read the serial output
                 while ser.in_waiting:
                     line = ser.readline().decode('utf-8', errors='ignore').strip()
                     if line and ("limit" in line.lower() or "homing" in line.lower() or
@@ -136,7 +136,7 @@ def main():
             print("\n\n用户中断 - 发送 RESET...")
             send_command(ser, f"{AXIS}:RESET", 1)
 
-        # 最终状态
+        # final state
         print("\n" + "=" * 40)
         print("最终状态")
         print("=" * 40)
@@ -145,7 +145,7 @@ def main():
         print(f"位置: {pos:.3f}mm")
         print(f"限位: 0x{lim:X}")
 
-        # 读取寄存器
+        # read the registers
         print("\n关键寄存器:")
         for line in send_command(ser, f"{AXIS}:DEBUG_REG", 1, show=False):
             if any(x in line for x in ["RAMPMODE", "STATUS", "EVENTS", "XACTUAL", "XTARGET", "VMAX"]):

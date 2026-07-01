@@ -12,7 +12,7 @@
   - 每次状态翻转打印一条带时间戳的事件行（手动压一次 = 一条记录，便于核对）
 
 用法：
-  python3 software/common/tests/z_limit_monitor.py                 # 自动找口, 监视 Z
+  python3 software/common/tests/z_limit_monitor.py                 # auto-find port, monitor Z
   python3 software/common/tests/z_limit_monitor.py --axis Z
   python3 software/common/tests/z_limit_monitor.py --port /dev/ttyACM0 --axis Z
   Ctrl-C 退出。
@@ -34,8 +34,8 @@ except Exception:
 
 DEBUG_HEADER = bytes([0x55, 0xAA])
 
-STATUS_STOPL = 1 << 7   # 左限位 active
-STATUS_STOPR = 1 << 8   # 右限位 active
+STATUS_STOPL = 1 << 7   # left limit active
+STATUS_STOPR = 1 << 8   # right limit active
 
 
 def send_debug_cmd(ser, cmd):
@@ -98,7 +98,7 @@ def main():
     time.sleep(0.3)
     ser.reset_input_buffer()
 
-    # 初始读一次确认通信
+    # read once initially to confirm communication
     st0 = read_status(ser, args.axis)
     if st0 is None:
         print(f"[WARN] 读不到 {args.axis} 的 STATUS —— 确认固件支持 S:DUMPREGS 且轴名正确（如 Z）")
@@ -121,14 +121,14 @@ def main():
             stopr = bool(st & STATUS_STOPR)
             t = time.perf_counter() - t0
 
-            # 全 STATUS 任意 bit 变化 → 打印 old→new + 翻转位（诊断：信号是否落在别的 bit）
+            # any bit change in the full STATUS -> print old->new + the flipped bit (diagnostic: whether the signal lands on a different bit)
             if prev_status is not None and st != prev_status:
                 flipped = st ^ prev_status
                 bits = ",".join(f"bit{b}" for b in range(32) if flipped & (1 << b))
                 print(f"\r[{t:7.2f}s] STATUS 变化 0x{prev_status:08X} → 0x{st:08X}  翻转: {bits}" + " " * 10)
             prev_status = st
 
-            # 左右限位翻转 → 永久事件行
+            # left/right limit flip -> permanent event line
             if prev_l is not None and stopl != prev_l:
                 evt = "触发(active)" if stopl else "释放(idle)"
                 print(f"\r[{t:7.2f}s] ◀ 左限位 STOPL {evt}" + " " * 30)
@@ -137,7 +137,7 @@ def main():
                 print(f"\r[{t:7.2f}s] ▶ 右限位 STOPR {evt}" + " " * 30)
             prev_l, prev_r = stopl, stopr
 
-            # 底部实时行（\r 覆盖刷新）
+            # bottom real-time line (carriage-return overwrite refresh)
             print(f"\r  [{nread}] {fmt_live(stopl, stopr, st)}", end="", flush=True)
             time.sleep(args.interval)
     except KeyboardInterrupt:

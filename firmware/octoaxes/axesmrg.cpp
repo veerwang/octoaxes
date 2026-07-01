@@ -1,18 +1,18 @@
 #include "axesmrg.h"
 #include "build_opt.h"
 
-AxisManager axisManager;  // 定义全局实例
+AxisManager axisManager;  // define the global instance
 
 AxisManager::AxisManager() {
   axisCount = 0;
-  // 初始化指针数组为nullptr
+  // initialize the pointer array to nullptr
   for (uint8_t i = 0; i < MAX_AXES; i++) {
     axes[i] = nullptr;
   }
 }
 
 AxisManager::~AxisManager() {
-  // 清理资源
+  // release resources
   for (uint8_t i = 0; i < axisCount; i++) {
     if (axes[i] != nullptr) {
       delete axes[i];
@@ -31,7 +31,7 @@ bool AxisManager::addAxis(Axis* axis) {
   axisCount++;
   
   DEBUG_PRINT("Axis added: ");
-  DEBUG_PRINTLN(axis->getAxisName());  // 修正：使用正确的函数名 getAxisName()
+  DEBUG_PRINTLN(axis->getAxisName());  // fix: use the correct function name getAxisName()
   DEBUG_PRINT("Total axes: ");
   DEBUG_PRINTLN(axisCount);
   
@@ -39,20 +39,20 @@ bool AxisManager::addAxis(Axis* axis) {
 }
 
 bool AxisManager::beginAll() {
-  DEBUG_PRINTLN("beginAll:START");  // 调试点
+  DEBUG_PRINTLN("beginAll:START");  // debug point
   bool allSuccess = true;
 
   for (uint8_t i = 0; i < axisCount; i++) {
     if (axes[i] != nullptr) {
       bool success = false;
 
-      // 根据轴名称选择相应的配置
-      String axisName = String(axes[i]->getAxisName());  // 修正：使用 getAxisName() 并转换为 String
+      // select the matching config by axis name
+      String axisName = String(axes[i]->getAxisName());  // fix: use getAxisName() and convert to String
 
       DEBUG_PRINT("beginAll:INIT_AXIS:");
-      DEBUG_PRINTLN(axisName);  // 调试点
+      DEBUG_PRINTLN(axisName);  // debug point
 
-      // 修正：使用 equals() 方法进行字符串比较
+      // fix: use the equals() method for string comparison
       if (axisName.equals("X")) {
         success = axes[i]->begin(AxisConfigs::X_AXIS);
       } else if (axisName.equals("Y")) {
@@ -68,8 +68,8 @@ bool AxisManager::beginAll() {
       } else if (axisName.equals("E4")) {
         success = axes[i]->begin(AxisConfigs::EXPAND4_AXIS);
       } else if (axisName.equals("W2")) {
-        // W2 = 第二滤光转盘，复用 EXPAND4_AXIS 配置（filter wheel + invert_direction=true）。
-        // 与旧 Squid 协议（AXIS_W2=6 / MOVE_W2=19 / INITFILTERWHEEL_W2=252）配套。
+        // W2 = the second filter wheel, reusing the EXPAND4_AXIS config (filter wheel + invert_direction=true).
+        // Paired with the legacy Squid protocol (AXIS_W2=6 / MOVE_W2=19 / INITFILTERWHEEL_W2=252).
         success = axes[i]->begin(AxisConfigs::EXPAND4_AXIS);
       } else {
         DEBUG_PRINT("Unknown axis configuration for: ");
@@ -78,16 +78,17 @@ bool AxisManager::beginAll() {
       }
 
       DEBUG_PRINT("beginAll:AFTER_BEGIN:");
-      DEBUG_PRINTLN(axisName);  // 调试点
+      DEBUG_PRINTLN(axisName);  // debug point
 
       if (!success) {
         DEBUG_PRINT("Failed to initialize axis: ");
         DEBUG_PRINTLN(axisName);
-        // 兼容性：begin 失败说明 TMC4361A SPI 无响应（板未插 / chip 损坏 / 接线断）。
-        // 删除该 Axis 实例并把槽位置 nullptr，让后续 findAxisByName 返回 nullptr，
-        // 所有 handler 的 if (axis) 保护自动让命令 silent no-op（响应包 any_moving=false
-        // 即时报 COMPLETED，上位机 wait_till_operation_is_completed 立刻唤醒）。
-        // 避免后续 SPI 操作打到死 chip 浪费总线 + 假阳性 status。
+        // Compatibility: a begin() failure means the TMC4361A SPI did not respond (board not plugged in /
+        // chip damaged / broken wiring). Delete this Axis instance and set the slot to nullptr so that later
+        // findAxisByName returns nullptr, and every handler's if (axis) guard turns the command into a silent
+        // no-op (the response packet reports any_moving=false and COMPLETED immediately, so the host's
+        // wait_till_operation_is_completed wakes up at once).
+        // This avoids later SPI operations hitting a dead chip, wasting the bus, and producing false-positive status.
         delete axes[i];
         axes[i] = nullptr;
         allSuccess = false;
@@ -111,7 +112,7 @@ void AxisManager::updateAll() {
 
 Axis* AxisManager::findAxisByName(const String& axisName) {
   for (uint8_t i = 0; i < axisCount; i++) {
-    // 修正：使用 getAxisName() 并转换为 String 进行比较
+    // fix: use getAxisName() and convert to String for comparison
     if (axes[i] != nullptr && String(axes[i]->getAxisName()).equals(axisName)) {
       return axes[i];
     }
@@ -121,9 +122,9 @@ Axis* AxisManager::findAxisByName(const String& axisName) {
 
 bool AxisManager::processCommand(const String& command) {
   DEBUG_PRINT("AxisMgr:CMD:");
-  DEBUG_PRINTLN(command);  // 调试点A - 收到命令
+  DEBUG_PRINTLN(command);  // debug point A - command received
 
-  // 命令格式: "轴名称:命令内容"，例如 "E3:HOMING"
+  // Command format: "axisName:commandBody", e.g. "E3:HOMING"
   int colonIndex = command.indexOf(':');
 
   if (colonIndex == -1) {
@@ -140,16 +141,16 @@ bool AxisManager::processCommand(const String& command) {
   DEBUG_PRINT("AxisMgr:AXIS=");
   DEBUG_PRINT(axisName);
   DEBUG_PRINT(",CMD=");
-  DEBUG_PRINTLN(cmd);  // 调试点B - 解析结果
+  DEBUG_PRINTLN(cmd);  // debug point B - parse result
 
   if (axisName.length() == 0 || cmd.length() == 0) {
     DEBUG_PRINTLN("Empty axis name or command");
     return false;
   }
 
-  // 查找对应的轴
+  // find the matching axis
   DEBUG_PRINT("AxisMgr:FIND_AXIS,count=");
-  DEBUG_PRINTLN(axisCount);  // 调试点C - 轴数量
+  DEBUG_PRINTLN(axisCount);  // debug point C - axis count
 
   Axis* targetAxis = findAxisByName(axisName);
   if (targetAxis == nullptr) {
@@ -158,9 +159,9 @@ bool AxisManager::processCommand(const String& command) {
     return false;
   }
 
-  DEBUG_PRINTLN("AxisMgr:AXIS_FOUND");  // 调试点D - 找到轴
-  
-  // 将命令传递给对应的轴处理
+  DEBUG_PRINTLN("AxisMgr:AXIS_FOUND");  // debug point D - axis found
+
+  // forward the command to the matching axis for handling
   bool success = targetAxis->processCommand(cmd);
   
   if (success) {

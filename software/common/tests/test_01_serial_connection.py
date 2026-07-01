@@ -13,10 +13,10 @@ def find_teensy_port():
     """查找 Teensy 设备端口"""
     ports = serial.tools.list_ports.comports()
     for port in ports:
-        # Teensy 4.1 的 VID:PID 是 16C0:0483
+        # the Teensy 4.1 VID:PID is 16C0:0483
         if port.vid == 0x16C0 and port.pid == 0x0483:
             return port.device
-        # 也检查描述信息
+        # also check the description
         if 'teensy' in port.description.lower():
             return port.device
     return None
@@ -49,10 +49,10 @@ def test_connection(port_name, baudrate=2000000):
         )
         print(f"[OK] 串口已打开: {ser.name}")
 
-        # 等待 Teensy 初始化
+        # wait for the Teensy to initialize
         time.sleep(0.5)
 
-        # 清空缓冲区
+        # flush the buffer
         ser.reset_input_buffer()
         ser.reset_output_buffer()
 
@@ -76,17 +76,17 @@ def main():
     print("=" * 60)
     print()
 
-    # 列出所有端口
+    # list all ports
     list_all_ports()
 
-    # 查找 Teensy
+    # find the Teensy
     port = find_teensy_port()
 
     if port:
         print(f"[INFO] 自动检测到 Teensy: {port}")
     else:
         print("[WARN] 未自动检测到 Teensy 设备")
-        # 尝试常见端口
+        # try common ports
         common_ports = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0']
         for p in common_ports:
             try:
@@ -109,7 +109,7 @@ def main():
     print()
     print("-" * 60)
 
-    # 测试连接
+    # test the connection
     success = test_connection(port)
 
     print()

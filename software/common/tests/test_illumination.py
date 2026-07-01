@@ -18,13 +18,13 @@ import sys
 import struct
 
 # ─────────────────────────────────────────────
-# 配置
+# configuration
 # ─────────────────────────────────────────────
 PORT     = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyACM0"
 BAUDRATE = 115200
 
 # ─────────────────────────────────────────────
-# 命令码（与 config.h 保持一致）
+# command codes (kept consistent with config.h)
 # ─────────────────────────────────────────────
 CMD_TURN_ON_ILLUMINATION         = 10
 CMD_TURN_OFF_ILLUMINATION        = 11
@@ -39,24 +39,24 @@ CMD_SET_PORT_ILLUMINATION        = 37
 CMD_SET_MULTI_PORT_MASK          = 38
 CMD_TURN_OFF_ALL_PORTS           = 39
 
-# 光源码（旧版 API 用）
-SRC_LED_FULL    = 0    # LED 矩阵全亮
+# light-source codes (for the legacy API)
+SRC_LED_FULL    = 0    # LED matrix fully lit
 SRC_LED_LEFT    = 1
 SRC_LED_RIGHT   = 2
-SRC_LED_LB_RR   = 3    # 左蓝右红
+SRC_LED_LB_RR   = 3    # left blue, right red
 SRC_LED_LOW_NA  = 4
 SRC_LED_LEFT_DOT  = 5
 SRC_LED_RIGHT_DOT = 6
 SRC_LED_TOP     = 7
 SRC_LED_BOTTOM  = 8
-SRC_D1 = 11   # TTL 端口 D1（pin 5）
-SRC_D2 = 12   # TTL 端口 D2（pin 4）
-SRC_D3 = 14   # TTL 端口 D3（pin 22）注意非连续
-SRC_D4 = 13   # TTL 端口 D4（pin 3） 注意非连续
-SRC_D5 = 15   # TTL 端口 D5（pin 23）
+SRC_D1 = 11   # TTL port D1 (pin 5)
+SRC_D2 = 12   # TTL port D2 (pin 4)
+SRC_D3 = 14   # TTL port D3 (pin 22) note: non-contiguous
+SRC_D4 = 13   # TTL port D4 (pin 3) note: non-contiguous
+SRC_D5 = 15   # TTL port D5 (pin 23)
 
 # ─────────────────────────────────────────────
-# CRC8-CCITT（与固件 serial.cpp 一致）
+# CRC8-CCITT (consistent with the firmware serial.cpp)
 # ─────────────────────────────────────────────
 CRC_TABLE = [
     0x00,0x07,0x0E,0x09,0x1C,0x1B,0x12,0x15,0x38,0x3F,0x36,0x31,
@@ -90,7 +90,7 @@ def crc8(data: bytes) -> int:
     return val
 
 # ─────────────────────────────────────────────
-# 协议辅助
+# protocol helpers
 # ─────────────────────────────────────────────
 _seq = 0
 
@@ -132,7 +132,7 @@ def pause(msg="按 Enter 继续，'q' 跳过本步骤: "):
     return resp.strip().lower() != 'q'
 
 # ─────────────────────────────────────────────
-# 测试步骤
+# test steps
 # ─────────────────────────────────────────────
 
 def test_legacy_api(ser):
@@ -157,7 +157,7 @@ def test_legacy_api(ser):
 
     # --- TURN_ON_ILLUMINATION (D1, TTL) ---
     print("\n[C1] TURN_ON_ILLUMINATION — 光源 D1（source=11, pin=5）")
-    pkt = make_packet(CMD_SET_ILLUMINATION, SRC_D1, 0xFF, 0xFF)   # 先设强度最大
+    pkt = make_packet(CMD_SET_ILLUMINATION, SRC_D1, 0xFF, 0xFF)   # set intensity to max first
     send(ser, pkt, label="CMD=12 src=D1 intensity=65535")
     pkt = make_packet(CMD_TURN_ON_ILLUMINATION, SRC_D1)
     send(ser, pkt, label="CMD=10 src=D1")
@@ -171,7 +171,7 @@ def test_legacy_api(ser):
 
     # --- TURN_ON_ILLUMINATION (D3, non-sequential) ---
     print("\n[C2] TURN_ON_ILLUMINATION — 光源 D3（source=14, pin=22，非连续码）")
-    pkt = make_packet(CMD_SET_ILLUMINATION, SRC_D3, 0x80, 0x00)   # 强度 0x8000 = 32768
+    pkt = make_packet(CMD_SET_ILLUMINATION, SRC_D3, 0x80, 0x00)   # intensity 0x8000 = 32768
     send(ser, pkt, label="CMD=12 src=D3 intensity=32768")
     pkt = make_packet(CMD_TURN_ON_ILLUMINATION, SRC_D3)
     send(ser, pkt, label="CMD=10 src=D3")
@@ -229,9 +229,9 @@ def test_multiport_api(ser):
     print("  预期：pin5 LOW")
     pause()
 
-    # --- SET_PORT_ILLUMINATION (原子操作) ---
+    # --- SET_PORT_ILLUMINATION (atomic operation) ---
     print("\n[G] SET_PORT_ILLUMINATION — 端口 2（D3）原子设置强度+开启")
-    intensity = 65535   # 最大
+    intensity = 65535   # max
     hi = (intensity >> 8) & 0xFF
     lo = intensity & 0xFF
     pkt = make_packet(CMD_SET_PORT_ILLUMINATION, 2, hi, lo, 1)  # data[5]=1 → turn on
@@ -243,23 +243,23 @@ def test_multiport_api(ser):
     print("  预期：pin22 LOW，DAC ch2 = 0")
     pause()
 
-    # --- SET_MULTI_PORT_MASK — 同时开 D1 和 D2 ---
+    # --- SET_MULTI_PORT_MASK — turn on D1 and D2 together ---
     print("\n[H] SET_MULTI_PORT_MASK — 同时开启 D1(port0) 和 D2(port1)")
-    # port_mask = 0b11 = 0x0003（选中 port0, port1）
-    # on_mask   = 0b11 = 0x0003（全部置 ON）
+    # port_mask = 0b11 = 0x0003 (selects port0, port1)
+    # on_mask   = 0b11 = 0x0003 (all set ON)
     pkt = make_packet(CMD_SET_MULTI_PORT_MASK, 0x00, 0x03, 0x00, 0x03)
     send(ser, pkt, label="CMD=38 port_mask=0x0003 on_mask=0x0003")
     print("  预期：pin5（D1）和 pin4（D2）同时变 HIGH")
     pause()
 
     print("\n[H2] SET_MULTI_PORT_MASK — 关闭 D1，保持 D2")
-    # port_mask = 0b11（选中 0,1），on_mask = 0b10（只开 port1）
+    # port_mask = 0b11 (selects 0,1), on_mask = 0b10 (only turns on port1)
     pkt = make_packet(CMD_SET_MULTI_PORT_MASK, 0x00, 0x03, 0x00, 0x02)
     send(ser, pkt, label="CMD=38 port_mask=0x0003 on_mask=0x0002")
     print("  预期：pin5（D1）LOW，pin4（D2）仍 HIGH")
     pause()
 
-    # --- TURN_OFF_ALL_PORTS 收尾 ---
+    # --- TURN_OFF_ALL_PORTS to finish ---
     print("\n[I] TURN_OFF_ALL_PORTS — 全部关闭")
     send(ser, make_packet(CMD_TURN_OFF_ALL_PORTS), label="CMD=39")
     print("  预期：所有端口 LOW，LED 矩阵熄灭")
@@ -287,7 +287,7 @@ def test_interlock(ser):
 
 
 # ─────────────────────────────────────────────
-# 主程序
+# main program
 # ─────────────────────────────────────────────
 def main():
     print("=" * 55)
@@ -320,7 +320,7 @@ def main():
         print("\n\n用户中断测试")
     finally:
         if 'ser' in locals() and ser.is_open:
-            # 安全关闭所有照明
+            # safely turn off all illumination
             ser.write(make_packet(CMD_TURN_OFF_ALL_PORTS))
             time.sleep(0.1)
             ser.close()

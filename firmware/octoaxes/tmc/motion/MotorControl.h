@@ -24,7 +24,7 @@ extern "C" {
 
 #define DRIVER_TMC2660  0
 #define DRIVER_TMC2240  1
-#define DRIVER_AUTO     0xFF   // 初始化时自动检测驱动芯片类型
+#define DRIVER_AUTO     0xFF   // auto-detect the driver chip type during init
 
 // ============================================================================
 // Configuration Structures
@@ -60,16 +60,16 @@ typedef struct {
     float    holdCurrentRatio;   // Hold current as ratio of run (0.0-1.0)
     uint8_t  microstepRes;       // Microstep resolution (0=256, 1=128, ... 8=1)
     bool     interpolation;      // Enable 256 microstep interpolation
-    // Chopper 参数 (TMC2660 和 TMC2240 通用)
+    // Chopper parameters (common to TMC2660 and TMC2240)
     uint8_t  toff;               // Chopper off time (1-15)
     uint8_t  hstrt;              // Hysteresis start (0-7)
     int8_t   hend;               // Hysteresis end (-3 to 12)
     uint8_t  tbl;                // Blanking time (0-3)
     int8_t   stallThreshold;     // StallGuard threshold (-64 to 63)
     bool     stallFilter;        // Enable StallGuard filter
-    // TMC2240 专用参数 (TMC2660 时忽略)
+    // TMC2240-specific parameters (ignored for TMC2660)
     bool     enableStealthChop;  // EN_PWM_MODE (StealthChop)
-    uint8_t  globalScaler;       // GLOBAL_SCALER (0=256, 1-255), 0 表示全量程
+    uint8_t  globalScaler;       // GLOBAL_SCALER (0=256, 1-255), 0 means full scale
     uint8_t  iholdDelay;         // IHOLDDELAY (0-15)
     uint8_t  currentRange;       // DRV_CONF.CURRENT_RANGE: 0=1A, 1=2A, 2=3A, 3=3A
 } MotorConfig;
@@ -112,10 +112,10 @@ typedef struct {
     float    stepsPerMM;         // Calculated: (fullStepsPerRev * microsteps) / screwPitchMM
     bool     initialized;
 
-    // 与旧 API velocity_mode 一致的状态跟踪
+    // state tracking consistent with the old API velocity_mode
     bool     velocity_mode;      // true when in velocity mode, cleared on moveTo
 
-    // 斜坡参数缓存 (与旧 API rampParam[] 一致)
+    // ramp-parameter cache (consistent with the old API rampParam[])
     uint32_t bow1;               // BOW1 parameter
     uint32_t bow2;               // BOW2 parameter
     uint32_t bow3;               // BOW3 parameter
@@ -125,10 +125,10 @@ typedef struct {
     uint32_t astart;             // Initial acceleration
     uint32_t dfinal;             // Final deceleration
     int32_t  vmax;               // Maximum velocity (internal units)
-    uint8_t  driverType;         // 该轴驱动芯片类型 (DRIVER_TMC2660 / DRIVER_TMC2240)
-    float    rSense;             // 缓存 rSense 值，用于 TMC2660 运行时电流计算
-    uint8_t  currentRange;       // 缓存 TMC2240 CURRENT_RANGE，用于运行时电流计算
-    uint8_t  toff;               // 缓存 TOFF 值，用于 enableDriver 恢复
+    uint8_t  driverType;         // this axis's driver chip type (DRIVER_TMC2660 / DRIVER_TMC2240)
+    float    rSense;             // cached rSense value, used for TMC2660 runtime current calculation
+    uint8_t  currentRange;       // cached TMC2240 CURRENT_RANGE, used for runtime current calculation
+    uint8_t  toff;               // cached TOFF value, used by enableDriver to restore
 } MotorParams;
 
 extern MotorParams motorParams[MOTOR_IC_COUNT];
@@ -160,9 +160,9 @@ bool motor_init(uint8_t icID, const AxisMotionConfig *config);
 bool motor_initMotionController(uint8_t icID, const MotionConfig *config);
 
 /**
- * @brief 自动检测驱动芯片类型 (TMC2240 或 TMC2660)
- * @param icID  IC identifier (TMC4361A 必须已 reset 且通信正常)
- * @return DRIVER_TMC2240 或 DRIVER_TMC2660
+ * @brief Auto-detect the driver chip type (TMC2240 or TMC2660)
+ * @param icID  IC identifier (TMC4361A must already be reset and communicating normally)
+ * @return DRIVER_TMC2240 or DRIVER_TMC2660
  */
 uint8_t motor_detectDriverType(uint8_t icID);
 

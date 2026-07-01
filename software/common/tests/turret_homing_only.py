@@ -21,10 +21,10 @@
   想测反方向就 --dir 1。
 
 用法：
-  python3 software/common/tests/turret_homing_only.py                 # 自动找口, dir=0, 8s
-  python3 software/common/tests/turret_homing_only.py --dir 1         # 反方向
+  python3 software/common/tests/turret_homing_only.py                 # auto-find port, dir=0, 8s
+  python3 software/common/tests/turret_homing_only.py --dir 1         # reverse direction
   python3 software/common/tests/turret_homing_only.py --port /dev/ttyACM0 --duration 12
-  python3 software/common/tests/turret_homing_only.py --no-init       # 不重置, 用当前 chip 状态
+  python3 software/common/tests/turret_homing_only.py --no-init       # no reset, use the current chip state
 """
 
 import argparse
@@ -40,18 +40,18 @@ try:
 except Exception:
     find_teensy_port = None
 
-# ---- 协议常量 ----
+# ---- protocol constants ----
 CMD_HOME_OR_ZERO = 5
 CMD_INITIALIZE = 254
-AXIS_TURRET = 7          # 协议轴码（define.py AXIS.TURRET）
+AXIS_TURRET = 7          # protocol axis code (define.py AXIS.TURRET)
 HOME_POSITIVE = 0
 HOME_NEGATIVE = 1
 
-DEBUG_HEADER = bytes([0x55, 0xAA])   # ASCII 调试命令前缀（S:...）
+DEBUG_HEADER = bytes([0x55, 0xAA])   # ASCII debug-command prefix (S:...)
 
-# STATUS 位（TMC4361A）
-STATUS_STOPL = 1 << 7    # 物理 left 限位 active
-STATUS_STOPR = 1 << 8    # 物理 right 限位 active
+# STATUS bits (TMC4361A)
+STATUS_STOPL = 1 << 7    # physical left limit active
+STATUS_STOPR = 1 << 8    # physical right limit active
 STATUS_VSTOPL = 1 << 9
 STATUS_VSTOPR = 1 << 10
 STATUS_STALL = 1 << 11
@@ -98,7 +98,7 @@ def read_dumpregs(ser, axis="Turret", timeout=1.5):
                 try:
                     text = raw.decode("utf-8").strip()
                 except UnicodeDecodeError:
-                    continue  # 二进制位置帧，跳过
+                    continue  # binary position frame, skip
                 if not text:
                     continue
                 if text.startswith("S:DUMP "):
@@ -168,11 +168,11 @@ def main():
         seq = (seq + 1) & 0xFF
         return seq
 
-    # ---- 1. 恢复 firmware 默认 ----
+    # ---- 1. restore firmware defaults ----
     if not args.no_init:
         print("[STEP] INITIALIZE(254) —— 重跑 beginAll，恢复 config.h 默认（1800mA 峰值等）")
         send_cmd(ser, next_seq(), CMD_INITIALIZE)
-        time.sleep(2.0)          # 等 beginAll 完成
+        time.sleep(2.0)          # wait for beginAll to complete
         ser.reset_input_buffer()
     else:
         print("[STEP] 跳过 INITIALIZE（--no-init），用当前 chip 状态")
@@ -189,12 +189,12 @@ def main():
     else:
         print("  [WARN] 没读到 DUMPREGS（确认固件支持 S:DUMPREGS 且轴名 Turret 正确）")
 
-    # ---- 2. 发 HOME ----
+    # ---- 2. send HOME ----
     dir_name = "HOME_POSITIVE(homing_direct=+1)" if args.dir == HOME_POSITIVE else "HOME_NEGATIVE(homing_direct=-1)"
     print(f"\n[STEP] HOME_OR_ZERO Turret  dir={args.dir} ({dir_name})")
     send_cmd(ser, next_seq(), CMD_HOME_OR_ZERO, b2=AXIS_TURRET, b3=args.dir)
 
-    # ---- 3. 时间序列观测 ----
+    # ---- 3. time-series observation ----
     print(f"\n[OBSERVE] 轮询 {args.duration}s（间隔 {args.interval}s）：")
     print(f"{'t(s)':>6} {'XACTUAL':>10} {'VACTUAL':>9} {'STATUS':>10} {'flags':<18} {'state':>6} {'mov':>3}")
     t0 = time.perf_counter()
@@ -217,7 +217,7 @@ def main():
             last_xactual = xa
         time.sleep(args.interval)
 
-    # ---- 收尾结论 ----
+    # ---- final conclusion ----
     print("\n[FINAL] homing 后寄存器快照：")
     regs = read_dumpregs(ser)
     if regs:

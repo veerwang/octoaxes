@@ -54,7 +54,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from utils.helpers import find_teensy_port  # noqa: E402
 
 
-# 与 benchmark_xyz_speed.py / commandprocessor.cpp 一致
+# consistent with benchmark_xyz_speed.py / commandprocessor.cpp
 CMD_MOVE_X = 0
 CMD_MOVETO_X = 6
 CMD_HOME = 5
@@ -68,15 +68,15 @@ RESPONSE_LEN = 24
 STATUS_COMPLETED = 0
 STATUS_IN_PROGRESS = 1
 
-# SET_LIM 限位码（commandprocessor.cpp LIM_CODE_*）
+# SET_LIM limit codes (commandprocessor.cpp LIM_CODE_*)
 LIM_X_POS = 0
 LIM_X_NEG = 1
 
-# HOME 协议参数（与 benchmark_xyz_speed.py 一致）
+# HOME protocol parameters (consistent with benchmark_xyz_speed.py)
 HOME_AXIS_X = 0
 HOME_NEGATIVE = 1     # X movement_sign=+1 → direction=NEGATIVE
 
-# X 轴参数（与 benchmark_xyz_speed.py 一致）
+# X-axis parameters (consistent with benchmark_xyz_speed.py)
 X_PITCH_MM = 2.54
 X_MICROSTEPPING = 256
 X_FS_PER_REV = 200
@@ -261,7 +261,7 @@ def configure_x_axis(ser, reader):
     time.sleep(0.1)
     cid += 1
 
-    # SET_LIM_SWITCH_POLARITY (cmd 20): X polarity=1（对齐 configuration_HCS_v2.ini）
+    # SET_LIM_SWITCH_POLARITY (cmd 20): X polarity=1 (aligned with configuration_HCS_v2.ini)
     pkt = bytearray(8)
     pkt[0] = cid; pkt[1] = CMD_SET_LIM_SWITCH_POLARITY; pkt[2] = axis; pkt[3] = 1
     pkt[7] = crc8(pkt[:7])
@@ -291,14 +291,14 @@ def home_x(ser, reader, cmd_id):
     print("[HOME] X 轴 homing（最长 30s）...", end=" ", flush=True)
     pkt = bytearray(8)
     pkt[0] = cmd_id & 0xFF; pkt[1] = CMD_HOME; pkt[2] = HOME_AXIS_X
-    pkt[3] = HOME_NEGATIVE     # X movement_sign=+1 → 朝负方向 home
+    pkt[3] = HOME_NEGATIVE     # X movement_sign=+1 -> home toward the negative direction
     pkt[7] = crc8(pkt[:7])
     t0 = time.perf_counter()
     ser.write(pkt)
     elapsed, _ = wait_for_cmd_completion(reader, cmd_id, timeout_s=30.0)
     if elapsed is None:
         raise RuntimeError("X HOME 超时（>30s）")
-    # homing 完成后状态机还要 STATE_LEAVING_HOME → STATE_IDLE 过渡，多等 300ms
+    # after homing completes the state machine still transitions STATE_LEAVING_HOME -> STATE_IDLE, wait an extra 300ms
     time.sleep(0.3)
     p = read_current_x(reader)
     print(f"完成 ({elapsed:.2f}s, X = {usteps_to_mm(p):.4f}mm)")
@@ -340,7 +340,7 @@ def moveto_x_um(ser, reader, target_um, cmd_id):
             f"MOVETO X={target_um/1000:.1f}mm 超时 (cmd_id={cmd_id})。"
             "可能 MOVETO 被静默 rejected（软限位收太窄？configure 未生效？）"
         )
-    # 验证实际到达
+    # verify actual arrival
     time.sleep(0.1)
     actual = read_current_x(reader)
     actual_um = (actual / X_USTEPS_PER_UM)
@@ -363,33 +363,33 @@ def usteps_to_mm(usteps):
 
 
 # ============================================================================
-# 测试场景
+# test scenario
 # ============================================================================
 
-CENTER_X_UM = 60_000   # 60mm（X 范围 10-112mm 的中段偏左，留足正向运动余量）
+CENTER_X_UM = 60_000   # 60mm (mid-left of the X range 10-112mm, leaving ample room for positive motion)
 MOVE_A_UM = 20_000     # +20mm
 MOVE_B_UM = 5_000      # +5mm
-GAP_MS_BUG = 200       # cmd1 → cmd2 间隔（cmd1 还在跑）
+GAP_MS_BUG = 200       # cmd1 -> cmd2 interval (cmd1 still running)
 
 
 def run_scenario_control(ser, reader):
     """控制组：两次 MOVE 串行，验证协议正常。"""
     print("\n=== SCENARIO CONTROL: 两次 MOVE 串行 ===")
 
-    # MOVETO 中心
+    # MOVETO center
     print(f"  MOVETO X = {CENTER_X_UM/1000:.1f} mm...")
     moveto_x_um(ser, reader, CENTER_X_UM, cmd_id=10)
     p0 = read_current_x(reader)
     print(f"  p0 = {usteps_to_mm(p0):.4f} mm")
 
-    # MOVE +20mm，等完成
+    # MOVE +20mm, wait for completion
     move_rel_x_um(ser, MOVE_A_UM, cmd_id=11)
     e1, _ = wait_for_cmd_completion(reader, 11, timeout_s=15.0)
     p1 = read_current_x(reader)
     print(f"  cmd 11 MOVE +{MOVE_A_UM/1000:.0f}mm: completed in {e1*1000:.1f}ms, "
           f"p1 = {usteps_to_mm(p1):.4f} mm (Δ={usteps_to_mm(p1-p0)*1000:.1f}μm)")
 
-    # MOVE +5mm，等完成
+    # MOVE +5mm, wait for completion
     move_rel_x_um(ser, MOVE_B_UM, cmd_id=12)
     e2, _ = wait_for_cmd_completion(reader, 12, timeout_s=15.0)
     p2 = read_current_x(reader)
@@ -405,30 +405,30 @@ def run_scenario_bug(ser, reader):
     """实验组：cmd2 在 cmd1 仍在运动中发出。"""
     print("\n=== SCENARIO BUG: cmd2 在 cmd1 移动中发出 ===")
 
-    # MOVETO 中心
+    # MOVETO center
     print(f"  MOVETO X = {CENTER_X_UM/1000:.1f} mm...")
     moveto_x_um(ser, reader, CENTER_X_UM, cmd_id=20)
     p0 = read_current_x(reader)
     print(f"  p0 = {usteps_to_mm(p0):.4f} mm")
 
-    # 1. 发 cmd1 但不等
+    # 1. send cmd1 but do not wait
     t_send1 = time.perf_counter()
     move_rel_x_um(ser, MOVE_A_UM, cmd_id=21)
     print(f"  [t=0ms]  发 cmd 21 MOVE +{MOVE_A_UM/1000:.0f}mm（不等待）")
 
-    # 2. sleep 让 cmd1 跑起来
+    # 2. sleep to let cmd1 get running
     time.sleep(GAP_MS_BUG / 1000.0)
     p_mid = read_current_x(reader)
     print(f"  [t={GAP_MS_BUG}ms] 中段位置 = {usteps_to_mm(p_mid):.4f} mm "
           f"(Δ={usteps_to_mm(p_mid-p0)*1000:.1f}μm)")
 
-    # 3. 发 cmd2（cmd1 还在跑）
+    # 3. send cmd2 (cmd1 still running)
     t_send2 = time.perf_counter()
     move_rel_x_um(ser, MOVE_B_UM, cmd_id=22)
     print(f"  [t={(t_send2-t_send1)*1000:.0f}ms] 发 cmd 22 MOVE +{MOVE_B_UM/1000:.0f}mm "
           "（cmd1 仍 in flight）")
 
-    # 4. 跟踪 cmd 22 响应流
+    # 4. track the cmd 22 response stream
     history_22 = []
     e2_first, _ = wait_cmd_first_completed(reader, 22, timeout_s=15.0, log_history=history_22)
     p_final = read_current_x(reader)
@@ -437,7 +437,7 @@ def run_scenario_bug(ser, reader):
         print("  ⚠ cmd 22 在 15s 内未见 COMPLETED")
         return None
 
-    # 5. 分析 cmd 22 的响应轨迹
+    # 5. analyze the cmd 22 response trajectory
     print(f"\n  cmd 22 首次 COMPLETED 距发出: {e2_first*1000:.1f}ms")
     print(f"  cmd 22 响应轨迹（前 8 条）:")
     for (t, st, x) in history_22[:8]:
@@ -446,7 +446,7 @@ def run_scenario_bug(ser, reader):
     if len(history_22) > 8:
         print(f"    ... 共 {len(history_22)} 条")
 
-    # 6. 等额外一段时间，确保没有 deferred 移动
+    # 6. wait an extra period to ensure there is no deferred movement
     time.sleep(1.5)
     p_settled = read_current_x(reader)
     print(f"\n  cmd 22 COMPLETED 后再等 1.5s，X = {usteps_to_mm(p_settled):.4f} mm")
@@ -479,7 +479,7 @@ def main():
     ser = serial.Serial(port, 2_000_000, timeout=0.05)
     time.sleep(0.5)
     reader = Reader(ser)
-    reader.drain()  # 清空 boot 噪声
+    reader.drain()  # flush the boot noise
 
     print("配置 X 轴...")
     configure_x_axis(ser, reader)
@@ -491,11 +491,11 @@ def main():
         sys.exit(2)
     print(f"配置完成，当前 X = {usteps_to_mm(p_now):.4f} mm")
 
-    # Home X 清除 chip VSTOP latch / EVENTS sticky bit，确保测试从干净状态开始
+    # Home X to clear the chip VSTOP latch / EVENTS sticky bit, ensuring the test starts from a clean state
     home_x(ser, reader, cmd_id=60)
     reader.drain()
 
-    # Home 之后再放宽软限位（避免 X home 安全位置 < 收紧的下限）
+    # loosen the soft limits after Home (avoiding X's home safe position being below the tightened lower limit)
     widen_x_soft_limits(ser, reader, cmd_id=70)
     reader.drain()
 
@@ -505,18 +505,18 @@ def main():
 
     bug_delta = run_scenario_bug(ser, reader)
 
-    # 判定
+    # verdict
     print("\n========== 判定 ==========")
     if control_delta is not None:
         print(f"CONTROL 累计位移: {control_delta:.4f} mm "
               f"(期望 {(MOVE_A_UM+MOVE_B_UM)/1000}mm)")
     if bug_delta is not None:
         print(f"BUG     累计位移: {bug_delta:.4f} mm")
-        # 三种可能的语义：
-        #   A. silent reject (旧 bug)：电机只走 cmd 21 的 +MOVE_A_UM；上位机收 cmd 22 假 COMPLETED
-        #   B. 覆盖语义 (老 Squid + 修复后)：cmd 22 基于 chip 当前位置重算 target，覆盖前一条
-        #      → 累计 = (cmd 22 发出时 chip 已走的距离) + MOVE_B_UM；典型 < 10mm
-        #   C. 排队语义：两条都执行，累计 = MOVE_A_UM + MOVE_B_UM
+        # three possible semantics:
+        # A. silent reject (old bug): the motor only moves cmd 21's +MOVE_A_UM; the host receives a fake COMPLETED for cmd 22
+        # B. override semantics (legacy Squid + after the fix): cmd 22 recomputes the target from the chip's current position, overriding the previous one
+        # -> total = (distance the chip already moved when cmd 22 was sent) + MOVE_B_UM; typically < 10mm
+        # C. queue semantics: both execute, total = MOVE_A_UM + MOVE_B_UM
         bug_silent_reject_mm = MOVE_A_UM / 1000.0           # 20mm
         bug_queued_mm = (MOVE_A_UM + MOVE_B_UM) / 1000.0     # 25mm
         if abs(bug_delta - bug_silent_reject_mm) < 1.0:
@@ -525,7 +525,7 @@ def main():
         elif abs(bug_delta - bug_queued_mm) < 1.0:
             print(f"? 排队语义：累计位移 ≈ {bug_queued_mm}mm，cmd 22 似乎在 cmd 21 后执行")
         elif bug_delta < MOVE_A_UM / 1000.0:
-            # 覆盖语义：cmd 22 把 target 改成基于 mid-flight 位置，累计 < MOVE_A_UM
+            # override semantics: cmd 22 changes the target to be based on the mid-flight position, total < MOVE_A_UM
             print(f"✓ 覆盖语义 (老 Squid 兼容)：cmd 22 重定向 chip target")
             print(f"  累计 {bug_delta:.2f}mm = mid-flight 位置 + MOVE_B_UM/1000")
             print(f"  cmd 22 不再静默 reject，电机为它真实移动了")

@@ -22,11 +22,11 @@
 ⚠️ 安全：直接驱动竖直 Z 真实电机。运行前确认行程内无障碍、急停可达、Ctrl-C 可中断。
 
 用法：
-  python3 software/common/tests/z_aging_test.py                       # 默认 1 圈
-  python3 software/common/tests/z_aging_test.py --cycles 100           # 100 圈老化
-  python3 software/common/tests/z_aging_test.py --cycles 0             # 无限循环到 Ctrl-C
+  python3 software/common/tests/z_aging_test.py                       # default 1 round
+  python3 software/common/tests/z_aging_test.py --cycles 100           # 100-round aging
+  python3 software/common/tests/z_aging_test.py --cycles 0             # loop indefinitely until Ctrl-C
   python3 software/common/tests/z_aging_test.py --step-um 1000 --fwd 26 --bwd 25 --dwell 0.5
-  python3 software/common/tests/z_aging_test.py --dry-run              # 只打印参数，不连硬件
+  python3 software/common/tests/z_aging_test.py --dry-run              # only print parameters, do not connect to hardware
 """
 
 import argparse
@@ -49,9 +49,9 @@ def load_profile_constants(profile):
     return constants
 
 
-# 协议常量（与 software/common/define.py 一致）
+# protocol constants (consistent with software/common/define.py)
 AXIS_Z = 2
-CMD_MOVE_Z = 2                      # 相对移动
+CMD_MOVE_Z = 2                      # relative move
 CMD_HOME_OR_ZERO = 5
 CMD_SET_LIM = 9
 CMD_CONFIGURE_STEPPER_DRIVER = 21
@@ -95,19 +95,19 @@ def main():
     mm_per_step = pitch_mm / (FULLSTEPS_PER_REV * ms)
 
     step_um = args.step_um
-    # GUI move_axis：正方向 value = sign*(+step)，反方向 value = sign*(-step)
-    fwd_delta_us = int(sign * (+step_um) / 1000.0 / mm_per_step)   # 单步固件微步增量（正向）
-    bwd_delta_us = int(sign * (-step_um) / 1000.0 / mm_per_step)   # 反向
+    # GUI move_axis: forward value = sign*(+step), reverse value = sign*(-step)
+    fwd_delta_us = int(sign * (+step_um) / 1000.0 / mm_per_step)   # single-step firmware microstep increment (forward)
+    bwd_delta_us = int(sign * (-step_um) / 1000.0 / mm_per_step)   # reverse
     nominal_us = abs(fwd_delta_us)
-    # 行程预估（GUI µm）：正向到 +fwd*step，回到 +(fwd-bwd)*step
+    # travel estimate (GUI um): forward to +fwd*step, back to +(fwd-bwd)*step
     peak_um = args.fwd * step_um
     end_um = (args.fwd - args.bwd) * step_um
 
-    # 单步预期耗时：距离/速度 + 加减速余量；deadline = 预期×factor + margin
+    # expected single-step duration: distance/speed + accel/decel margin; deadline = expected*factor + margin
     move_vel = args.expect_vel or zc.get("default_velocity", 3.0)
     accel = zc.get("default_acceleration", 20.0)
     step_mm = step_um / 1000.0
-    expected_step_t = step_mm / move_vel + move_vel / accel  # 匀速段 + 一次完整加/减速近似
+    expected_step_t = step_mm / move_vel + move_vel / accel  # constant-speed segment + one full accel/decel approximation
     step_deadline = expected_step_t * args.step_time_factor + args.step_time_margin
 
     variant = getattr(consts, "Z_AXIS_VARIANT", "?")
@@ -132,7 +132,7 @@ def main():
 
     import serial
     sys.path.insert(0, THIS_DIR)
-    import z_homing_safedist as z   # 复用已验证的 send_cmd / read_regs 助手
+    import z_homing_safedist as z   # reuse the verified send_cmd / read_regs helpers
 
     ser = serial.Serial(args.port, args.baud, timeout=0.05)
     time.sleep(0.4)
@@ -149,7 +149,7 @@ def main():
     def gui_um(x):
         return (x / sign * mm_per_step * 1000) if x is not None else None
 
-    # ---- 启动配置下发（镜像 _configure_actuators，仅 Z）----
+    # ---- startup config send (mirrors _configure_actuators, Z only) ----
     print("\n[配置] 下发 Z 导程/驱动/限位/极性/homing 速度 ...")
     px = int(round(pitch_mm * 1000))
     send(CMD_SET_LEAD_SCREW_PITCH, AXIS_Z, (px >> 8) & 0xFF, px & 0xFF)
@@ -210,9 +210,9 @@ def main():
         v = delta_us & 0xFFFFFFFF
         send(CMD_MOVE_Z, (v >> 24) & 0xFF, (v >> 16) & 0xFF,
              (v >> 8) & 0xFF, v & 0xFF)
-        # 先等单步预期耗时，让 chip 把这一步走完（正常情况下到此已停）
+        # first wait the expected single-step duration to let the chip finish this step (normally it has already stopped by now)
         time.sleep(expected_step_t)
-        # 再确认位置稳定（连续两次 XACTUAL 相同 = 停车）；最多再等 step_deadline
+        # then confirm the position is stable (two consecutive equal XACTUAL = stopped); wait up to step_deadline more
         t0 = time.perf_counter()
         r = regs()
         prev = r.get("XACTUAL")
@@ -221,13 +221,13 @@ def main():
             r = regs()
             x = r.get("XACTUAL")
             if x is not None and x == prev:
-                return r, True          # 位置稳定 = 已停
+                return r, True          # position stable = stopped
             prev = x if x is not None else prev
-        return r, False                 # deadline 内位置仍在变 = 真卡/慢
+        return r, False                 # position still changing within the deadline = really stuck/slow
 
     stall_min = nominal_us * args.stall_frac
     cycles_ok = 0
-    infinite = args.cycles <= 0           # --cycles 0 = 无限循环到 Ctrl-C
+    infinite = args.cycles <= 0           # --cycles 0 = loop indefinitely until Ctrl-C
     total_label = "∞" if infinite else str(args.cycles)
     try:
         abort = False

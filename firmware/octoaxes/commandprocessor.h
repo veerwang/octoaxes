@@ -8,7 +8,7 @@ public:
     CommandProcessor();
     ~CommandProcessor();
     
-    // 命令处理函数声明
+    // Command-handler function declarations
     void handleMoveX(const byte* data);
     void handleMoveY(const byte* data);
     void handleMoveZ(const byte* data);
@@ -60,7 +60,7 @@ public:
     void handleReset(const byte* data);
     
 private:
-    // 私有成员变量（可根据需要添加）
+    // Private member variables (add as needed)
 };
 
 extern CommandProcessor commandProcessor;

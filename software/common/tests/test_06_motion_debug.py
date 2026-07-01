@@ -9,10 +9,10 @@ import sys
 import time
 import argparse
 
-# 调试协议头
+# debug protocol header
 DEBUG_HEADER = bytes([0x55, 0xAA])
 
-# TMC4361A 寄存器地址 (关键的)
+# TMC4361A register addresses (the key ones)
 TMC4361A_REGS = {
     0x00: "GENERAL_CONF",
     0x01: "REFERENCE_CONF",
@@ -30,7 +30,7 @@ TMC4361A_REGS = {
     0x1F: "CLK_FREQ",
 }
 
-# STATUS 寄存器位定义
+# STATUS register bit definitions
 STATUS_BITS = {
     0: "TARGET_REACHED",
     1: "POS_COMP_REACHED",
@@ -104,7 +104,7 @@ def read_register(ser, axis_name, reg_addr):
     for resp in responses:
         if "READ_REG" in resp and "=" in resp:
             try:
-                # 格式: X:READ_REG 0x0E = 0x00000001
+                # format: X:READ_REG 0x0E = 0x00000001
                 val_str = resp.split("=")[-1].strip()
                 return int(val_str, 16)
             except:
@@ -170,7 +170,7 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
         print_section("Step 3: 读取关键寄存器")
         # ============================================================
 
-        # 方法1: 尝试 READ_REG 命令
+        # method 1: try the READ_REG command
         print("\n尝试 READ_REG 命令...")
         status_val = read_register(ser, axis_name, 0x0E)  # STATUS
 
@@ -181,7 +181,7 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
             active = parse_status_register(status_val)
             print(f"    活跃位: {', '.join(active) if active else '无'}")
 
-        # 方法2: DEBUG_REG 命令 - 读取关键寄存器
+        # method 2: DEBUG_REG command - read the key registers
         print("\n发送 DEBUG_REG 命令，读取关键 TMC4361A 寄存器...")
         ser.reset_input_buffer()
         send_debug_command(ser, f"{axis_name}:DEBUG_REG")
@@ -193,7 +193,7 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
 
         for resp in responses:
             print(f"  {resp}")
-            # 解析关键值
+            # parse the key values
             if "VMAX" in resp and "=" in resp:
                 try:
                     vmax_val = int(resp.split("=")[-1].strip())
@@ -210,7 +210,7 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
                 except:
                     pass
 
-        # 检查关键参数
+        # check the key parameters
         print("\n关键参数检查:")
         if vmax_val is not None:
             if vmax_val == 0:
@@ -229,7 +229,7 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
         print_section("Step 4: 发送运动命令")
         # ============================================================
 
-        # 获取当前位置
+        # get the current position
         print("\n获取当前位置...")
         ser.reset_input_buffer()
         send_debug_command(ser, f"{axis_name}:GET_POSITION")
@@ -243,17 +243,17 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
                 except:
                     pass
 
-        # MOVETO_AXIS 命令接受绝对位置的微米值 (mm × 1000)
+        # the MOVETO_AXIS command takes an absolute position in micrometers (mm * 1000)
         current_pos_um = int(current_pos_mm * 1000)
         target_pos_um = current_pos_um + distance_um
         print(f"\n当前位置: {current_pos_mm:.3f} mm = {current_pos_um} 微米")
         print(f"移动距离: {distance_um} 微米 = {distance_um/1000:.3f} mm")
         print(f"目标位置: {target_pos_um} 微米 = {target_pos_um/1000:.3f} mm")
 
-        # 发送 MOVETO_AXIS 命令 (绝对位置，单位：微米)
+        # send the MOVETO_AXIS command (absolute position, unit: micrometers)
         print(f"\n发送 MOVETO_AXIS 命令...")
 
-        # 转换为 hex 格式 (32位有符号整数，单位：微米)
+        # convert to hex format (32-bit signed integer, unit: micrometers)
         if target_pos_um < 0:
             hex_val = (1 << 32) + target_pos_um
         else:
@@ -263,7 +263,7 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
         ser.reset_input_buffer()
         send_debug_command(ser, f"{axis_name}:MOVETO_AXIS INT32 {hex_str}")
 
-        # 读取立即响应
+        # read the immediate response
         time.sleep(0.2)
         responses = read_all_responses(ser, timeout=0.5)
         for resp in responses:
@@ -290,15 +290,15 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
         prev_pos_mm = current_pos_mm
         movement_detected = False
 
-        for i in range(20):  # 最多 20 次，每次 0.5 秒
+        for i in range(20):  # up to 20 times, 0.5 seconds each
             time.sleep(0.5)
 
-            # 获取当前状态
+            # get the current status
             ser.reset_input_buffer()
             send_debug_command(ser, f"{axis_name}:GET_DATA")
             responses = read_all_responses(ser, timeout=0.5)
 
-            # 解析响应
+            # parse the response
             pos_mm = None
             state = None
             is_moving = None
@@ -319,11 +319,11 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
 
             elapsed = time.time() - start_time
 
-            # 检测是否有移动
+            # detect whether there was movement
             if pos_mm is not None and abs(pos_mm - prev_pos_mm) > 0.0001:
                 movement_detected = True
 
-            # 打印状态
+            # print the status
             pos_str = f"{pos_mm:.3f}" if pos_mm is not None else "?"
             delta_str = f"Δ={((pos_mm - prev_pos_mm)*1000):+.0f}um" if pos_mm is not None else ""
             print(f"  [{elapsed:5.1f}s] POS={pos_str:>10}mm {delta_str:>12}  STATE={state}  MOVING={is_moving}  LIM={limit_sw}")
@@ -331,9 +331,9 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
             if pos_mm is not None:
                 prev_pos_mm = pos_mm
 
-            # 如果到达目标或进入 IDLE/ERROR 状态，停止监控
+            # stop monitoring if the target is reached or the IDLE/ERROR state is entered
             if state == "IDLE" or state == "ERROR":
-                if i > 0:  # 第一次不算
+                if i > 0:  # skip the first iteration
                     break
 
         # ============================================================
@@ -352,7 +352,7 @@ def run_motion_debug(port_name, axis_name, distance_um=1000, baudrate=2000000):
         print()
         if movement_detected:
             error_um = abs(pos_delta_um - distance_um)
-            if error_um < 10:  # 10微米以内误差认为正常
+            if error_um < 10:  # an error within 10 micrometers is considered normal
                 print("[OK] 运动正常完成")
             else:
                 print(f"[WARN] 运动完成但位置不准确 (误差: {error_um} 微米)")

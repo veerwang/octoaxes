@@ -3,16 +3,16 @@
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Z 轴硬件变体开关（2026-06-03 newz 分支）
+# Z-axis hardware variant switch (2026-06-03 newz branch)
 # ─────────────────────────────────────────────────────────────────────────────
-# 改这一行即可在新旧 Z 电机间切换，重启 GUI 生效，无需重烧固件：
-#   GUI 启动 _configure_actuators() 把所选变体的 pitch/电流/hold 下发给固件覆盖默认。
-# 固件侧 currentRange=1 对新旧 Z 驱动板都安全（旧 Z=TMC2660 忽略，新 Z=TMC2240 用它），
-# 一个固件通吃；DRIVER_AUTO 上电自动识别在位的驱动板。
-#   "old" = 旧 Z（丝杠导程 0.3mm / TMC2660 板 / 0.47A）
-#   "new" = MOONS' LE143S-W0601-100-AR1-S-150（导程 1mm / TMC2240 ICS 板 / 1.5A 峰值）
-# 注意：此开关仅 octoaxes GUI 有效。旧 Squid software 会下发它自己写死的旧 Z 参数，
-#       配新 Z 硬件会有 3.33× 位置错位（旧 Squid 不可改）。
+# change this one line to switch between the old and new Z motors; takes effect after a GUI restart, no firmware reflash needed:
+# at startup the GUI's _configure_actuators() sends the selected variant's pitch/current/hold to the firmware to override the defaults.
+# on the firmware side currentRange=1 is safe for both Z driver boards (old Z=TMC2660 ignores it, new Z=TMC2240 uses it),
+# so one firmware fits both; DRIVER_AUTO auto-detects the installed driver board at power-on.
+# "old" = old Z (screw pitch 0.3mm / TMC2660 board / 0.47A)
+# "new" = MOONS' LE143S-W0601-100-AR1-S-150 (pitch 1mm / TMC2240 ICS board / 1.5A peak)
+# note: this switch is only effective in the octoaxes GUI. Legacy Squid software sends its own hardcoded old-Z parameters,
+# which with new-Z hardware gives a 3.33x position error (legacy Squid cannot be changed).
 Z_AXIS_VARIANT = "old"
 
 _Z_VARIANTS = {
@@ -20,33 +20,33 @@ _Z_VARIANTS = {
         "display_name": "Step Motor - old z_axis",
         "limits": (-100, 6000),
         "actuator_screw_pitch_mm": 0.3,
-        "actuator_motor_current_ma": 500,    # 峰值电流
+        "actuator_motor_current_ma": 500,    # peak current
         "actuator_motor_hold_ratio": 0.5,
         "encoder_transitions_per_rev": 3000,  # 0.3mm pitch / 0.1μm resolution
-        "has_encoder": False,                  # 旧 Z 编码器禁用（与旧 Squid USE_ENCODER_Z=False 一致）
+        "has_encoder": False,                  # old-Z encoder disabled (consistent with legacy Squid USE_ENCODER_Z=False)
         "encoder_flip_direction": True,
-        "switch_polarity": 0,                  # 旧 Z 限位极性=0（GUI 启动 cmd 20 下发，固件无需重烧切换）
-        "homing_velocity_mm": 1.0,             # 旧 Z homing 速度（GUI 启动 S:SET_HOMING_VEL 下发；固件开机默认也是 1）
+        "switch_polarity": 0,                  # old-Z limit polarity=0 (sent by the GUI via cmd 20 at startup; no firmware reflash needed to switch)
+        "homing_velocity_mm": 1.0,             # old-Z homing speed (sent by the GUI via S:SET_HOMING_VEL at startup; the firmware boot default is also 1)
     },
     "new": {
         "display_name": "Step Motor - new z_axis",
-        "limits": (-100, 30000),   # 上限 30mm（保守余量，实测行程上限位≈34.5mm STOPR 开关）；下限 -100um。⚠️octoaxes 主线板未实测
-        "actuator_screw_pitch_mm": 1.0,       # W0601 导程 1mm
-        "actuator_motor_current_ma": 1500,    # LE143S 额定 1.5A（TMC2240 路径=峰值，IRUN=23）
-        "actuator_motor_hold_ratio": 0.75,    # 竖直 Z 防重力下坠
+        "limits": (-100, 30000),   # upper limit 30mm (conservative margin; measured travel upper limit ~=34.5mm STOPR switch); lower limit -100um. (WARNING) not tested on the octoaxes mainline board
+        "actuator_screw_pitch_mm": 1.0,       # W0601 pitch 1mm
+        "actuator_motor_current_ma": 1500,    # LE143S rated 1.5A (TMC2240 path=peak, IRUN=23)
+        "actuator_motor_hold_ratio": 0.75,    # vertical Z, resists gravity sag
         "encoder_transitions_per_rev": 10000,  # 1.0mm pitch / 0.1μm resolution
-        "has_encoder": True,                   # 2026-06-08 新 Z 编码器实测验证通过(ratio≈1/dev有界)，默认启用
-        "encoder_flip_direction": True,        # flip=1：实测 enc 与 xactual 同向需翻转
-        "switch_polarity": 1,                  # 新 Z 限位极性=1（与旧 Z 相反，06-09 传感器对调后唯一固件差异，现走 cmd 20 下发）
-        "homing_velocity_mm": 2.0,             # 新 Z homing 速度（GUI 启动 S:SET_HOMING_VEL 下发提速，避免长行程 ~34.5mm 回零超时；固件开机默认 1）
+        "has_encoder": True,                   # 2026-06-08 new-Z encoder verified on hardware (ratio~=1 / bounded dev), enabled by default
+        "encoder_flip_direction": True,        # flip=1: measured that enc and xactual are same-direction and need flipping
+        "switch_polarity": 1,                  # new-Z limit polarity=1 (opposite to old Z; after the 06-09 sensor swap this is the only firmware difference, now sent via cmd 20)
+        "homing_velocity_mm": 2.0,             # new-Z homing speed (the GUI sends S:SET_HOMING_VEL at startup to speed it up, avoiding a long-travel ~34.5mm homing timeout; firmware boot default is 1)
     },
 }
 
-# 轴配置
-# 轴索引与固件对应: Y(0), X(1), Z(2), W(3)
-# actuator_* 字段对应 firmware/config.h AxisConstDefinition 默认值，
-# 上位机启动时通过 SET_LEAD_SCREW_PITCH / CONFIGURE_STEPPER_DRIVER 下发覆盖
-# （避免固件被旧 Squid 上位机配成 32 细分后 Octoaxes GUI 显示错位）
+# axis configuration
+# axis index maps to firmware: Y(0), X(1), Z(2), W(3)
+# the actuator_* fields correspond to the firmware/config.h AxisConstDefinition defaults,
+# the host overrides them at startup via SET_LEAD_SCREW_PITCH / CONFIGURE_STEPPER_DRIVER
+# (avoids display misalignment in the Octoaxes GUI after legacy Squid configured the firmware to 32 microsteps)
 AXIS_CONFIG = {
     "X": {
         "display_name": "Step Motor - x_axis",
@@ -54,7 +54,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-10, 115000),
         "movement_sign": 1,
-        "index": 1,  # X 轴 index=1
+        "index": 1,  # X axis index=1
         "default_velocity": 25.0,      # mm/s
         "default_acceleration": 500.0, # mm/s²
         "has_encoder": False,
@@ -62,7 +62,7 @@ AXIS_CONFIG = {
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 2.54,
         "actuator_microstepping": 256,
-        "actuator_motor_current_ma": 1000,   # 峰值电流
+        "actuator_motor_current_ma": 1000,   # peak current
         "actuator_motor_hold_ratio": 0.25,
     },
     "Y": {
@@ -71,7 +71,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-10, 76000),
         "movement_sign": 1,
-        "index": 0,  # Y 轴 index=0
+        "index": 0,  # Y axis index=0
         "default_velocity": 25.0,
         "default_acceleration": 500.0,
         "has_encoder": False,
@@ -89,8 +89,8 @@ AXIS_CONFIG = {
         "index": 2,
         "default_velocity": 3.0,
         "default_acceleration": 20.0,
-        "actuator_microstepping": 256,  # 新旧 Z 共用
-        # display_name / limits / has_encoder / flip / pitch / 电流 / hold / encoder_transitions 由 Z_AXIS_VARIANT 决定（见文件顶部开关）
+        "actuator_microstepping": 256,  # shared by old and new Z
+        # display_name / limits / has_encoder / flip / pitch / current / hold / encoder_transitions are decided by Z_AXIS_VARIANT (see the switch at the top of the file)
         **_Z_VARIANTS[Z_AXIS_VARIANT],
     },
     "W": {
@@ -98,30 +98,30 @@ AXIS_CONFIG = {
         "type": "filter_wheel",
         "has_limits": False,
         "limits": (0, 7),
-        "movement_sign": 1,    # 与旧 Squid 一致（sign=1 → HOME_NEGATIVE → chip 朝 - 方向 search）
+        "movement_sign": 1,    # consistent with legacy Squid (sign=1 -> HOME_NEGATIVE -> the chip searches toward -)
         "index": 3,
-        "has_encoder": True,    # 2026-05-21 启用 ABN 编码器，GUI 通过 ENC_POS 反映 chip 真实位置
+        "has_encoder": True,    # 2026-05-21 enable the ABN encoder; the GUI reflects the chip's real position via ENC_POS
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
-        "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
-        "actuator_microstepping": 64,      # 2026-05-21 对齐旧 Squid MICROSTEPPING_DEFAULT_W=64
+        "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 matches legacy Squid SCREW_PITCH_W_MM=1
+        "actuator_microstepping": 64,      # 2026-05-21 matches legacy Squid MICROSTEPPING_DEFAULT_W=64
     },
     "Turret": {
-        # 2026-05-29 本电路板 icID=5 槽位接物镜转换器（4 物镜），CS=pin 19/CLK=pin 28。
-        # 协议走专属 MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7（不复用 W 命令）。
-        # GUI widgets.py 渲染物镜控制页；main_window.previous/next → move_objective()，
-        # 齿轮减速比 OBJECTIVE_RATIO=132/48 × SCREW_PITCH_W_MM=1 / OBJECTIVE_HOLES=4 = 0.6875 mm/位。
+        # 2026-05-29 on this board the icID=5 slot connects to the objective turret (4 objectives), CS=pin 19/CLK=pin 28.
+        # the protocol uses dedicated MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7 (does not reuse the W command).
+        # GUI widgets.py renders the objective-control page; main_window.previous/next -> move_objective(),
+        # gear reduction OBJECTIVE_RATIO=132/48 * SCREW_PITCH_W_MM=1 / OBJECTIVE_HOLES=4 = 0.6875 mm/slot.
         "display_name": "Objectives - expand1_axis",
         "type": "objective",
         "has_limits": False,
-        "limits": (0, 3),       # 4 物镜 slot 0..3，与 define.py OBJECTIVE_SWITCH_MAX_INDEX=3 一致
-        # 物镜位置显示符号：move_objective() 硬编码 -1（Next=负方向），但 GUI 期望 Next 显正值。
-        # movement_sign=-1 翻转显示（pos/steps/状态表乘 sign），且让 homing home_dir=0→HOME_POSITIVE
-        # →new_direct=+1 与 EXPAND1_AXIS.homing_direct=1 一致。不影响 move_objective 物理方向（它不用 sign）。
+        "limits": (0, 3),       # 4 objectives, slots 0..3, consistent with define.py OBJECTIVE_SWITCH_MAX_INDEX=3
+        # objective position display sign: move_objective() hardcodes -1 (Next=negative direction), but the GUI expects Next to show a positive value.
+        # movement_sign=-1 flips the display (pos/steps/status table multiplied by sign), and makes homing home_dir=0 -> HOME_POSITIVE
+        # -> new_direct=+1 consistent with EXPAND1_AXIS.homing_direct=1. Does not affect move_objective's physical direction (it does not use sign).
         "movement_sign": -1,
         "index": 5,             # firmware icID（octoaxes.ino: new Objectives(...,5,"Turret",4)）
-        "actuator_screw_pitch_mm": 1.0,    # 对齐 config.h SCREW_PITCH_OBJECTIVES_MM=1
-        "actuator_microstepping": 64,      # 对齐 config.h MICROSTEPPING_OBJECTIVES=64
+        "actuator_screw_pitch_mm": 1.0,    # matches config.h SCREW_PITCH_OBJECTIVES_MM=1
+        "actuator_microstepping": 64,      # matches config.h MICROSTEPPING_OBJECTIVES=64
     },
     "E3": {
         "display_name": "Step Motor - expand3_axis",
@@ -145,10 +145,10 @@ AXIS_CONFIG = {
     },
 }
 
-# 微步 → mm 换算系数（从 AXIS_CONFIG 派生，单一数据源）
-# 公式：mm_per_step = screwPitchMM / (fullStepsPerRev * microstepping)
-# 修改 actuator_microstepping / actuator_screw_pitch_mm 时此表自动跟随，
-# 避免与 _configure_actuators() 下发的微步值不一致
+# microstep -> mm conversion factor (derived from AXIS_CONFIG, single source of truth)
+# formula: mm_per_step = screwPitchMM / (fullStepsPerRev * microstepping)
+# this table follows automatically when actuator_microstepping / actuator_screw_pitch_mm change,
+# avoiding inconsistency with the microstep value sent by _configure_actuators()
 FULLSTEPS_PER_REV = 200
 AXIS_MM_PER_STEP = {
     name: cfg["actuator_screw_pitch_mm"]
@@ -156,30 +156,30 @@ AXIS_MM_PER_STEP = {
     for name, cfg in AXIS_CONFIG.items()
 }
 
-# 移动距离
-FILTERWHEEL_DISTANCE = 0.125  # mm  2026-05-21 W 量纲对齐旧 Squid，去掉 ×100 补偿（1 槽 = 1/8 圈 = 0.125 mm）
+# move distance
+FILTERWHEEL_DISTANCE = 0.125  # mm  2026-05-21 W units aligned with legacy Squid, removed the x100 compensation (1 slot = 1/8 turn = 0.125 mm)
 
-# 命令前缀
+# command prefix
 COMMAND_PREFIXES = list(AXIS_CONFIG.keys())
 
-# 默认值
+# default value
 DEFAULT_LOW_LIMIT = -6000  # μm
 DEFAULT_HIGH_LIMIT = 6000  # μm
 DEFAULT_MOVE_DISTANCE = 500  # μm
 
-# ─── 照明端口配置（按 profile 动态，common/gui 据此渲染） ──────────────────
+# --- illumination port config (dynamic per profile; common/gui renders from this) ---
 #
 # ILLUMINATION_PORTS:
-#   每行 (port_index, display_name, pin_number)。port_index 与 firmware
-#   port_index_to_pin / port_index_to_dac_channel 严格对齐。
+# each row (port_index, display_name, pin_number). port_index and the firmware
+# port_index_to_pin / port_index_to_dac_channel are strictly aligned.
 #
 # ILLUMINATION_DAC_CHANNELS:
-#   每行 (dac_ch, full_scale_volt)。空列表 = 该 profile 无 DAC 直控滑条。
-#   octoaxes 旧硬件无独立 DAC 直控（DAC 强度通过 SET_PORT_ILLUMINATION 耦合），
-#   bring-up 工具仅 octoaxesplus 需要。
+# each row (dac_ch, full_scale_volt). An empty list = this profile has no DAC direct-control slider.
+# octoaxes old hardware has no independent DAC direct control (DAC intensity is coupled via SET_PORT_ILLUMINATION),
+# the bring-up tool is only needed for octoaxesplus.
 #
 # ILLUMINATION_HAS_GAIN_SWITCH / ILLUMINATION_HAS_DAC_READBACK:
-#   控制 D8 5V↔2.5V 切换按钮和 Read DAC Regs 按钮是否渲染。
+# controls whether the D8 5V<->2.5V toggle button and the Read DAC Regs button are rendered.
 ILLUMINATION_PORTS = [
     (0, "D1 (pin 5)",   5),
     (1, "D2 (pin 4)",   4),
@@ -187,6 +187,6 @@ ILLUMINATION_PORTS = [
     (3, "D4 (pin 3)",   3),
     (4, "D5 (pin 23)", 23),
 ]
-ILLUMINATION_DAC_CHANNELS = []          # 旧硬件不暴露 DAC 直控
+ILLUMINATION_DAC_CHANNELS = []          # old hardware does not expose DAC direct control
 ILLUMINATION_HAS_GAIN_SWITCH  = False
 ILLUMINATION_HAS_DAC_READBACK = False

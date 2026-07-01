@@ -40,18 +40,18 @@ def main():
             if "motor_adjustBows" in line or "initialized" in line:
                 print(f"  {line}")
 
-        # 读取寄存器状态
+        # read the register state
         print(f"\n[2] 读取 {AXIS} 轴寄存器状态")
         for line in send_command(ser, f"{AXIS}:DEBUG_REG", 1):
             if "REG:" in line:
                 print(f"  {line}")
 
-        # 读取当前数据
+        # read the current data
         print(f"\n[3] 读取 {AXIS} 轴当前数据")
         for line in send_command(ser, f"{AXIS}:GET_DATA", 0.5):
             print(f"  {line}")
 
-        # 解析关键寄存器
+        # parse the key registers
         print("\n[4] 关键状态分析")
         for line in send_command(ser, f"{AXIS}:DEBUG_REG", 1):
             if "RAMPMODE" in line:

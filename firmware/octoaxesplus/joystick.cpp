@@ -10,26 +10,26 @@
 #include <PacketSerial.h>
 
 // =============================================================================
-// 外部变量
+// External variables
 // =============================================================================
 
-// 偏移速度（定义在 commandprocessor.cpp）
+// offset velocity (defined in commandprocessor.cpp)
 extern float offset_velocity_x;
 extern float offset_velocity_y;
 
 // =============================================================================
-// 内部常量
+// Internal constants
 // =============================================================================
 
 static const unsigned long JOYSTICK_UPDATE_INTERVAL_US = 30000; // 30ms
 
 // =============================================================================
-// 内部状态
+// Internal state
 // =============================================================================
 
 static PacketSerial joystickSerial;
 
-// 缓存的轴指针和 icID（启动时查找一次）
+// cached axis pointers and icID (looked up once at startup)
 static Axis *axisX = nullptr;
 static Axis *axisY = nullptr;
 static Axis *axisZ = nullptr;
@@ -37,57 +37,57 @@ static uint8_t icID_X = 0;
 static uint8_t icID_Y = 0;
 static uint8_t icID_Z = 0;
 
-// 摇杆数据（由 PacketSerial 回调写入，主循环读取）
+// joystick data (written by the PacketSerial callback, read by the main loop)
 static volatile int16_t joystick_delta_x = 0;
 static volatile int16_t joystick_delta_y = 0;
-static volatile bool flag_read_joystick = false; // 收到新包时置 true，处理后清除
+static volatile bool flag_read_joystick = false; // set true when a new packet arrives, cleared after processing
 
-// 焦点轮状态
+// Focus-wheel state
 static int32_t focusPosition = 0;
-static volatile int32_t focusWheelDelta = 0;  // 回调中累计的增量
-static int32_t focusWheelPos = 0;             // 上一次绝对编码器位置
-static bool firstJoystickPacket = true;       // 首包标志（仅记录基准）
-static bool focusPositionSynced = false;      // focusPosition 是否已与实际位置同步
+static volatile int32_t focusWheelDelta = 0;  // delta accumulated in the callback
+static int32_t focusWheelPos = 0;             // previous absolute encoder position
+static bool firstJoystickPacket = true;       // first-packet flag (only records the baseline)
+static bool focusPositionSynced = false;      // whether focusPosition has been synced with the actual position
 
-// 周期计时器
+// Periodic timer
 static elapsedMicros joystickTimer;
 
-// 协议帧统计计数（S:JOYSTICK_STATS 读取）
-// byte[9] == 0 → legacy 包（老 joystick，不带 CRC）
-// byte[9] != 0 → 新 joystick，校验 CRC-8-CCITT(buffer[0..8])，0x00 映射为 0x01
+// protocol-frame statistics counters (read by S:JOYSTICK_STATS)
+// byte[9] == 0 -> legacy packet (old joystick, no CRC)
+// byte[9] != 0 -> new joystick, verify CRC-8-CCITT(buffer[0..8]), 0x00 mapped to 0x01
 static uint32_t joystick_legacy_count = 0;
 static uint32_t joystick_crc_ok_count = 0;
 static uint32_t joystick_crc_fail_count = 0;
 
 // =============================================================================
-// PacketSerial 回调：解析手控盒 10 字节消息
+// PacketSerial callback: parse the hand controller's 10-byte message
 // =============================================================================
 
 static void onJoystickPacketReceived(const uint8_t *buffer, size_t size) {
   if (size != 10)
     return;
 
-  // CRC 兼容性闸门：byte[9]==0 视为 legacy（老 joystick），非 0 校验 CRC
+  // CRC compatibility gate: byte[9]==0 is treated as legacy (old joystick), non-zero verifies the CRC
   uint8_t recv_crc = buffer[9];
   if (recv_crc == 0x00) {
     joystick_legacy_count++;
   } else {
     uint8_t calc = serialProtocol.crc8ccitt(const_cast<byte *>(buffer), 9);
-    if (calc == 0x00) calc = 0x01; // 与 joystick 侧映射规则一致
+    if (calc == 0x00) calc = 0x01; // consistent with the mapping rule on the joystick side
     if (calc != recv_crc) {
       joystick_crc_fail_count++;
-      return; // CRC 失配丢包
+      return; // CRC mismatch, drop the packet
     }
     joystick_crc_ok_count++;
   }
 
-  // bytes[0-3]: 焦点轮绝对编码器位置 (int32 BE)
+  // bytes[0-3]: focus-wheel absolute encoder position (int32 BE)
   int32_t focusWheelNew = (int32_t)((uint32_t)buffer[0] << 24 |
                                      (uint32_t)buffer[1] << 16 |
                                      (uint32_t)buffer[2] << 8  |
                                      (uint32_t)buffer[3]);
   if (firstJoystickPacket) {
-    // 首包仅记录基准，不产生运动
+    // the first packet only records the baseline, produces no motion
     focusWheelPos = focusWheelNew;
     firstJoystickPacket = false;
   } else {
@@ -102,15 +102,15 @@ static void onJoystickPacketReceived(const uint8_t *buffer, size_t size) {
     focusWheelPos = focusWheelNew;
   }
 
-  // bytes[4-5]: X 摇杆 (int16 BE)
+  // bytes[4-5]: X joystick (int16 BE)
   joystick_delta_x = (int16_t)((uint16_t)buffer[4] << 8 | (uint16_t)buffer[5]);
   joystick_delta_x *= JOYSTICK_SIGN_X;
 
-  // bytes[6-7]: Y 摇杆 (int16 BE)
+  // bytes[6-7]: Y joystick (int16 BE)
   joystick_delta_y = (int16_t)((uint16_t)buffer[6] << 8 | (uint16_t)buffer[7]);
   joystick_delta_y *= JOYSTICK_SIGN_Y;
 
-  // byte[8]: 按钮
+  // byte[8]: button
   if (buffer[8] != 0) {
     joystick_button_pressed = true;
     joystick_button_pressed_timestamp = millis();
@@ -120,11 +120,11 @@ static void onJoystickPacketReceived(const uint8_t *buffer, size_t size) {
 }
 
 // =============================================================================
-// XY 轴摇杆速度控制
+// XY-axis joystick velocity control
 // =============================================================================
 
 static void check_joystick() {
-  // X 轴
+  // X axis
   if (axisX && !axisX->isMoving() && !axisX->isHomingInProgress()) {
     int16_t delta = joystick_delta_x;
     if (delta != 0) {
@@ -142,7 +142,7 @@ static void check_joystick() {
     }
   }
 
-  // Y 轴
+  // Y axis
   if (axisY && !axisY->isMoving() && !axisY->isHomingInProgress()) {
     int16_t delta = joystick_delta_y;
     if (delta != 0) {
@@ -162,14 +162,14 @@ static void check_joystick() {
 }
 
 // =============================================================================
-// Z 轴焦点轮控制
+// Z-axis focus-wheel control
 // =============================================================================
 
 static void do_focus_control() {
   if (!axisZ || axisZ->isHomingInProgress())
     return;
 
-  // 读取并清零累计增量
+  // read and zero the accumulated delta
   noInterrupts();
   int32_t delta = focusWheelDelta;
   focusWheelDelta = 0;
@@ -178,7 +178,7 @@ static void do_focus_control() {
   if (delta == 0)
     return;
 
-  // 首次使用时从实际位置同步，避免 init 时位置过期（homing 前后不一致）
+  // on first use, sync from the actual position to avoid a stale position at init (inconsistent before/after homing)
   if (!focusPositionSynced) {
     focusPosition = motor_getPositionMicrosteps(icID_Z);
     focusPositionSynced = true;
@@ -186,7 +186,7 @@ static void do_focus_control() {
 
   focusPosition += delta;
 
-  // 软限位钳位：仅在软限位已启用时生效（上位机 SET_LIMITS 后才有有效值）
+  // soft-limit clamp: only effective when soft limits are enabled (valid values exist only after the host's SET_LIMITS)
   if (axisZ->isSoftLimitsEnabled()) {
     int32_t lowerLimit = (int32_t)tmc4361A_readRegister(icID_Z, TMC4361A_VIRT_STOP_LEFT);
     int32_t upperLimit = (int32_t)tmc4361A_readRegister(icID_Z, TMC4361A_VIRT_STOP_RIGHT);
@@ -208,16 +208,16 @@ static void do_focus_control() {
 }
 
 // =============================================================================
-// 公开 API
+// Public API
 // =============================================================================
 
 void joystick_init() {
-  // 初始化 Serial5 @ 115200bps
+  // initialize Serial5 @ 115200bps
   Serial5.begin(115200);
   joystickSerial.setStream(&Serial5);
   joystickSerial.setPacketHandler(&onJoystickPacketReceived);
 
-  // 缓存轴指针和 icID
+  // cache the axis pointers and icID
   axisX = axisManager.findAxisByName("X");
   axisY = axisManager.findAxisByName("Y");
   axisZ = axisManager.findAxisByName("Z");
@@ -226,7 +226,7 @@ void joystick_init() {
   if (axisY) icID_Y = axisY->getIcID();
   if (axisZ) {
     icID_Z = axisZ->getIcID();
-    // 初始化焦点位置为 Z 轴当前位置
+    // initialize the focus position to the Z axis's current position
     focusPosition = motor_getPositionMicrosteps(icID_Z);
   }
 
@@ -236,10 +236,10 @@ void joystick_init() {
 }
 
 void joystick_update() {
-  // 接收 PacketSerial 数据
+  // receive PacketSerial data
   joystickSerial.update();
 
-  // XY 摇杆：仅在收到新数据包时处理（与 Squid flag_read_joystick 一致）
+  // XY joystick: only process when a new packet arrives (consistent with Squid flag_read_joystick)
   if (flag_read_joystick) {
     if (joystickTimer >= JOYSTICK_UPDATE_INTERVAL_US) {
       joystickTimer -= JOYSTICK_UPDATE_INTERVAL_US;
@@ -248,13 +248,13 @@ void joystick_update() {
     flag_read_joystick = false;
   }
 
-  // Z 焦点轮：每次 loop 无条件运行（与 Squid 一致，在 flag_read_joystick 外面）
+  // Z focus wheel: run unconditionally every loop (consistent with Squid, outside flag_read_joystick)
   do_focus_control();
 }
 
 void joystick_print_stats() {
-  // 用 SerialUSB.println 直发（不走 DEBUG_PRINTLN），确保生产 env (teensy41)
-  // 下也能查询计数器；对齐 S:HWINFO / S:VERSION 同款 pattern
+  // send directly via SerialUSB.println (not DEBUG_PRINTLN) to ensure that even in the production env (teensy41)
+  // the counters can still be queried; matches the same pattern as S:HWINFO / S:VERSION
   char buf[96];
   snprintf(buf, sizeof(buf),
            "JOYSTICK_STATS legacy=%lu crc_ok=%lu crc_fail=%lu",

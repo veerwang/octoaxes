@@ -8,7 +8,7 @@ import serial
 import sys
 import time
 
-# 调试协议头
+# debug protocol header
 DEBUG_HEADER = bytes([0x55, 0xAA])
 
 def send_debug_command(ser, command):
@@ -27,14 +27,14 @@ def read_all_responses(ser, timeout=2.0):
         if ser.in_waiting > 0:
             chunk = ser.read(ser.in_waiting)
             buffer += chunk
-            # 按换行符分割
+            # split on newlines
             while b'\n' in buffer:
                 line, buffer = buffer.split(b'\n', 1)
                 if line:
                     responses.append(line)
         time.sleep(0.01)
 
-    # 处理剩余数据
+    # handle the remaining data
     if buffer:
         responses.append(buffer)
 
@@ -54,7 +54,7 @@ def test_engine_start(port_name, baudrate=2000000):
         time.sleep(0.5)
         ser.reset_input_buffer()
 
-        # 先查询版本确认通信正常
+        # query the version first to confirm communication works
         print()
         print("-" * 40)
         print("步骤 1: 查询版本...")
@@ -65,14 +65,14 @@ def test_engine_start(port_name, baudrate=2000000):
         for resp in responses:
             print(f"[RX] {resp.decode('utf-8', errors='replace')}")
 
-        # 发送 Engine Start 命令
+        # send the Engine Start command
         print()
         print("-" * 40)
         print("步骤 2: 发送 Engine Start...")
         print("-" * 40)
         send_debug_command(ser, "S:Engine Start")
 
-        # 等待响应
+        # wait for the response
         time.sleep(1.0)
         responses = read_all_responses(ser, timeout=2.0)
 
@@ -92,7 +92,7 @@ def test_engine_start(port_name, baudrate=2000000):
         else:
             print("[WARN] 未收到明确的启动确认")
             print("       但命令可能已执行，请继续下一个测试")
-            return True  # 继续测试
+            return True  # continue testing
 
     except serial.SerialException as e:
         print(f"[FAIL] 串口错误: {e}")
