@@ -86,7 +86,7 @@ bool Axis::begin(const AxisConfig &config) {
   // beginAll() can record which axis chip failed to come up, avoiding later operations on an uninitialized chip.
   if (!motor_initMotionController(_icID, &motionConfig)) {
     DEBUG_PRINT(_axisName);
-    DEBUG_PRINTLN(":BEGIN_FAIL motor_initMotionController (TMC4361A SPI 无响应)");
+    DEBUG_PRINTLN(":BEGIN_FAIL motor_initMotionController (TMC4361A SPI no response)");
     return false;
   }
 

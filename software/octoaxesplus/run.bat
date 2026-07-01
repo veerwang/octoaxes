@@ -1,5 +1,5 @@
 @echo off
-REM 启动 octoaxesplus 上位机（共享 software/.venv）
+REM launch the octoaxesplus host software (shared software/.venv)
 pushd "%~dp0\.."
 if not exist .venv\Scripts\python.exe (
     echo [ERROR] .venv not found, creating...
