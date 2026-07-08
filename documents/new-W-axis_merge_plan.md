@@ -98,7 +98,14 @@ A2/A3/A4（通用固件健壮性）→ A6（照明）→ A1（物镜类）→ A5
   - `motor_syncXActualToEncoder`（弹片自定位用）**延到 A1** 再带。
   - MotorControl 经 `octoaxesplus/tmc` 符号链接自动惠及双 firmware；两 firmware 编译 SUCCESS。
   - **未烧录**，待硬件实测（TMC2240 轴 disable→enable 可逆性；`S:DUMP_TOFF` 看 coverTOFF match=N）。
-- [ ] A3 超时/速度健壮性
+- [x] **A3 超时/速度健壮性**（2026-07-08 完成，仅逻辑；config.h 速度数值用户拍板不改）
+  - `axis.h` 加 `_moveTimeoutMs` 成员（octoaxes + octoaxesplus）。
+  - `axis.cpp` `setMotionParameters` 速度写回 `_config`（修「设速度后第二次移动回退默认」，cf93900）。
+  - `axis.cpp` `startMovement` 动态 move 超时（按距离/速度算，60s 上限）+ moving 态用 `_moveTimeoutMs`（修 5s 砍停半路，f4c3c35）。
+  - `stepaxis.cpp` LEAVING_HOME 重搜索速度 `maxVelocityMM`→`homingVelocityMM`（latch 重复性，f254a63）。**只改 240 行重搜索，退回方向保留本项目「方向感知」版**。
+  - 4 处编辑 octoaxes + octoaxesplus 各一份（axis 三件套非符号链接、各自独立）；两 firmware 编译 SUCCESS。
+  - ⚠️ 避开：Mega 删的 `polarityAffectsChip`/`reapplyLimitSwitches`/ENC-2 tripwire/value-init/W tol=10/wakeForMotion 全保留本项目版。
+  - **config.h 速度数值（用户拍板不改）**：`HOMING_VELOCITY_X_MM` 保持 10（不取 Mega 的 20/df7a38a）、`HOMING_VELOCITY_Y_MM` 保持 30（不取 Mega 的 20/9d7993a）。理由：机器相关，本项目 Y=30 有「256 微步+30mm/s 最安静」实测，Mega 是 t2000 不同机器且 Y 注释陈旧。
 - [ ] A4 独立健壮性
 - [ ] A6 LED 亮度滑条
 - [ ] A1 物镜类改进
