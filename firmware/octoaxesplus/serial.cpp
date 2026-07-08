@@ -61,8 +61,13 @@ void SerialProtocolHandler::begin(long baudRate, uint32_t timeout) {
   delay(500);
   SerialUSB.setTimeout(timeout);
   buffer_rx_ptr = 0;
-  while (!SerialUSB) {
-    ; // 等待串口连接
+  // 融合 new-W-axis 29c2fec（2026-06-23）：原为 `while (!SerialUSB) {;}` 无限等待 USB
+  // 主机连接（DTR 置位）。无上位机冷上电时 setup() 永久卡死在此 → loop() 从不执行 →
+  // 手控盒(joystick)/焦点轮全部失效，必须先开一次上位机软件才"解锁"。改为最多等 timeout
+  // 毫秒（begin(115200, 300) 的 300 本就是为此而设、原被忽略），无主机也放行让固件独立运行。
+  uint32_t start = millis();
+  while (!SerialUSB && (millis() - start) < timeout) {
+    ; // 最多等 timeout 毫秒；有主机则连上即走，无主机超时放行
   }
 }
 
