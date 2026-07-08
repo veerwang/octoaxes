@@ -435,6 +435,39 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
+    // S:DUMP_TOFF [axisName]   (merged from new-W-axis 98976ab)
+    // Diagnose the TMC2240 enable/disable failure root cause: compare each axis's CHOPCONF
+    // "Cover readback value" vs "shadow-memory reliable value" for the TOFF field. match=N
+    // means the Cover-read TOFF disagrees with the reliable value.
+    if (command.startsWith("S:DUMP_TOFF")) {
+      String filter = command.length() > 11 ? command.substring(11) : String("");
+      filter.trim();
+      char buf[180];
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (!axis) continue;
+        const char *name = axis->getAxisName();
+        if (filter.length() > 0 && filter != String(name)) continue;
+
+        struct ChopconfDump d = motor_dumpChopconf(axis->getIcID());
+        if (d.isTmc2240) {
+          snprintf(buf, sizeof(buf),
+                   "S:TOFF %s driver=TMC2240 coverCHOP=0x%08lX coverTOFF=%u "
+                   "shadowCHOP=0x%08lX shadowTOFF=%u match=%c",
+                   name, (unsigned long)d.coverChopconf, (unsigned)d.coverToff,
+                   (unsigned long)d.shadowChopconf, (unsigned)d.shadowToff,
+                   (d.coverToff == d.shadowToff) ? 'Y' : 'N');
+        } else {
+          snprintf(buf, sizeof(buf),
+                   "S:TOFF %s driver=%d (not TMC2240, skipped)",
+                   name, (int)d.driverType);
+        }
+        SerialUSB.println(buf);
+      }
+      SerialUSB.println("S:DUMP_TOFF:END");
+      return;
+    }
+
     // S:CLKMODE <off|high|low|slow|16m>
     // squid++ debug: toggle the pin 37 (TMC4361_STANDARD_CLK) output state,
     // use a multimeter (DC) to statically read the voltage and verify the PWM is actually working.

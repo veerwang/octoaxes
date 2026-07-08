@@ -384,6 +384,26 @@ void motor_setRunCurrent(uint8_t icID, float currentMA);
  */
 void motor_enableDriver(uint8_t icID, bool enable);
 
+/**
+ * @brief Diagnostic: read this axis's CHOPCONF "Cover readback value" vs "shadow reliable value"
+ *
+ * Used to confirm the TMC2240 enable/disable failure root cause: the old enable logic read
+ * CHOPCONF to check TOFF, but CHOPCONF takes the unreliable Cover read (datasheet §10.3.6
+ * requires waiting for COVER_DONE, while the firmware substitutes a fixed delay). This function
+ * returns both the Cover readback value and the reliable shadow-memory value, so comparing them
+ * reveals whether the Cover read is wrong and how ("why only W gets stuck"). Only meaningful
+ * for TMC2240. Merged from new-W-axis 98976ab.
+ */
+struct ChopconfDump {
+    bool     isTmc2240;       // whether this axis is TMC2240 (otherwise the remaining fields are meaningless)
+    uint8_t  driverType;      // raw driverType value
+    uint32_t coverChopconf;   // CHOPCONF read back via Cover (unreliable path)
+    uint32_t shadowChopconf;  // CHOPCONF from shadow memory (reliable)
+    uint8_t  coverToff;       // TOFF field of the Cover readback value
+    uint8_t  shadowToff;      // TOFF field of the shadow value
+};
+struct ChopconfDump motor_dumpChopconf(uint8_t icID);
+
 // ============================================================================
 // Unit Conversion API
 // ============================================================================

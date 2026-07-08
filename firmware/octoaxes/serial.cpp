@@ -411,6 +411,43 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
+    // S:DUMP_TOFF [axisName]   (merged from new-W-axis 98976ab)
+    // Diagnose the TMC2240 enable/disable failure root cause: compare each axis's CHOPCONF
+    // "Cover readback value" vs "shadow-memory reliable value" for the TOFF field. Procedure
+    // to confirm "why only W gets stuck":
+    //   1. ENABLE all axes -> S:DUMP_TOFF   (baseline; shadowTOFF should = configured value, watch what coverTOFF reads)
+    //   2. W:DISABLE  -> S:DUMP_TOFF W      (shadowTOFF should = 0; if coverTOFF reads back non-zero it proves the Cover read is wrong)
+    //   3. W:ENABLE   -> S:DUMP_TOFF W      (shadowTOFF should be restored; compare against X/Y to see the match=Y/N difference)
+    // match=N means this axis's Cover-read TOFF disagrees with the reliable value -- i.e. the source of the old enable logic's misjudgment.
+    if (command.startsWith("S:DUMP_TOFF")) {
+      String filter = command.length() > 11 ? command.substring(11) : String("");
+      filter.trim();
+      char buf[180];
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (!axis) continue;
+        const char *name = axis->getAxisName();
+        if (filter.length() > 0 && filter != String(name)) continue;
+
+        struct ChopconfDump d = motor_dumpChopconf(axis->getIcID());
+        if (d.isTmc2240) {
+          snprintf(buf, sizeof(buf),
+                   "S:TOFF %s driver=TMC2240 coverCHOP=0x%08lX coverTOFF=%u "
+                   "shadowCHOP=0x%08lX shadowTOFF=%u match=%c",
+                   name, (unsigned long)d.coverChopconf, (unsigned)d.coverToff,
+                   (unsigned long)d.shadowChopconf, (unsigned)d.shadowToff,
+                   (d.coverToff == d.shadowToff) ? 'Y' : 'N');
+        } else {
+          snprintf(buf, sizeof(buf),
+                   "S:TOFF %s driver=%d (not TMC2240, skipped)",
+                   name, (int)d.driverType);
+        }
+        SerialUSB.println(buf);
+      }
+      SerialUSB.println("S:DUMP_TOFF:END");
+      return;
+    }
+
     // S:SET_HOMING_VEL <axisName> <vel_mm_per_s>
     // for diagnostics: set homingVelocityMM at runtime without reflashing firmware
     // e.g.: S:SET_HOMING_VEL Y 5.0

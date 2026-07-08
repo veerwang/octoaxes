@@ -1062,20 +1062,47 @@ void motor_enableDriver(uint8_t icID, bool enable)
         return;
 
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
-        if (enable) {
-            // use the cached TOFF to restore the driver (rather than a hardcoded default)
-            uint32_t chopconf = tmc2240_readRegister(icID, TMC2240_CHOPCONF);
-            uint8_t currentToff = (chopconf & TMC2240_TOFF_MASK) >> TMC2240_TOFF_SHIFT;
-            if (currentToff == 0) {
-                uint8_t toff = motorParams[icID].toff > 0 ? motorParams[icID].toff : 3;
-                tmc2240_fieldWrite(icID, TMC2240_TOFF_FIELD, toff);
-            }
-        } else {
-            tmc2240_fieldWrite(icID, TMC2240_TOFF_FIELD, 0);
-        }
+        // Root-cause fix (merged from new-W-axis 8136bff, 2026-06-11): the original
+        // enable path used tmc2240_readRegister(CHOPCONF) to read TOFF and decide
+        // whether to restore, but Cover READ is unreliable -- datasheet §10.3.6 requires
+        // waiting for the COVER_DONE event before reading COVER_DRV, whereas the firmware's
+        // tmc4361A_readWriteCover substitutes a fixed delayMicroseconds(50) + suffers auto
+        // SPI interference, so the readback fluctuates with chip/timing (the W axis
+        // consistently read garbage non-zero -> falsely judged as already enabled ->
+        // enable failed after disable; X/Y read correctly by luck). Switched to the shadow
+        // register (a reliable copy, same workaround as the MRES sync above) doing a
+        // read-modify-write on CHOPCONF.TOFF, so enable/disable involves zero Cover reads.
+        uint8_t toff = enable ? (motorParams[icID].toff > 0 ? motorParams[icID].toff : 3) : 0;
+        uint32_t chopconf = (uint32_t)tmc2240_shadowRegister[icID][TMC2240_CHOPCONF];
+        chopconf = (chopconf & ~TMC2240_TOFF_MASK)
+                 | (((uint32_t)toff << TMC2240_TOFF_SHIFT) & TMC2240_TOFF_MASK);
+        tmc2240_writeRegister(icID, TMC2240_CHOPCONF, chopconf);
     } else {
         tmc2660_enableDriver(icID, enable);
     }
+}
+
+// Diagnostic: read this axis's CHOPCONF "Cover readback value" vs "shadow reliable value"
+// to confirm the TMC2240 enable/disable failure root cause (Cover reads take the unreliable
+// path; whatever it misreads -> explains "why only W gets stuck"). Only meaningful for
+// TMC2240. Merged from new-W-axis 98976ab.
+struct ChopconfDump motor_dumpChopconf(uint8_t icID)
+{
+    struct ChopconfDump d = {false, 0, 0, 0, 0, 0};
+    if (icID >= MOTOR_IC_COUNT)
+        return d;
+
+    d.driverType = motorParams[icID].driverType;
+    if (d.driverType == DRIVER_TMC2240) {
+        d.isTmc2240 = true;
+        // coverChopconf: the real SPI read via the TMC4361A Cover (unreliable path, disturbed by auto SPI)
+        d.coverChopconf  = (uint32_t)tmc2240_readRegister(icID, TMC2240_CHOPCONF);
+        // shadowChopconf: the reliable copy kept in firmware memory (updated on every writeRegister)
+        d.shadowChopconf = (uint32_t)tmc2240_shadowRegister[icID][TMC2240_CHOPCONF];
+        d.coverToff  = (d.coverChopconf  & TMC2240_TOFF_MASK) >> TMC2240_TOFF_SHIFT;
+        d.shadowToff = (d.shadowChopconf & TMC2240_TOFF_MASK) >> TMC2240_TOFF_SHIFT;
+    }
+    return d;
 }
 
 // ============================================================================
