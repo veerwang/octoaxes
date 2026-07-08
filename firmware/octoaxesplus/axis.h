@@ -106,6 +106,10 @@ protected:
   int32_t _moveDirection;
   unsigned long _cmdRecvMicros;   // 命令接收时间 (micros)
   unsigned long _moveStartMicros; // 移动开始时间 (micros)
+  // 本次移动的动态超时（融合 new-W-axis f4c3c35，2026-06-16）：按 距离/速度 估算，
+  // 慢速/长距离自动放宽，避免低速移动被固定 5s（MOVEMENT_TIMEOUT_MS）砍掉停在半路。
+  // 每次 startMovement 时重算。
+  unsigned long _moveTimeoutMs = MOVEMENT_TIMEOUT_MS;
 
   // 新增：轴使能状态
   bool _isEnabled;
