@@ -237,7 +237,11 @@ void StepAxis::performLeavingHome() {
       delay(100);
 
       // 开始真正的归位搜索
-      int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.maxVelocityMM);
+      // 融合 new-W-axis f254a63：用 homingVelocityMM(慢速)而非 maxVelocityMM，保证无论起点
+      // 在区内/区外，最终逼近 home 开关的速度永远一致 → latch 边沿一致 → 每次 homing 完成后
+      // 的物理位置基本一致（开关有速度相关触发延迟，快速逼近会偏移 latch）。退出区的反向移动
+      // (else 分支)仍用 maxVelocity 快退，不 latch 不影响重复性。
+      int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
       motor_setVelocityInternal(_icID, speedInternal);
       setState(STATE_HOMING_SEARCH);
     } else {
