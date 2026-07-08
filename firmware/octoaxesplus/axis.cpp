@@ -230,8 +230,9 @@ void Axis::update() {
       }
     }
 
-    // 移动状态下的超时检查
-    if (checkTimeout(MOVEMENT_TIMEOUT_MS)) {
+    // 移动状态下的超时检查（融合 new-W-axis f4c3c35：用 startMovement 按距离/速度
+    // 算出的动态超时 _moveTimeoutMs，而非固定 MOVEMENT_TIMEOUT_MS，避免低速被砍半路）
+    if (checkTimeout(_moveTimeoutMs)) {
       handleError("Movement timeout");
     }
   } break;
@@ -455,6 +456,20 @@ void Axis::checkMovementComplete() {
 void Axis::startMovement() {
   _isMoving = true;
   _moveStartMicros = micros();
+
+  // 融合 new-W-axis f4c3c35（2026-06-16）：按本次移动 距离/速度 估算超时，避免低速移动被
+  // 固定 5s 砍掉停在半路（实测 0.10 mm/s 走 0.68mm 需 6.8s > 5s）。此时 XTARGET 已由
+  // motor_moveToMicrosteps 写入，取 |XTARGET-XACTUAL| 为距离。超时 = base(覆盖 ramp/settle)
+  // + 行程时间×2（安全系数），带 60s 上限防真卡死时等太久。velMM 用 _config.maxVelocityMM。
+  int32_t distSteps = motor_getTargetMicrosteps(_icID) - motor_getPositionMicrosteps(_icID);
+  if (distSteps < 0) distSteps = -distSteps;
+  float distMM = motor_microstepsToMM(_icID, distSteps);
+  float velMM = _config.maxVelocityMM;
+  unsigned long expectedMs =
+      (velMM > 0.001f) ? (unsigned long)(distMM / velMM * 1000.0f) : 0UL;
+  _moveTimeoutMs = MOVEMENT_TIMEOUT_MS + expectedMs * 2UL;
+  if (_moveTimeoutMs > 60000UL) _moveTimeoutMs = 60000UL;
+
   setState(STATE_MOVING);
 }
 
