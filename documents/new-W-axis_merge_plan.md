@@ -106,7 +106,10 @@ A2/A3/A4（通用固件健壮性）→ A6（照明）→ A1（物镜类）→ A5
   - 4 处编辑 octoaxes + octoaxesplus 各一份（axis 三件套非符号链接、各自独立）；两 firmware 编译 SUCCESS。
   - ⚠️ 避开：Mega 删的 `polarityAffectsChip`/`reapplyLimitSwitches`/ENC-2 tripwire/value-init/W tol=10/wakeForMotion 全保留本项目版。
   - **config.h 速度数值（用户拍板不改）**：`HOMING_VELOCITY_X_MM` 保持 10（不取 Mega 的 20/df7a38a）、`HOMING_VELOCITY_Y_MM` 保持 30（不取 Mega 的 20/9d7993a）。理由：机器相关，本项目 Y=30 有「256 微步+30mm/s 最安静」实测，Mega 是 t2000 不同机器且 Y 注释陈旧。
-- [ ] A4 独立健壮性
+- [x] **A4 独立健壮性**（2026-07-08 完成，2 提交；第 3 项 cmd252 跳过）
+  - **`0a5c915`** serial.cpp USB 冷启动不再死等主机（`while(!SerialUSB)` → 最多等 timeout ms，29c2fec）——修「无上位机冷上电 setup() 卡死 → 手控盒/焦点轮失效」。octoaxes + octoaxesplus 各一份，两 firmware SUCCESS。
+  - **`901e8b1`** joystick 编码器读取加 noInterrupts 快照 + pow 浮点改整数位移（ae812bd）。octoaxes + octoaxesplus 两 joystick 变体，teensyLC/teensyLC_overseas 四 env SUCCESS。
+  - ❌ **cmd 252 注释（2548292）跳过**：本项目已是 no-op，Mega 只改注释且其注释是 mega 形态专属（「只有 XYZ+W 物镜、无 W2」）对本项目错误，融过来反误导。
 - [ ] A6 LED 亮度滑条
 - [ ] A1 物镜类改进
 - [ ] A5 GUI 物镜标定
