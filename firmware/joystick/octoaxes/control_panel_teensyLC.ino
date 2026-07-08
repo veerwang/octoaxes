@@ -154,16 +154,16 @@ void loop()
   // read joystick
   joystick_delta_x = analogRead(pin_joystick_x) - joystick_offset_x;
 #ifdef REGION_OVERSEAS
-  joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/4;
+  joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*(1 << input_sensitivity_xy)/4;
 #else
-  joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/8;
+  joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*(1 << input_sensitivity_xy)/8;
 #endif
   joystick_delta_x = sgn(joystick_delta_x)*min(abs(joystick_delta_x),32767);
   joystick_delta_y = analogRead(pin_joystick_y) - joystick_offset_y;
 #ifdef REGION_OVERSEAS
-  joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/4;
+  joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*(1 << input_sensitivity_xy)/4;
 #else
-  joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/8;
+  joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*(1 << input_sensitivity_xy)/8;
 #endif
   joystick_delta_y = sgn(joystick_delta_y)*min(abs(joystick_delta_y),32767);
 
@@ -171,7 +171,13 @@ void loop()
   // debouncing to be added
 
   // send to controller
-  int32_t encoder_pos_ = encoder_pos / 4; // 降低分辨率
+  // 融合 new-W-axis ae812bd：防御性 noInterrupts 保护读取 encoder_pos（对齐 meijiasquid
+  // b33f50a 竞态修复）。encoder_pos 是 volatile long，TeensyLC(Cortex-M0+) long=32-bit
+  // 单读本就原子，此处仍快照保护保证一致性 + 将来若改 64-bit 也安全。临界区极短。
+  noInterrupts();
+  long enc_snapshot = encoder_pos;
+  interrupts();
+  int32_t encoder_pos_ = enc_snapshot / 4; // 降低分辨率
   // 对齐到 16 的整数倍，控制焦点轮最小步进粒度
   encoder_pos_ = (encoder_pos_ / 16) * 16;
   tmp_uint32 = twos_complement(encoder_pos_,4); 
@@ -254,7 +260,7 @@ uint32_t twos_complement(long signedLong,int N)
   if(signedLong>=0)
     NBytesUnsigned = signedLong;
   else
-    NBytesUnsigned = signedLong + uint64_t(pow(256,N));
+    NBytesUnsigned = signedLong + (uint64_t(1) << (8 * N));  // 融合 new-W-axis ae812bd：2^(8N)，整数位移替代浮点 pow
   return NBytesUnsigned;
 }
 
