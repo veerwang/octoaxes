@@ -411,6 +411,42 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
+    // S:DUMP_TOFF [axisName]   （融合 new-W-axis 98976ab）
+    // 诊断 TMC2240 enable/disable 失效根因：对比每轴 CHOPCONF 的「Cover 读回值」
+    // 与「shadow 内存可靠值」的 TOFF 字段。坐实"为什么只有 W 卡死"的操作流程：
+    //   1. 各轴 ENABLE → S:DUMP_TOFF      （基线，shadowTOFF 应=配置值，coverTOFF 看读到啥）
+    //   2. W:DISABLE  → S:DUMP_TOFF W     （shadowTOFF 应=0；coverTOFF 若读回非 0 即证 Cover 读错）
+    //   3. W:ENABLE   → S:DUMP_TOFF W     （shadowTOFF 应恢复；对比 XY 看 match=Y/N 差异）
+    // match=N 表示该轴 Cover 读回的 TOFF 与可靠值不一致 —— 即旧 enable 逻辑误判的来源。
+    if (command.startsWith("S:DUMP_TOFF")) {
+      String filter = command.length() > 11 ? command.substring(11) : String("");
+      filter.trim();
+      char buf[180];
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (!axis) continue;
+        const char *name = axis->getAxisName();
+        if (filter.length() > 0 && filter != String(name)) continue;
+
+        struct ChopconfDump d = motor_dumpChopconf(axis->getIcID());
+        if (d.isTmc2240) {
+          snprintf(buf, sizeof(buf),
+                   "S:TOFF %s driver=TMC2240 coverCHOP=0x%08lX coverTOFF=%u "
+                   "shadowCHOP=0x%08lX shadowTOFF=%u match=%c",
+                   name, (unsigned long)d.coverChopconf, (unsigned)d.coverToff,
+                   (unsigned long)d.shadowChopconf, (unsigned)d.shadowToff,
+                   (d.coverToff == d.shadowToff) ? 'Y' : 'N');
+        } else {
+          snprintf(buf, sizeof(buf),
+                   "S:TOFF %s driver=%d (非 TMC2240，跳过)",
+                   name, (int)d.driverType);
+        }
+        SerialUSB.println(buf);
+      }
+      SerialUSB.println("S:DUMP_TOFF:END");
+      return;
+    }
+
     // S:SET_HOMING_VEL <axisName> <vel_mm_per_s>
     // 诊断用：运行时设 homingVelocityMM 不重烧 firmware
     // 例：S:SET_HOMING_VEL Y 5.0

@@ -435,6 +435,38 @@ void SerialProtocolHandler::processSerialDebugCommands() {
       return;
     }
 
+    // S:DUMP_TOFF [axisName]   （融合 new-W-axis 98976ab）
+    // 诊断 TMC2240 enable/disable 失效根因：对比每轴 CHOPCONF 的「Cover 读回值」
+    // 与「shadow 内存可靠值」的 TOFF 字段。match=N 表示 Cover 读回的 TOFF 与可靠值不一致。
+    if (command.startsWith("S:DUMP_TOFF")) {
+      String filter = command.length() > 11 ? command.substring(11) : String("");
+      filter.trim();
+      char buf[180];
+      for (uint8_t i = 0; i < axisManager.getAxisCount(); i++) {
+        Axis *axis = axisManager.getAxis(i);
+        if (!axis) continue;
+        const char *name = axis->getAxisName();
+        if (filter.length() > 0 && filter != String(name)) continue;
+
+        struct ChopconfDump d = motor_dumpChopconf(axis->getIcID());
+        if (d.isTmc2240) {
+          snprintf(buf, sizeof(buf),
+                   "S:TOFF %s driver=TMC2240 coverCHOP=0x%08lX coverTOFF=%u "
+                   "shadowCHOP=0x%08lX shadowTOFF=%u match=%c",
+                   name, (unsigned long)d.coverChopconf, (unsigned)d.coverToff,
+                   (unsigned long)d.shadowChopconf, (unsigned)d.shadowToff,
+                   (d.coverToff == d.shadowToff) ? 'Y' : 'N');
+        } else {
+          snprintf(buf, sizeof(buf),
+                   "S:TOFF %s driver=%d (非 TMC2240，跳过)",
+                   name, (int)d.driverType);
+        }
+        SerialUSB.println(buf);
+      }
+      SerialUSB.println("S:DUMP_TOFF:END");
+      return;
+    }
+
     // S:CLKMODE <off|high|low|slow|16m>
     // squid++ 调试用：切换 pin 37 (TMC4361_STANDARD_CLK) 输出状态，
     // 用万用表 DC 档静态读电压验证 PWM 是否真的在工作。

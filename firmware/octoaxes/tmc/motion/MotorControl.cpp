@@ -1062,20 +1062,43 @@ void motor_enableDriver(uint8_t icID, bool enable)
         return;
 
     if (motorParams[icID].driverType == DRIVER_TMC2240) {
-        if (enable) {
-            // 使用缓存的 TOFF 恢复驱动（而非硬编码默认值）
-            uint32_t chopconf = tmc2240_readRegister(icID, TMC2240_CHOPCONF);
-            uint8_t currentToff = (chopconf & TMC2240_TOFF_MASK) >> TMC2240_TOFF_SHIFT;
-            if (currentToff == 0) {
-                uint8_t toff = motorParams[icID].toff > 0 ? motorParams[icID].toff : 3;
-                tmc2240_fieldWrite(icID, TMC2240_TOFF_FIELD, toff);
-            }
-        } else {
-            tmc2240_fieldWrite(icID, TMC2240_TOFF_FIELD, 0);
-        }
+        // 根本修复（融合 new-W-axis 8136bff，2026-06-11）：原 enable 用
+        // tmc2240_readRegister(CHOPCONF) 读 TOFF 判断是否恢复，但 Cover READ 不可靠 ——
+        // datasheet §10.3.6 要求读 COVER_DRV 前必须等 COVER_DONE 事件，而固件
+        // tmc4361A_readWriteCover 用固定 delayMicroseconds(50) 代替 + auto SPI 干扰，
+        // 读回值随芯片/时序波动（W 轴稳定读到垃圾非 0 → 误判已使能 → disable 后 enable 失效；
+        // XY 侥幸读对）。改用 shadow register（可靠副本，与上方 MRES 同步同款规避）对
+        // CHOPCONF.TOFF 做 read-modify-write，enable/disable 全程零 Cover read。
+        uint8_t toff = enable ? (motorParams[icID].toff > 0 ? motorParams[icID].toff : 3) : 0;
+        uint32_t chopconf = (uint32_t)tmc2240_shadowRegister[icID][TMC2240_CHOPCONF];
+        chopconf = (chopconf & ~TMC2240_TOFF_MASK)
+                 | (((uint32_t)toff << TMC2240_TOFF_SHIFT) & TMC2240_TOFF_MASK);
+        tmc2240_writeRegister(icID, TMC2240_CHOPCONF, chopconf);
     } else {
         tmc2660_enableDriver(icID, enable);
     }
+}
+
+// 诊断：读取该轴 CHOPCONF 的「Cover 读回值」与「shadow 可靠值」，坐实 TMC2240
+// enable/disable 失效根因（Cover 读走不可靠路径，读错什么 → 解释"为什么只有 W 卡死"）。
+// 仅 TMC2240 有意义。融合 new-W-axis 98976ab。
+struct ChopconfDump motor_dumpChopconf(uint8_t icID)
+{
+    struct ChopconfDump d = {false, 0, 0, 0, 0, 0};
+    if (icID >= MOTOR_IC_COUNT)
+        return d;
+
+    d.driverType = motorParams[icID].driverType;
+    if (d.driverType == DRIVER_TMC2240) {
+        d.isTmc2240 = true;
+        // coverChopconf：经 TMC4361A Cover 的真实 SPI 读（不可靠路径，会被 auto SPI 串扰）
+        d.coverChopconf  = (uint32_t)tmc2240_readRegister(icID, TMC2240_CHOPCONF);
+        // shadowChopconf：固件内存里维护的可靠副本（每次 writeRegister 同步更新）
+        d.shadowChopconf = (uint32_t)tmc2240_shadowRegister[icID][TMC2240_CHOPCONF];
+        d.coverToff  = (d.coverChopconf  & TMC2240_TOFF_MASK) >> TMC2240_TOFF_SHIFT;
+        d.shadowToff = (d.shadowChopconf & TMC2240_TOFF_MASK) >> TMC2240_TOFF_SHIFT;
+    }
+    return d;
 }
 
 // ============================================================================
