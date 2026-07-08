@@ -180,6 +180,15 @@ void Axis::setMotionParameters(float maxVelocityMM, float maxAccelerationMM) {
 
   motor_setMaxVelocity(_icID, maxVelocityMM);
   motor_setMaxAcceleration(_icID, maxAccelerationMM);
+
+  // 融合 new-W-axis cf93900（2026-06-16）：把当前 max vel/acc 回写进 _config，让它成为
+  // 本次会话的"配置默认"。否则上位机 SET_MAX_VELOCITY_ACCELERATION 改了 chip VMAX 后，
+  // 任何后续 setMotionParameters(_config.maxVelocityMM)（handleReset / restoreNormal-
+  // Microsteps / switchToHomingMicrosteps / configureDriver）都会把 VMAX 打回旧默认
+  // → 现象：上位机下发速度后第一次移动正确、第二次又变回原速。
+  // 用 _config 值调本函数时这里是自赋值(无副作用)；只有上位机改速时才真正更新。
+  _config.maxVelocityMM = maxVelocityMM;
+  _config.maxAccelerationMM = maxAccelerationMM;
 }
 
 // 状态机更新
