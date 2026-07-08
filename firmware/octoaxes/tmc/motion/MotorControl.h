@@ -384,6 +384,25 @@ void motor_setRunCurrent(uint8_t icID, float currentMA);
  */
 void motor_enableDriver(uint8_t icID, bool enable);
 
+/**
+ * @brief 诊断：读取该轴 CHOPCONF 的「Cover 读回值」与「shadow 可靠值」
+ *
+ * 用于坐实 TMC2240 enable/disable 失效根因：enable 旧逻辑读 CHOPCONF 判断 TOFF，
+ * 但 CHOPCONF 走不可靠的 Cover 读（datasheet §10.3.6 要求等 COVER_DONE，固件用
+ * 固定延迟代替）。本函数同时返回 Cover 读回值与 shadow 内存可靠值，对比即可看出
+ * Cover 读是否读错、错成什么（解释"为什么只有 W 卡死"）。仅 TMC2240 有意义。
+ * 融合 new-W-axis 98976ab。
+ */
+struct ChopconfDump {
+    bool     isTmc2240;       // 该轴是否 TMC2240（否则其余字段无意义）
+    uint8_t  driverType;      // 原始 driverType 值
+    uint32_t coverChopconf;   // Cover 读回的 CHOPCONF（不可靠路径）
+    uint32_t shadowChopconf;  // shadow 内存里的 CHOPCONF（可靠）
+    uint8_t  coverToff;       // Cover 读回值的 TOFF 字段
+    uint8_t  shadowToff;      // shadow 值的 TOFF 字段
+};
+struct ChopconfDump motor_dumpChopconf(uint8_t icID);
+
 // ============================================================================
 // Unit Conversion API
 // ============================================================================
