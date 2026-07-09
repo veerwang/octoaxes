@@ -970,6 +970,13 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
     target_tolerance = 20;
     pid_tolerance = 20;
     pid_iclip = 4096;
+  } else if (strcmp(_axisName, "Turret") == 0) {
+    // 物镜转换器（融合 new-W-axis A1c/4844a5a）：tolerance=10 收紧停位精度。
+    // 换算：10 微步 = 电机 0.28° = 物镜盘 ±0.10°（÷2.75 齿轮比，12800 µstep/电机转）。
+    // 20 = 物镜盘 ±0.20°。收紧后若 PID 抖动/啸叫再回调。（W 滤光轮维持 20 不变）
+    target_tolerance = 10;
+    pid_tolerance = 10;
+    pid_iclip = 4096;
   } else if (strcmp(_axisName, "Z") == 0) {
     target_tolerance = 25;
     pid_tolerance = 25;
