@@ -79,6 +79,19 @@ main 新增 2 提交（Turret homing 两段式 + 方向修复，两 firmware）�
 - **自动合并（无冲突）带回大量中文**：`objectives.h`×2（两段式 `_slowApproach`/`SLOW_APPROACH_RATIO` 字段注释）+ `objectives.cpp`×2（右硬停使能块 / latch 解锁块 / 两段式 stage 1/2 逻辑 / 慢速 homingVel）—— 全是 `//` 代码注释，在翻译范围内，逐块译英。
 - 验证：objectives.cpp/.h 零中文残留、无冲突标记；**两 firmware pio run 均 SUCCESS**（含 main 新引入的 `homingVel` 两段式变量）。merge `7d4a6d7`，push `ab92a4c..7d4a6d7`。
 
+### 第六轮同步（merge main 的 2 个新提交 = new-W-axis A1b 弹片自定位）
+
+main 新增 2 提交（物镜「到位去使能、弹片机械自定位」基础设施，两 firmware）：
+- `145a085` feat(objectives)：新增 `wakeForMotion()`（move/homing 起步前唤醒）+ `_autoDisableAtRest` 成员（Objectives begin() 置 true）+ `motor_syncXActualToEncoder()`（通电前对齐 XACTUAL←ENC_POS 防跳枪）+ disableAxis 断电机电流让弹片归中（不碰 PID）+ homing 起步关芯片 PID（bd3f47f，软件标志保留自动恢复）
+- `117bbd3` docs A1b
+
+处理：
+- 冲突 7 文件：`documents/new-W-axis_merge_plan.md`（modify/delete → 取删除）+ `axis.cpp`×2（wakeForMotion 函数）+ `axis.h`×2（各 2 冲突：`_autoDisableAtRest` 成员 + `wakeForMotion()` 声明）+ `MotorControl.cpp`/`.h`（新增 syncXActualToEncoder）→ 取 main 新代码逻辑、注释译英。
+  - MotorControl 处理巧点：main 把新函数插在 ChopconfDump 注释与其函数之间（导致注释与函数脱节）→ 解决时把 syncXActualToEncoder 放前、ChopconfDump 英文注释复位到其函数正上方（比 main 布局更整齐、语义正确）。
+- **自动合并（无冲突）带回大量中文**：`objectives.cpp`×2（begin() 弹片启用块）+ `axis.cpp`×2（disableAxis/enableAxis/startHoming + 2 处 wakeForMotion 调用点，共 ~10 块/文件）—— 全 `//` 注释，逐块译英。
+- **踩坑**：octoaxesplus/axis.h 一处 Edit 的 old_string 漏含 `<<<<<<< HEAD` 行 → 留孤立标记 → 全仓 grep 兜底发现、sed 清除。
+- 验证：8 个 merge-touched 文件零中文、全仓无冲突标记；**两 firmware pio run 均 SUCCESS**（含新 `motor_syncXActualToEncoder`/`wakeForMotion`/`_autoDisableAtRest`）。merge `31476fb`，push `0fc40be..31476fb`。
+
 ### 下次
 
 - 视需要开 PR 合回 main（分支已 push，与 main 完全同步）。
