@@ -15,7 +15,13 @@ Objectives::Objectives(uint8_t csPin, uint8_t axisIndex, const char* axisName, u
 bool Objectives::begin(const AxisConfig& config) {
   // 调用基类初始化
   bool result = Axis::begin(config);
-  
+
+  // 物镜转换器孔位有弹片凹坑：启用「到位去使能、弹片机械自定位」（融合 new-W-axis A1b）。
+  // 到位后 GUI 发 cmd32 去使能 → disableAxis 断电机电流让弹片把转盘归中（精度优于 PID
+  // ±0.1° 死区，且修得了编码器看不到的电机→盘齿轮空程）；下次 move/homing 由 wakeForMotion()
+  // 同步编码器位置后重新使能。GUI 未接管前此项惰性（无 disable 就不会去使能）。
+  _autoDisableAtRest = true;
+
   if (result) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":Objectives with ");

@@ -385,6 +385,17 @@ void motor_setRunCurrent(uint8_t icID, float currentMA);
 void motor_enableDriver(uint8_t icID, bool enable);
 
 /**
+ * @brief 把 XACTUAL/XTARGET 对齐到当前 ENC_POS（不改写 ENC_POS / VMAX / velocity_mode）
+ * @param icID  IC identifier
+ *
+ * 用于物镜「到位去使能、弹片自定位」唤醒：电机断流期间弹片把转盘机械归中、编码器
+ * （电机尾轴）已记录真实位置；重新通电前用它消除 XACTUAL 与真实位置的偏差，避免闭环
+ * 一上电就把转盘从弹片中心拽回旧目标（跳枪）。前提：该轴已 enableEncoder（ENC_POS 有效）。
+ * 融合 new-W-axis A1b（52419b0）。
+ */
+void motor_syncXActualToEncoder(uint8_t icID);
+
+/**
  * @brief 诊断：读取该轴 CHOPCONF 的「Cover 读回值」与「shadow 可靠值」
  *
  * 用于坐实 TMC2240 enable/disable 失效根因：enable 旧逻辑读 CHOPCONF 判断 TOFF，

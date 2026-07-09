@@ -1082,6 +1082,20 @@ void motor_enableDriver(uint8_t icID, bool enable)
 // 诊断：读取该轴 CHOPCONF 的「Cover 读回值」与「shadow 可靠值」，坐实 TMC2240
 // enable/disable 失效根因（Cover 读走不可靠路径，读错什么 → 解释"为什么只有 W 卡死"）。
 // 仅 TMC2240 有意义。融合 new-W-axis 98976ab。
+// 把 XACTUAL/XTARGET 对齐到当前 ENC_POS（不改写 ENC_POS / VMAX / velocity_mode）。
+// 物镜「到位去使能、弹片自定位」唤醒用：断流期间弹片把转盘机械归中、编码器已记录真实
+// 位置，重新使能前用它消除 XACTUAL 与真实位置的偏差，避免闭环一上电就把转盘从弹片中心
+// 拽回旧目标（跳枪）。与 motor_setCurrentPositionMicrosteps 不同：不动 ENC_POS / VMAX。
+// 融合 new-W-axis A1b（52419b0）。
+void motor_syncXActualToEncoder(uint8_t icID)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+    int32_t enc = (int32_t)tmc4361A_readRegister(icID, TMC4361A_ENC_POS);
+    tmc4361A_writeRegister(icID, TMC4361A_XACTUAL, enc);
+    tmc4361A_writeRegister(icID, TMC4361A_XTARGET, enc);
+}
+
 struct ChopconfDump motor_dumpChopconf(uint8_t icID)
 {
     struct ChopconfDump d = {false, 0, 0, 0, 0, 0};

@@ -577,6 +577,9 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
     return false;
   }
 
+  // 物镜「到位去使能」：起步前唤醒（同步编码器位置 + 恢复使能），其它轴空转。融合 A1b。
+  wakeForMotion();
+
   if (!isWithinSoftLimits(targetMicrosteps)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Movement rejected: Outside soft limits");
@@ -647,6 +650,9 @@ bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
     return false;
   }
 
+  // 物镜「到位去使能」：起步前唤醒（同步 XACTUAL←ENC_POS 后再读当前位置，相对量才准确）。融合 A1b。
+  wakeForMotion();
+
   int32_t currentPos = motor_getPositionMicrosteps(_icID);
   int32_t targetPos = currentPos + deltaMicrosteps;
 
@@ -696,13 +702,30 @@ void Axis::smoothStop() {
 
 // 运动控制函数
 void Axis::disableAxis() {
+  // 物镜「到位去使能、弹片自定位」（融合 A1b）：断电机电流（TOFF，A2 shadow-register 路径），
+  // 让弹片凹坑把转盘机械归中。★ 不碰 PID：驱动断电时闭环无电流、根本顶不动弹片；且不动 PID
+  // 让 homing 的 PID 处理与基线完全一致。其它轴 (_autoDisableAtRest=false) 行为与原来一致。
   motor_enableDriver(_icID, false);
   _isEnabled = false; // 更新使能状态
 }
 
 void Axis::enableAxis() {
+  // 物镜「到位去使能」恢复（融合 A1b）：通电前把 XACTUAL/XTARGET 对齐到 ENC_POS（弹片沉降后
+  // 的真实位置），让闭环以弹片归中后的位置为目标、通电瞬间不回拽（跳枪）。其它轴只通电，行为不变。
+  if (_autoDisableAtRest && _config.enableEncoder) {
+    motor_syncXActualToEncoder(_icID);
+  }
   motor_enableDriver(_icID, true);
   _isEnabled = true; // 更新使能状态
+}
+
+// 物镜「到位去使能」安全网（融合 A1b）：move/moveRelative/homing 起步时，若电机仍处于 rest
+// 去使能态则兜底使能。正常流程 GUI 已先发 cmd32 使能（GUI 是使能态唯一权威），此处只防漏。
+// enableAxis 内含 sync，故兜底使能也完整。仅 _autoDisableAtRest 轴生效。
+void Axis::wakeForMotion() {
+  if (_autoDisableAtRest && _currentState == STATE_IDLE && !_isEnabled) {
+    enableAxis();
+  }
 }
 
 // 设置当前位置
@@ -782,6 +805,19 @@ bool Axis::startHoming() {
 
   if (_currentState != STATE_IDLE) {
     return false;
+  }
+
+  // 物镜「到位去使能」：homing 起步前唤醒恢复使能（下面会再关 PID 走开环速度搜索）。融合 A1b。
+  wakeForMotion();
+
+  // homing 走开环速度搜索：先关闭芯片 PID 闭环，避免 REGULATION_MODUS 与
+  // motor_setVelocityInternal 速度命令打架、以及搜索触发时 setCurrentPosition(0) 踢 PID。
+  // 只清芯片寄存器，保留 _pidState.enabled 软件标志不动 → homing 完成时 performHomingSequence
+  // 末尾的 `if (_pidState.enabled) motor_enablePID()` 自动恢复。融合 new-W-axis A1b（bd3f47f）。
+  if (_pidState.enabled) {
+    motor_disablePID(_icID);
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINTLN(":PID disabled for homing (will restore on completion)");
   }
 
   setState(STATE_HOMING_INIT);
