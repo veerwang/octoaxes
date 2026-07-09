@@ -68,6 +68,17 @@ main 新增 2 提交（明场 LED 矩阵 0-100% 亮度滑条）：
 - **翻译范围收窄点（重要）**：本分支约定**只译 `#`/`//`/`/* */` 注释**，Python **docstring 与 GUI 字符串字面量保持中文**（490f975 立的规矩）。故 A6 带入的 `#` 注释（widgets.py 3 处亮度滑条注释块）译英；而 A6 的 docstring（`_brightness_scaled_rgb` 等）+ `QLabel("亮度:")` GUI 串**保持中文**——与全仓已译文件一致。
 - 验证：两 Python 文件 `#` 注释零中文残留、无冲突标记；`py_compile` OK；双 profile 加载正常（octoaxesplus 6 轴 / octoaxes 7 轴）。纯软件改动无固件、未跑 pio。merge `bc25125`，push `b1b21a7..bc25125`。
 
+### 第五轮同步（merge main 的 2 个新提交 = new-W-axis A1a Turret homing）
+
+main 新增 2 提交（Turret homing 两段式 + 方向修复，两 firmware）：
+- `c27f4ae` feat(objectives)：两段式 homing（全速粗找 + 慢速精逼近 a3cde03）+ velocity 残留清除（8d01838 漂移绕圈根因）+ homing 结束关右硬停（b97e814）+ search/leaving 方向改用 `homing_direct`（9e72ddd/dddeff3）+ 慢速 `homingVel`（SLOW_APPROACH_RATIO=0.1）+ hard-stop latch 解锁（aad7b42）
+- `ea1883b` docs A1a
+
+处理：
+- 冲突 3 文件：`documents/new-W-axis_merge_plan.md`（modify/delete → 取删除）+ `objectives.cpp`×2（octoaxes 4 冲突 + octoaxesplus 5 冲突）→ 取 main 新代码逻辑、注释译英。
+- **自动合并（无冲突）带回大量中文**：`objectives.h`×2（两段式 `_slowApproach`/`SLOW_APPROACH_RATIO` 字段注释）+ `objectives.cpp`×2（右硬停使能块 / latch 解锁块 / 两段式 stage 1/2 逻辑 / 慢速 homingVel）—— 全是 `//` 代码注释，在翻译范围内，逐块译英。
+- 验证：objectives.cpp/.h 零中文残留、无冲突标记；**两 firmware pio run 均 SUCCESS**（含 main 新引入的 `homingVel` 两段式变量）。merge `7d4a6d7`，push `ab92a4c..7d4a6d7`。
+
 ### 下次
 
 - 视需要开 PR 合回 main（分支已 push，与 main 完全同步）。
