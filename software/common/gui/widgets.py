@@ -736,7 +736,8 @@ class IlluminationPanel(QGroupBox):
 
     port_cmd            = pyqtSignal(int, int, bool)   # port, intensity, on
     turn_off_all        = pyqtSignal()
-    led_matrix_cmd      = pyqtSignal(int, int, int, int)  # pattern, r, g, b
+    led_matrix_cmd      = pyqtSignal(int, int, int, int)  # pattern, r, g, b（Set Matrix：cmd13+cmd10）
+    led_matrix_update_cmd = pyqtSignal(int, int, int, int)  # pattern, r, g, b（实时更新：仅 cmd13，固件已点亮自动重刷）
     led_matrix_off_cmd  = pyqtSignal()                  # Clear → 真熄灭矩阵
     intensity_factor_cmd = pyqtSignal(int)             # 0-100
     dac_channel_cmd     = pyqtSignal(int, int)         # ch, raw 0-65535
@@ -961,6 +962,30 @@ class IlluminationPanel(QGroupBox):
             self._rgb_labels.append(val_lbl)
         matrix_layout.addLayout(rgb_grid)
 
+        # 融合 new-W-axis be20270：明场亮度（0-100%），发送时整体缩放 R/G/B
+        # （颜色由上方 RGB 滑条决定，亮度独立可调）。
+        bright_row = QHBoxLayout()
+        bright_row.setSpacing(4)
+        bright_row.addWidget(QLabel("亮度:"))
+        self._brightness_slider = QSlider(Qt.Horizontal)
+        self._brightness_slider.setRange(0, 100)
+        self._brightness_slider.setValue(100)
+        self._brightness_slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._brightness_slider.setMinimumWidth(60)
+        self._brightness_slider.valueChanged.connect(self._update_color_preview)
+        # 实时调节：拖动即发 cmd13（仅缓存+重刷，不发 cmd10）。固件 set_illumination_led_matrix
+        # 在 illumination_is_on 时自动重刷当前 source，未点亮则只缓存，不会误点亮。
+        self._brightness_slider.valueChanged.connect(self._on_brightness_live)
+        bright_row.addWidget(self._brightness_slider, stretch=1)
+        self._brightness_label = QLabel("100%")
+        self._brightness_label.setFixedWidth(48)
+        self._brightness_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self._brightness_slider.valueChanged.connect(
+            lambda v: self._brightness_label.setText(f"{v}%")
+        )
+        bright_row.addWidget(self._brightness_label)
+        matrix_layout.addLayout(bright_row)
+
         ctrl_row = QHBoxLayout()
         ctrl_row.setSpacing(4)
         self._color_preview = QLabel()
@@ -1080,20 +1105,28 @@ class IlluminationPanel(QGroupBox):
                 f"D8 max: {'5V' if self._d8_gain2 else '2.5V'}"
             )
 
+    def _scaled_rgb(self):
+        """按亮度滑条(0-100%)整体缩放 R/G/B，返回实际下发的 0-255 三元组。（融合 be20270）"""
+        pct = self._brightness_slider.value()
+        return tuple(int(sl.value() * pct / 100) for sl in self._rgb_sliders)
+
     def _update_color_preview(self):
-        r = self._rgb_sliders[0].value()
-        g = self._rgb_sliders[1].value()
-        b = self._rgb_sliders[2].value()
+        r, g, b = self._scaled_rgb()
         self._color_preview.setStyleSheet(
             f"background-color: rgb({r},{g},{b}); border: 1px solid #888;"
         )
 
     def _send_led_matrix(self):
         pattern = self._pattern_combo.currentData()
-        r = self._rgb_sliders[0].value()
-        g = self._rgb_sliders[1].value()
-        b = self._rgb_sliders[2].value()
+        r, g, b = self._scaled_rgb()
         self.led_matrix_cmd.emit(pattern, r, g, b)
+
+    def _on_brightness_live(self, _value):
+        # 亮度滑条实时调节：发 cmd13（缩放后的 RGB）。固件已点亮时自动重刷亮度，
+        # 未点亮时只更新缓存，下次 Set Matrix / 点亮即生效，不会误点亮。（融合 be20270）
+        pattern = self._pattern_combo.currentData()
+        r, g, b = self._scaled_rgb()
+        self.led_matrix_update_cmd.emit(pattern, r, g, b)
 
     def _clear_led_matrix(self):
         # firmware cmd 13 只缓存参数不熄灭（2026-05-10 行为变更）；

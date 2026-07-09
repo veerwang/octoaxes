@@ -273,6 +273,7 @@ class TeensyControlGUI(QMainWindow):
         self.illumination_panel.port_cmd.connect(self._send_illu_port)
         self.illumination_panel.turn_off_all.connect(self._send_illu_turn_off_all)
         self.illumination_panel.led_matrix_cmd.connect(self._send_illu_led_matrix)
+        self.illumination_panel.led_matrix_update_cmd.connect(self._send_illu_led_matrix_update)
         self.illumination_panel.led_matrix_off_cmd.connect(self._send_illu_led_matrix_off)
         self.illumination_panel.intensity_factor_cmd.connect(self._send_illu_intensity_factor)
         # DAC 直控信号（仅 squid++ profile 会发，octoaxes 信号永远不触发）
@@ -1437,6 +1438,23 @@ class TeensyControlGUI(QMainWindow):
         cmd10[2] = pattern
         self.serial_thread.send_binary_command(cmd10)
         self.log(f"Illumination LED matrix ON: pattern={pattern} R={r} G={g} B={b}")
+
+    def _send_illu_led_matrix_update(self, pattern: int, r: int, g: int, b: int):
+        """亮度实时调节：仅发 cmd 13（SET_ILLUMINATION_LED_MATRIX）。（融合 new-W-axis be20270）
+
+        firmware set_illumination_led_matrix 在 illumination_is_on 时会自动
+        turn_on_illumination() 重刷当前 source（亮度立即变化）；未点亮时只更新
+        缓存，不发 cmd 10，避免拖动滑条时误点亮矩阵。
+        """
+        if self.serial_thread is None:
+            return
+        cmd13 = bytearray(8)
+        cmd13[1] = CMDS.SET_ILLUMINATION_LED_MATRIX
+        cmd13[2] = pattern
+        cmd13[3] = r
+        cmd13[4] = g
+        cmd13[5] = b
+        self.serial_thread.send_binary_command(cmd13)
 
     def _send_illu_led_matrix_off(self):
         """Clear 按钮：cmd 11 TURN_OFF_ILLUMINATION 真熄灭矩阵"""
