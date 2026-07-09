@@ -92,6 +92,17 @@ main 新增 2 提交（物镜「到位去使能、弹片机械自定位」基础
 - **踩坑**：octoaxesplus/axis.h 一处 Edit 的 old_string 漏含 `<<<<<<< HEAD` 行 → 留孤立标记 → 全仓 grep 兜底发现、sed 清除。
 - 验证：8 个 merge-touched 文件零中文、全仓无冲突标记；**两 firmware pio run 均 SUCCESS**（含新 `motor_syncXActualToEncoder`/`wakeForMotion`/`_autoDisableAtRest`）。merge `31476fb`，push `0fc40be..31476fb`。
 
+### 第七轮同步（merge main 的 2 个新提交 = new-W-axis A1c，本轮最轻）
+
+main 新增 2 提交：
+- `b060fb2` tune(objectives)：Turret PID `tolerance` 收紧到 10（物镜盘 ±0.10°，÷2.75 齿轮比，12800 µstep/电机转；W 滤光轮维持 20）
+- `2d866fa` docs：A1c 完成 + **A1 firmware 侧全部完成**（A1a homing 两段式 + A1b 弹片自定位 + A1c PID 收紧）
+
+处理：
+- `axis.cpp`×2 **自动合并、无内容冲突**；仅 `documents/new-W-axis_merge_plan.md`（modify/delete → 取删除）。
+- A1c 带入的 Turret `tolerance=10` 注释块中译英（octoaxes 3 行详版 + octoaxesplus 2 行简版）。
+- 验证：无冲突标记、axis.cpp 零中文；**两 firmware pio run 均 SUCCESS**。merge `68d0214`，push `59c9987..68d0214`。
+
 ### 下次
 
 - 视需要开 PR 合回 main（分支已 push，与 main 完全同步）。
