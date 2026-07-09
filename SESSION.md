@@ -6,6 +6,53 @@
 
 ## 最新会话
 
+**日期**: 2026-07-09
+**分支**: develop（= github/main 已同步）
+**位置**: **new-W-axis 分支融合（firmware 侧全完成）+ W 滤光轮问题排查 + octoaxes 轴收口 6 轴**
+
+### 一句话
+
+审阅 `veerwang/OctoaxesMega` 的 `new-W-axis` 分支，把其相对本仓库领先的改进按单元逐个融合进 develop（**firmware 侧 A2/A3/A4/A6/A1a-c 全部完成并同步 github/main**）；期间排查并修复 W 滤光轮「Next 转整圈」+「Test 报丢步」两个问题（均非真故障）；最后按用户实际 PCB 把 octoaxes 软件收口为 6 轴 X/Y/Z/W/W2/Turret。
+
+### A. new-W-axis 融合（分叉点 `488a1ec`，逐单元 cherry-pick，非 fast-forward）
+
+融合计划全清单 + 每单元决策/避坑 见 `documents/new-W-axis_merge_plan.md`。已完成（均编译 SUCCESS，两 profile；A1 系列**未上机实测**）：
+
+- **A2** TMC2240 enable 改 shadow-register（规避不可靠 Cover 读，修「只有 W disable 后 enable 失效」）+ `S:DUMP_TOFF` 诊断。**未取** Mega 的 configLimitSwitches（本项目「极性/锁存解耦」版领先）。
+- **A3**（3 提交）move 动态超时 / setMotionParameters 速度写回 _config / StepAxis 重搜索用 homingVelocity。config.h X/Y homing 速度**不改**（本项目 Y=30 有实测）。
+- **A4**（2 提交）serial USB 冷启动超时（不再死等主机）/ joystick 编码器中断保护 + pow→整数。cmd252 注释**跳过**（本项目已 no-op）。
+- **A6** 明场 LED 矩阵 0-100% 亮度滑条。
+- **A1a** Turret homing 两段式 + 方向修复（homing_direct）+ latch 解锁 + 右硬停只在 homing 期间开 + 漂移修复。落 objectives.cpp/h（两 profile Turret 受益，W 滤光轮不碰）。
+- **A1b** 弹片自定位基础设施（motor_syncXActualToEncoder / _autoDisableAtRest / wakeForMotion / disableAxis 断流不碰 PID / startHoming 关 PID 走开环）。去使能**时序由 GUI 主导（属 A5）**，GUI 未接管前**惰性**。
+- **A1c** Turret PID tolerance=10（W/W2 维持 20）。
+- **A5（未做）**：物镜 GUI（cmd32 去使能时序 + 工位角度标定/绝对定位 + PID 下发 + constants 字段）。**必须先上机实测 A1a/b/c 再做**。
+- **组 B（未做）**：W 编码器/PID 整定值/Z_SAFEPOSITION 等参数类，需硬件决策。
+- **不融合**：Mega 收口删 octoaxesplus/W2/E1、80160 的 X 电机改动、reverted 提交、审计 F-4/F-8（本项目已有）。
+
+### B. W 滤光轮排查（结论：从头到尾没有真丢步，都是配置/工具问题）
+
+1. **「Next 转整圈」根因** = 微步不匹配：GUI 按 ms=64 算 μm→微步（每 Next 1600），固件 octoaxes `MICROSTEPPING_FILTERWHEEL=8`（速度优化改的）→ 1600 微步=1 整圈。且 GUI 不给 W 下发配置（W 缺 current/hold 字段，滤光轮电流走固件+旧 Squid INITFILTERWHEEL）。**两软件都驱动 W、旧 Squid 固定下发 64** → 固件默认改 **8→64** 三方统一（`662fee1`）。octoaxesplus 一直是 64。
+2. **W Test 报丢步 = 假警报**：W 编码器（GUI 启动 CONFIGURE_STAGE_PID 运行时开）上报 ENC_POS，但增强版 W Test 读位置时机不对（大移动后读到途中值，甚至 +移动读出负位移）。用户实测**转盘物理孔位一直对齐** → 非电机丢步。修 Test：`_read_pos_settled` 轮询到位置稳定再读（`5471109`）→ 修复后 7 格高速跳转 0 误差、疑似丢步 0/96。**期间为追此幻觉改的速度/加速度已恢复**（用户要求只恢复速度→当前 4.2/200/64）。
+3. **加速度 200 保留、速度 4.2**（用户定）。设备当前烧的是 2.0 速度的固件，**待重烧**。
+
+### C. octoaxes 轴收口为 6 轴（用户按实际 PCB 改 constants.py）
+
+- 去掉未用 E3；第二滤光轮 **E4 → W2**（对齐固件 octoaxes.ino 早已实例化的 icID=4 "W2"）；W2 参数对齐 W（pitch1/ms64）；firmware EXPAND4_AXIS.currentRange 0→2 对齐 W。
+- 同步清理 common/ 残留 E3/E4：define.py 删死条目、widgets.py 去 E3、main_window 启动 set_limits 跳过、verify_profiles/test_04 期望集。
+- **profile-safe 修复**：main_window 启动跳过从硬编码 `["W2","W"]` 改按 `type` 判断（否则 octoaxesplus 的 W1 漏跳）。`b1d2535`。
+- 验证：py_compile OK、无 E3/E4 残留、verify_profiles 两 profile 全过（各 6 轴）。
+
+### 下次
+
+1. **重烧 octoaxes 固件** → W 速度回 4.2 / 微步 64 / W2 currentRange 生效，再跑 W Test（大孔距应 0 丢步）确认
+2. **上机实测 Turret（A1a/b/c）** —— 融合里唯一未验证的；homing 方向/停位/转过 home 区；本项目 Turret 本就暂停，A1a 方向修复可能顺带修好。通过后才做 A5
+3.（可选）E4/W2 是否要接编码器（需硬件+_configure_encoders+固件 encoderLinesPerRev 三处）；用户提的 PCB 电流值是否还要改
+4. 旧 Squid 路径未最终确认（meijiasquid vs octopi-research，见对话）
+
+---
+
+## 上次会话
+
 **日期**: 2026-06-09
 **分支**: develop
 **位置**: **Z 变体切换软件化** —— 限位极性走上位机 cmd 20 下发，消除「切 Z 需同步改 config.h + constants.py 两处」的易错点（commit `afb4dc5`，**新 Z + 旧 Z 均上机实测通过**，仓库默认切回旧 Z）
