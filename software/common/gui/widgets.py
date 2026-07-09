@@ -736,7 +736,8 @@ class IlluminationPanel(QGroupBox):
 
     port_cmd            = pyqtSignal(int, int, bool)   # port, intensity, on
     turn_off_all        = pyqtSignal()
-    led_matrix_cmd      = pyqtSignal(int, int, int, int)  # pattern, r, g, b
+    led_matrix_cmd      = pyqtSignal(int, int, int, int)  # pattern, r, g, b (Set Matrix: cmd13+cmd10)
+    led_matrix_update_cmd = pyqtSignal(int, int, int, int)  # pattern, r, g, b (real-time update: cmd13 only, firmware auto-refreshes when already lit)
     led_matrix_off_cmd  = pyqtSignal()                  # Clear -> actually extinguish the matrix
     intensity_factor_cmd = pyqtSignal(int)             # 0-100
     dac_channel_cmd     = pyqtSignal(int, int)         # ch, raw 0-65535
@@ -961,6 +962,31 @@ class IlluminationPanel(QGroupBox):
             self._rgb_labels.append(val_lbl)
         matrix_layout.addLayout(rgb_grid)
 
+        # Merged from new-W-axis be20270: brightfield brightness (0-100%), scales R/G/B as a whole
+        # when sending (color is set by the RGB sliders above; brightness is adjustable independently).
+        bright_row = QHBoxLayout()
+        bright_row.setSpacing(4)
+        bright_row.addWidget(QLabel("亮度:"))
+        self._brightness_slider = QSlider(Qt.Horizontal)
+        self._brightness_slider.setRange(0, 100)
+        self._brightness_slider.setValue(100)
+        self._brightness_slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._brightness_slider.setMinimumWidth(60)
+        self._brightness_slider.valueChanged.connect(self._update_color_preview)
+        # Real-time adjust: dragging sends cmd13 (cache + refresh only, no cmd10). Firmware
+        # set_illumination_led_matrix auto-refreshes the current source when illumination_is_on;
+        # when not lit it only caches, so it won't accidentally turn the matrix on.
+        self._brightness_slider.valueChanged.connect(self._on_brightness_live)
+        bright_row.addWidget(self._brightness_slider, stretch=1)
+        self._brightness_label = QLabel("100%")
+        self._brightness_label.setFixedWidth(48)
+        self._brightness_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self._brightness_slider.valueChanged.connect(
+            lambda v: self._brightness_label.setText(f"{v}%")
+        )
+        bright_row.addWidget(self._brightness_label)
+        matrix_layout.addLayout(bright_row)
+
         ctrl_row = QHBoxLayout()
         ctrl_row.setSpacing(4)
         self._color_preview = QLabel()
@@ -1080,20 +1106,29 @@ class IlluminationPanel(QGroupBox):
                 f"D8 max: {'5V' if self._d8_gain2 else '2.5V'}"
             )
 
+    def _scaled_rgb(self):
+        """按亮度滑条(0-100%)整体缩放 R/G/B，返回实际下发的 0-255 三元组。（融合 be20270）"""
+        pct = self._brightness_slider.value()
+        return tuple(int(sl.value() * pct / 100) for sl in self._rgb_sliders)
+
     def _update_color_preview(self):
-        r = self._rgb_sliders[0].value()
-        g = self._rgb_sliders[1].value()
-        b = self._rgb_sliders[2].value()
+        r, g, b = self._scaled_rgb()
         self._color_preview.setStyleSheet(
             f"background-color: rgb({r},{g},{b}); border: 1px solid #888;"
         )
 
     def _send_led_matrix(self):
         pattern = self._pattern_combo.currentData()
-        r = self._rgb_sliders[0].value()
-        g = self._rgb_sliders[1].value()
-        b = self._rgb_sliders[2].value()
+        r, g, b = self._scaled_rgb()
         self.led_matrix_cmd.emit(pattern, r, g, b)
+
+    def _on_brightness_live(self, _value):
+        # Brightness slider real-time adjust: send cmd13 (scaled RGB). When already lit the firmware
+        # auto-refreshes brightness; when not lit it only updates the cache, taking effect on the next
+        # Set Matrix / turn-on, so it won't accidentally turn the matrix on. (merged from be20270)
+        pattern = self._pattern_combo.currentData()
+        r, g, b = self._scaled_rgb()
+        self.led_matrix_update_cmd.emit(pattern, r, g, b)
 
     def _clear_led_matrix(self):
         # firmware cmd 13 only caches parameters and does not extinguish (behavior change on 2026-05-10);
