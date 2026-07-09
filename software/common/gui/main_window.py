@@ -773,11 +773,14 @@ class TeensyControlGUI(QMainWindow):
             self.move_objective(True)
 
     def run_w_test(self):
-        """W轴自动测试: homing → (next×7 → previous×7) × N 回合
+        """W轴自动测试（丰富版 2026-07-09）：编码器丢步检测。
 
-        丢步检测（2026-07-09）：W 已启用编码器，位置包上报的是 ENC_POS（编码器真实位置）。
-        每步读编码器与「期望位置」对比：每格期望 = FILTERWHEEL_DISTANCE/mm_per_step 微步。
-        本步实际位移 |Δ| 明显 ≠ 一格 → 疑似丢步；跑完汇总净偏移（应≈0）+ 最大累计偏差 + 疑似步数。
+        W 已启用编码器，位置包上报 ENC_POS（编码器真实位置）。每次移动读编码器与「期望位移」
+        对比（每格 = FILTERWHEEL_DISTANCE/mm_per_step 微步）；|实际Δ| 明显 ≠ 期望 → 疑似丢步。
+        两个阶段：
+          阶段1 单格：homing → (Next×7 → Prev×7) × N 回合（低速、逐格）
+          阶段2 大孔距：单次多格跳转 +gap/-gap（gap=2..7），高速大加减速应力，更能逼出丢步
+        跑完汇总净偏移（应≈0）+ 最大单次偏离 + 疑似丢步次数。
         """
         import threading
         from utils.constants import AXIS_MM_PER_STEP, FILTERWHEEL_DISTANCE
@@ -795,10 +798,11 @@ class TeensyControlGUI(QMainWindow):
             axis = self.get_current_axis()
             mmps = AXIS_MM_PER_STEP.get(axis, 0) or 0
             slot = int(round(FILTERWHEEL_DISTANCE / mmps)) if mmps else 0   # 每格期望微步（=1600）
-            thresh = max(80, slot // 8)   # 丢步判据：本步位移偏离一格 > 此阈值（微步）
-            self.log(f"=== W Test Start ({rounds} rounds) | 每格期望 {slot} 微步 | 丢步阈值 {thresh} | 编码器检测开 ===")
+            slot_um = int(round(1000 * FILTERWHEEL_DISTANCE))              # 每格 μm（=125）
+            st = {"prev": 0, "start": 0, "max_dev": 0, "loss": 0, "n": 0}
+            self.log(f"=== W Test Start ({rounds} rounds) | 每格 {slot} 微步 / {slot_um}µm | 编码器丢步检测开 ===")
 
-            # 1. Homing
+            # Homing
             self.log("W Test: Homing...")
             self.send_homing()
             time.sleep(1.0)
@@ -806,48 +810,53 @@ class TeensyControlGUI(QMainWindow):
                 self.log("W Test: Homing timeout, abort.")
                 return
             time.sleep(0.2)
+            st["start"] = _read_pos(axis)
+            st["prev"] = st["start"]
 
-            start = _read_pos(axis)
-            prev = start
-            max_dev = 0
-            loss_events = 0
-            step_no = 0
-
-            def _do_step(r, tag, i, is_next):
-                nonlocal prev, max_dev, loss_events, step_no
-                time.sleep(0.5)
-                (self.move_filterwheel(True) if is_next else self.move_filterwheel(False))
-                if not self.wait_until_idle(5):
-                    self.log(f"W Test: R{r+1} {tag} {i+1} timeout, abort.")
+            def _move_check(label, slots):
+                """单次移动 slots 格（带符号），读编码器对比 |slots|×slot。返回 False=超时中止。"""
+                time.sleep(0.4)
+                self._move_step_axis_relative_position(axis, slots * slot_um)
+                if not self.wait_until_idle(max(5, 2 + abs(slots))):   # 大跳转行程长，超时按格数放宽
+                    self.log(f"W Test: {label} timeout, abort.")
                     return False
                 time.sleep(0.15)
-                step_no += 1
+                st["n"] += 1
                 actual = _read_pos(axis)
-                delta = actual - prev                      # 本步实际位移（编码器）
-                mag_dev = abs(abs(delta) - slot)           # 偏离一格多少（不看方向，防丢步）
-                flag = "  <== 疑似丢步!" if (slot and mag_dev > thresh) else ""
-                if slot and mag_dev > thresh:
-                    loss_events += 1
-                cum = actual - start
-                max_dev = max(max_dev, abs(mag_dev))
-                self.log(f"W Test: R{r+1} {tag} {i+1}/7 | enc={actual} 本步Δ={delta}(应|{slot}|) "
-                         f"偏离一格={mag_dev}{flag}")
-                prev = actual
+                delta = actual - st["prev"]                 # 本次实际位移（编码器）
+                expect = abs(slots) * slot                  # 期望位移幅值
+                dev = abs(abs(delta) - expect)              # 偏离期望多少（不看方向，防丢步）
+                thresh = max(120, expect // 8)
+                flag = "  <== 疑似丢步!" if (slot and dev > thresh) else ""
+                if slot and dev > thresh:
+                    st["loss"] += 1
+                st["max_dev"] = max(st["max_dev"], dev)
+                self.log(f"W Test: {label} | {slots:+d}格 enc={actual} Δ={delta}(应|{expect}|) 偏离={dev}{flag}")
+                st["prev"] = actual
                 return True
 
+            # 阶段1：单格 next×7 → prev×7 × N 回合
             for r in range(rounds):
-                self.log(f"W Test: Round {r+1}/{rounds}")
+                self.log(f"W Test: [单格] Round {r+1}/{rounds}")
                 for i in range(7):
-                    if not _do_step(r, "Next", i, True):
+                    if not _move_check(f"R{r+1} Next {i+1}/7", +1):
                         return
                 for i in range(7):
-                    if not _do_step(r, "Prev", i, False):
+                    if not _move_check(f"R{r+1} Prev {i+1}/7", -1):
                         return
 
-            net = prev - start   # 7Next+7Prev 每回合净零 → 应≈0；非零=累计丢步/滑移
+            # 阶段2：大孔距单次多格跳转（+gap 再 -gap，净零；高速大加减速应力）
+            self.log("W Test: [大孔距] 单次多格跳转 +gap/-gap，gap=2..7")
+            for gap in (2, 3, 4, 5, 6, 7):
+                if not _move_check(f"Jump +{gap}", +gap):
+                    return
+                if not _move_check(f"Jump -{gap}", -gap):
+                    return
+
+            net = st["prev"] - st["start"]   # 所有移动净零 → 应≈0；非零=累计丢步/滑移
             net_slots = (net / slot) if slot else 0
-            self.log(f"=== W Test Done ({rounds} rounds) | 净偏移={net} 微步(应≈0, {net_slots:.2f} 格) | "
-                     f"最大单步偏离={max_dev} 微步 | 疑似丢步步数={loss_events}/{rounds*14} ===")
+            self.log(f"=== W Test Done | 净偏移={net} 微步(应≈0, {net_slots:.2f}格) | "
+                     f"最大单次偏离={st['max_dev']} 微步 | 疑似丢步={st['loss']}/{st['n']} ===")
 
         threading.Thread(target=_test_worker, daemon=True).start()
 
