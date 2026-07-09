@@ -113,7 +113,7 @@ A2/A3/A4（通用固件健壮性）→ A6（照明）→ A1（物镜类）→ A5
 - [x] **A6 LED 亮度滑条**（2026-07-09 完成，`eb3c42a`，be20270）— IlluminationPanel 加 0-100% 亮度滑条（默认 100%），`_scaled_rgb()` 整体缩放 R/G/B；实时调节走新信号 `led_matrix_update_cmd` → `_send_illu_led_matrix_update` 仅发 cmd13（固件已点亮自动重刷，未点亮只缓存不误点亮）。纯上位机 common/ profile-safe，固件无需改。py_compile + 双 profile 加载 + headless 实例化冒烟测试全过。
 - [~] **A1 物镜类改进**（分 A1a/A1b/A1c）
   - [x] **A1a Turret homing 两段式 + 方向修复**（2026-07-09，`8791e1e`，纯固件）— objectives.cpp/h（octoaxes + octoaxesplus 两 profile，受益 Turret）：两段式 homing（a3cde03）+ homing_direct 方向（9e72ddd/dddeff3）+ latch 解锁（aad7b42）+ 右硬停只在 homing 期间开（b97e814）+ 漂移修复（8d01838）。有意排除 begin() autoDisable（A1b）。两 firmware SUCCESS。**software 不涉及**（现有 GUI Homing 即可测）。⚠️**未烧录，必须上机实测**（本项目 Turret homing 本就暂停/未通过）；Turret 盘几何/home 区极性/慢逼近比例可能需按硬件微调。
-  - [ ] **A1b 弹片自定位基础设施**（axis.cpp/h + motor_syncXActualToEncoder + objectives begin autoDisable）— firmware infra，去使能**时序由 GUI 主导**（需 software：main_window 移动前使能 + 到位后延迟 cmd32）。GUI 未就绪前惰性。
+  - [x] **A1b 弹片自定位基础设施**（2026-07-09，`862abab`，纯固件）— MotorControl 加 `motor_syncXActualToEncoder`；axis.h 加 `_autoDisableAtRest`+`wakeForMotion()` 声明；axis.cpp disableAxis 断流不碰 PID / enableAxis 通电前 sync / wakeForMotion 实现 / move·moveRelative·startHoming 调 wakeForMotion / startHoming 关 PID 走开环；objectives begin `_autoDisableAtRest=true`。octoaxes + octoaxesplus 两 profile，两 firmware SUCCESS。⚠️ 去使能**时序由 GUI 主导（属 A5）**，GUI 未接管前**惰性**（无 cmd32 disable 就不去使能，wakeForMotion 只当安全网），其它轴 =false 行为不变。未烧录（随 A1a 上机验证）。
   - [ ] **A1c Turret PID tolerance=10**（axis.cpp，给 Turret 单开分支，不动 W/W2=20）。
 - [ ] A5 GUI 物镜标定
 - [ ] 组 B 逐项评估
