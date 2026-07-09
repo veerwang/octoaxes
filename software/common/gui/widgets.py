@@ -531,8 +531,8 @@ class ControlPanel(QGroupBox):
             text = self.abs_pos_edit.text()
 
             # convert units based on the current axis type
-            if self.current_axis in ["Z", "E3"]:
-                # Z and E3 axes: unit is um, convert directly to an integer
+            if self.current_axis in ["Z"]:
+                # Z axis: unit is um, convert directly to an integer
                 pos_um = int(float(text))
             elif self.current_axis in ["X", "Y"]:
                 # X and Y axes: unit is mm, needs conversion to um
@@ -602,8 +602,8 @@ class ControlPanel(QGroupBox):
 
             # show the matching distance-input widget by axis type (only on the normal control page)
             if target_index == 0:  # normal control page
-                if axis in ["Z", "E3"]:
-                    # Z and E3 axes: show the um input, hide the mm input
+                if axis in ["Z"]:
+                    # Z axis: show the um input, hide the mm input
                     self.um_distance_widget.setVisible(True)
                     self.mm_distance_widget.setVisible(False)
 
@@ -672,8 +672,8 @@ class ControlPanel(QGroupBox):
         """获取移动距离（转换为um单位）"""
         try:
             # select the matching input widget based on the current axis type
-            if self.current_axis in ["Z", "E3"]:
-                # Z and E3 axes: input is um, return directly
+            if self.current_axis in ["Z"]:
+                # Z axis: input is um, return directly
                 distance = int(self.distance_input_um.text())
                 if 1 <= distance <= 1000:
                     # save the current value

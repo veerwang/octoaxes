@@ -127,17 +127,15 @@ class CMD_SET:
 # mapping from axis name to relative-move command (shared by both profiles: the union of octoaxes 7 axes + octoaxesplus 5 axes)
 # note: the command code and axis index are not a simple additive relationship
 AXIS_MOVE_CMD_MAP = {
-    # octoaxes mainline (7 axes)
+    # octoaxes mainline (6 axes: X/Y/Z/W/W2/Turret)
     "X": CMD_SET.MOVE_X,      # 0
     "Y": CMD_SET.MOVE_Y,      # 1
     "Z": CMD_SET.MOVE_Z,      # 2
     "W": CMD_SET.MOVE_W,      # 4
+    "W2": CMD_SET.MOVE_W2,    # 19 (filter wheel 2 dedicated command; firmware handleMoveW2)
     "Turret": CMD_SET.MOVE_TURRET,    # 44 (objective turret dedicated command, firmware handleMoveTurret -> findAxisByName("Turret"))
-    "E3": CMD_SET.MOVE_Z,     # 2 (E3 uses the same command as Z, distinguished by axis index)
-    "E4": CMD_SET.MOVE_W,     # 4 (E4 uses the same command as W, distinguished by axis index)
     # octoaxesplus dual-camera (W1/W2 = filter wheels)
     "W1": CMD_SET.MOVE_W,     # 4 (reuses the W command; firmware handleMoveW pending a W->W1 fallback)
-    "W2": CMD_SET.MOVE_W2,    # 19 (dedicated command; firmware handleMoveW2 currently NOT_IMPLEMENTED, pending)
 }
 
 # mapping from axis name to absolute-move command (shared by both profiles)
@@ -147,9 +145,7 @@ AXIS_MOVETO_CMD_MAP = {
     "Z": CMD_SET.MOVETO_Z,    # 8
     "W": CMD_SET.MOVETO_W,    # 18
     "Turret": CMD_SET.MOVETO_TURRET,  # 45 (2026-05-29 objective turret dedicated command)
-    "E3": CMD_SET.MOVETO_Z,   # 8
-    "E4": CMD_SET.MOVETO_W,   # 18
-    # octoaxesplus (W1/W2 temporarily reuse the W command; change once firmware provides a separate MOVETO_W2 cmd)
+    "W2": CMD_SET.MOVETO_W2,  # 43 (filter wheel 2 dedicated cmd; firmware handleMoveToW2 implemented)
+    # octoaxesplus (W1 reuses the W command)
     "W1": CMD_SET.MOVETO_W,   # 18 (reuses the W command; firmware handleMoveToW has a W->W1 fallback)
-    "W2": CMD_SET.MOVETO_W2,  # 43 (dedicated cmd; firmware handleMoveToW2 implemented)
 }

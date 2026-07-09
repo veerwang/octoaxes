@@ -773,45 +773,110 @@ class TeensyControlGUI(QMainWindow):
             self.move_objective(True)
 
     def run_w_test(self):
-        """W轴自动测试: homing → (next×7 → previous×7) × N 回合"""
+        """W轴自动测试（丰富版 2026-07-09）：编码器丢步检测。
+
+        W 已启用编码器，位置包上报 ENC_POS（编码器真实位置）。每次移动读编码器与「期望位移」
+        对比（每格 = FILTERWHEEL_DISTANCE/mm_per_step 微步）；|实际Δ| 明显 ≠ 期望 → 疑似丢步。
+        两个阶段：
+          阶段1 单格：homing → (Next×7 → Prev×7) × N 回合（低速、逐格）
+          阶段2 大孔距：单次多格跳转 +gap/-gap（gap=2..7），高速大加减速应力，更能逼出丢步
+        跑完汇总净偏移（应≈0）+ 最大单次偏离 + 疑似丢步次数。
+        """
         import threading
+        from utils.constants import AXIS_MM_PER_STEP, FILTERWHEEL_DISTANCE
 
         rounds = self.control_panel.test_rounds_spin.value()
 
-        def _test_worker():
-            self.log(f"=== W Test Start ({rounds} rounds) ===")
+        def _read_pos(axis):
+            st = self.axis_manager.get_axis_status(axis)
+            try:
+                return int(st.get("position_steps", 0)) if st else 0
+            except (TypeError, ValueError):
+                return 0
 
-            # 1. Homing
+        def _read_pos_settled(axis, timeout=2.5):
+            """轮询到位置稳定再读（修大移动读到途中/陈旧位置的假丢步）。
+
+            上报位置由后台包异步刷新，wait_until_idle 可能在移动真正到位/编码器 settle
+            前就返回。这里连续读到位置不再变化（±3 微步）才认定 settle，避免读到途中值。
+            """
+            t0 = time.time()
+            prev = _read_pos(axis)
+            stable = 0
+            while time.time() - t0 < timeout:
+                time.sleep(0.08)
+                cur = _read_pos(axis)
+                if abs(cur - prev) <= 3:
+                    stable += 1
+                    if stable >= 4:      # unchanged for ~0.32s in a row = settled
+                        return cur
+                else:
+                    stable = 0
+                prev = cur
+            return prev
+
+        def _test_worker():
+            axis = self.get_current_axis()
+            mmps = AXIS_MM_PER_STEP.get(axis, 0) or 0
+            slot = int(round(FILTERWHEEL_DISTANCE / mmps)) if mmps else 0   # expected microsteps per slot (=1600)
+            slot_um = int(round(1000 * FILTERWHEEL_DISTANCE))              # um per slot (=125)
+            st = {"prev": 0, "start": 0, "max_dev": 0, "loss": 0, "n": 0}
+            self.log(f"=== W Test Start ({rounds} rounds) | 每格 {slot} 微步 / {slot_um}µm | 编码器丢步检测开 ===")
+
+            # Homing
             self.log("W Test: Homing...")
             self.send_homing()
-
-            # wait for homing + offset to complete
             time.sleep(1.0)
             if not self.wait_until_idle(15):
                 self.log("W Test: Homing timeout, abort.")
                 return
+            time.sleep(0.2)
+            st["start"] = _read_pos_settled(axis)
+            st["prev"] = st["start"]
 
-            # 2. forward + reverse x N rounds
+            def _move_check(label, slots):
+                """单次移动 slots 格（带符号），读编码器对比 |slots|×slot。返回 False=超时中止。"""
+                time.sleep(0.4)
+                self._move_step_axis_relative_position(axis, slots * slot_um)
+                if not self.wait_until_idle(max(5, 2 + abs(slots))):   # long travel for big jumps, relax the timeout by slot count
+                    self.log(f"W Test: {label} timeout, abort.")
+                    return False
+                st["n"] += 1
+                actual = _read_pos_settled(axis)            # poll until settled before reading, to avoid reading a mid-move value
+                delta = actual - st["prev"]                 # actual displacement this time (encoder)
+                expect = abs(slots) * slot                  # expected displacement magnitude
+                dev = abs(abs(delta) - expect)              # how far off from expected (ignore direction, for step-loss detection)
+                thresh = max(120, expect // 8)
+                flag = "  <== 疑似丢步!" if (slot and dev > thresh) else ""
+                if slot and dev > thresh:
+                    st["loss"] += 1
+                st["max_dev"] = max(st["max_dev"], dev)
+                self.log(f"W Test: {label} | {slots:+d}格 enc={actual} Δ={delta}(应|{expect}|) 偏离={dev}{flag}")
+                st["prev"] = actual
+                return True
+
+            # stage 1: single-slot next x7 -> prev x7, x N rounds
             for r in range(rounds):
-                self.log(f"W Test: Round {r+1}/{rounds}")
-
+                self.log(f"W Test: [单格] Round {r+1}/{rounds}")
                 for i in range(7):
-                    time.sleep(0.5)
-                    self.log(f"W Test: R{r+1} Next {i+1}/7")
-                    self.move_filterwheel(True)
-                    if not self.wait_until_idle(5):
-                        self.log(f"W Test: R{r+1} Next {i+1} timeout, abort.")
+                    if not _move_check(f"R{r+1} Next {i+1}/7", +1):
+                        return
+                for i in range(7):
+                    if not _move_check(f"R{r+1} Prev {i+1}/7", -1):
                         return
 
-                for i in range(7):
-                    time.sleep(0.5)
-                    self.log(f"W Test: R{r+1} Previous {i+1}/7")
-                    self.move_filterwheel(False)
-                    if not self.wait_until_idle(5):
-                        self.log(f"W Test: R{r+1} Previous {i+1} timeout, abort.")
-                        return
+            # stage 2: large-gap single multi-slot jump (+gap then -gap, net zero; high-speed large accel/decel stress)
+            self.log("W Test: [大孔距] 单次多格跳转 +gap/-gap，gap=2..7")
+            for gap in (2, 3, 4, 5, 6, 7):
+                if not _move_check(f"Jump +{gap}", +gap):
+                    return
+                if not _move_check(f"Jump -{gap}", -gap):
+                    return
 
-            self.log(f"=== W Test Done ({rounds} rounds) ===")
+            net = st["prev"] - st["start"]   # all moves net to zero -> should be ~0; nonzero = accumulated step loss/slip
+            net_slots = (net / slot) if slot else 0
+            self.log(f"=== W Test Done | 净偏移={net} 微步(应≈0, {net_slots:.2f}格) | "
+                     f"最大单次偏离={st['max_dev']} 微步 | 疑似丢步={st['loss']}/{st['n']} ===")
 
         threading.Thread(target=_test_worker, daemon=True).start()
 
@@ -1497,7 +1562,10 @@ class TeensyControlGUI(QMainWindow):
 
     def startup_launch(self):
         axis = self.get_current_axis()
-        if axis not in ["E4", "W"]:
+        # profile-safe: decide by type; filter wheels/objectives have no positional soft limits, so skip set_limits at startup
+        # (do not hardcode axis names -- otherwise octoaxesplus's W1 would be missed. Consistent with send_homing's type logic)
+        axis_type = AXIS_CONFIG.get(axis, {}).get("type")
+        if axis_type not in ("filter_wheel", "objective"):
             self.set_limits()
         # first send SET_LEAD_SCREW_PITCH + CONFIGURE_STEPPER_DRIVER,
         # to pull the firmware screwPitch/microstepping back to the Octoaxes defaults

@@ -106,12 +106,25 @@ AXIS_CONFIG = {
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 matches legacy Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,      # 2026-05-21 matches legacy Squid MICROSTEPPING_DEFAULT_W=64
     },
+    "W2": {
+        "display_name": "Filter Wheel 2 - expand4_axis",
+        "type": "filter_wheel",
+        "has_limits": False,
+        "limits": (0, 7),
+        "movement_sign": 1,
+        "index": 4,
+        # 2026-07-09 align against W (filter wheel 1) as the baseline: E4=filter wheel 2, same hardware type so parameters should match.
+        # the original pitch=100/ms=8 were stale wrong values (firmware EXPAND4_AXIS has long used the FILTERWHEEL constants pitch=1/ms=64).
+        # encoder not added yet (requires E4 hardware ABN installed + added to _configure_encoders + firmware encoderLinesPerRev to take effect).
+        "actuator_screw_pitch_mm": 1.0,    # align with W / legacy Squid SCREW_PITCH_W_MM=1
+        "actuator_microstepping": 64,      # align with W / legacy Squid MICROSTEPPING_DEFAULT_W=64
+    },
     "Turret": {
         # 2026-05-29 on this board the icID=5 slot connects to the objective turret (4 objectives), CS=pin 19/CLK=pin 28.
         # the protocol uses dedicated MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7 (does not reuse the W command).
         # GUI widgets.py renders the objective-control page; main_window.previous/next -> move_objective(),
         # gear reduction OBJECTIVE_RATIO=132/48 * SCREW_PITCH_W_MM=1 / OBJECTIVE_HOLES=4 = 0.6875 mm/slot.
-        "display_name": "Objectives - expand1_axis",
+        "display_name": "Turret - expand1_axis",
         "type": "objective",
         "has_limits": False,
         "limits": (0, 3),       # 4 objectives, slots 0..3, consistent with define.py OBJECTIVE_SWITCH_MAX_INDEX=3
@@ -122,26 +135,6 @@ AXIS_CONFIG = {
         "index": 5,             # firmware icID（octoaxes.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # matches config.h SCREW_PITCH_OBJECTIVES_MM=1
         "actuator_microstepping": 64,      # matches config.h MICROSTEPPING_OBJECTIVES=64
-    },
-    "E3": {
-        "display_name": "Step Motor - expand3_axis",
-        "type": "step_motor",
-        "has_limits": True,
-        "limits": (-6000, 6000),
-        "movement_sign": -1,
-        "index": 5,
-        "actuator_screw_pitch_mm": 0.3,
-        "actuator_microstepping": 256,
-    },
-    "E4": {
-        "display_name": "Filter Wheel 2 - expand4_axis",
-        "type": "filter_wheel",
-        "has_limits": False,
-        "limits": (0, 7),
-        "movement_sign": 1,
-        "index": 6,
-        "actuator_screw_pitch_mm": 100.0,
-        "actuator_microstepping": 8,
     },
 }
 

@@ -144,7 +144,7 @@ namespace AxisConstDefinition {
 		const int MICROSTEPPING_X = 256;
 		const int MICROSTEPPING_Y = 256;
 		const int MICROSTEPPING_Z = 256;
-		const int MICROSTEPPING_FILTERWHEEL = 8;      // 2026-05-26 path C speed optimization v2: 16->8 (BOW truncation further eased from 7x to 3.6x, matching the historically best microstep=8 config from 2026-02, physical floor ~70ms per slot)
+		const int MICROSTEPPING_FILTERWHEEL = 64;     // 2026-07-09 revert 8->64: align with legacy Squid MICROSTEPPING_DEFAULT_W=64 + this project's GUI constants W microstepping=64 (the GUI computes um<->microsteps by 64 and does not send W a config -> the firmware must default to 64 for consistency, otherwise Next overshoots 8x per slot and turns a whole revolution). When both software drive W, all three sides unify on 64. Sacrifices the 2026-05-26 path C ms=8 speed optimization, but legacy Squid already forces 64 and that speed was only achievable in a pure benchmark. octoaxesplus has always been 64 (already consistent)
 		const int MICROSTEPPING_OBJECTIVES = 64;
 
 		// encoder resolution (um/pulse)
@@ -173,7 +173,7 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_X_mm = 500;
 		const float MAX_ACCELERATION_Y_mm = 500;
 		const float MAX_ACCELERATION_Z_mm = 20;
-		const float MAX_ACCELERATION_FILTERWHEEL_mm = 400 * SCREW_PITCH_FILTERWHEEL_MM;
+		const float MAX_ACCELERATION_FILTERWHEEL_mm = 200 * SCREW_PITCH_FILTERWHEEL_MM;   // 2026-07-09 400->200: W Test repeated next/previous showed step loss; lower acceleration to reduce start/stop torque demand. If it still loses steps, lower further (100); if too slow, raise back. Used together with microstepping 8->64 (the ASTART chip register start impulse scales 8x accordingly, see the astartMM comment)
 		// 2026-05-29 objectives branch: measured 200 mm/s2 with the weak 1A current loses steps badly,
 		// lowered to 80 mm/s2 to leave margin. Used together with EXPAND1_AXIS.currentRange=1 (2A) + motorCurrentMA=1800.
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;
@@ -562,7 +562,7 @@ namespace AxisConfigs {
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
-        .currentRange = 0,
+        .currentRange = 2,   // 2026-07-09 0->2 to align with W_AXIS (same filter wheel type; TMC2660 ignores this field and uses R_sense, aligned only for consistency)
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
         .invertEncoderDir = false,

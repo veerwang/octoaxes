@@ -83,8 +83,8 @@ def main():
     print("=== Profile 隔离 + 完整性验证 ===")
     print(f"SOFTWARE_DIR: {SOFTWARE_DIR}")
 
-    octoaxes_ok = check_profile("octoaxes", {"X", "Y", "Z", "W", "Turret", "E3", "E4"})
-    octoaxesplus_ok = check_profile("octoaxesplus", {"X", "Y", "Z", "W1", "W2"})
+    octoaxes_ok = check_profile("octoaxes", {"X", "Y", "Z", "W", "W2", "Turret"})
+    octoaxesplus_ok = check_profile("octoaxesplus", {"X", "Y", "Z", "W1", "W2", "Turret"})
 
     print()
     if octoaxes_ok and octoaxesplus_ok:
