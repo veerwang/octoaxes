@@ -794,6 +794,27 @@ class TeensyControlGUI(QMainWindow):
             except (TypeError, ValueError):
                 return 0
 
+        def _read_pos_settled(axis, timeout=2.5):
+            """轮询到位置稳定再读（修大移动读到途中/陈旧位置的假丢步）。
+
+            上报位置由后台包异步刷新，wait_until_idle 可能在移动真正到位/编码器 settle
+            前就返回。这里连续读到位置不再变化（±3 微步）才认定 settle，避免读到途中值。
+            """
+            t0 = time.time()
+            prev = _read_pos(axis)
+            stable = 0
+            while time.time() - t0 < timeout:
+                time.sleep(0.08)
+                cur = _read_pos(axis)
+                if abs(cur - prev) <= 3:
+                    stable += 1
+                    if stable >= 4:      # 连续 ~0.32s 不变 = 已稳定
+                        return cur
+                else:
+                    stable = 0
+                prev = cur
+            return prev
+
         def _test_worker():
             axis = self.get_current_axis()
             mmps = AXIS_MM_PER_STEP.get(axis, 0) or 0
@@ -810,7 +831,7 @@ class TeensyControlGUI(QMainWindow):
                 self.log("W Test: Homing timeout, abort.")
                 return
             time.sleep(0.2)
-            st["start"] = _read_pos(axis)
+            st["start"] = _read_pos_settled(axis)
             st["prev"] = st["start"]
 
             def _move_check(label, slots):
@@ -820,9 +841,8 @@ class TeensyControlGUI(QMainWindow):
                 if not self.wait_until_idle(max(5, 2 + abs(slots))):   # 大跳转行程长，超时按格数放宽
                     self.log(f"W Test: {label} timeout, abort.")
                     return False
-                time.sleep(0.15)
                 st["n"] += 1
-                actual = _read_pos(axis)
+                actual = _read_pos_settled(axis)            # 轮询到稳定再读，避免读途中值
                 delta = actual - st["prev"]                 # 本次实际位移（编码器）
                 expect = abs(slots) * slot                  # 期望位移幅值
                 dev = abs(abs(delta) - expect)              # 偏离期望多少（不看方向，防丢步）
