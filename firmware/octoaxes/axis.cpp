@@ -981,6 +981,13 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
     target_tolerance = 20;
     pid_tolerance = 20;
     pid_iclip = 4096;
+  } else if (strcmp(_axisName, "Turret") == 0) {
+    // Objective turret (merged from new-W-axis A1c/4844a5a): tolerance=10 tightens the stop-position precision.
+    // Conversion: 10 microsteps = 0.28° motor = ±0.10° turret (÷2.75 gear ratio, 12800 µstep/motor rev).
+    // 20 = ±0.20° turret. After tightening, back off if PID jitters/whines. (the W filter wheel stays at 20)
+    target_tolerance = 10;
+    pid_tolerance = 10;
+    pid_iclip = 4096;
   } else if (strcmp(_axisName, "Z") == 0) {
     target_tolerance = 25;
     pid_tolerance = 25;
