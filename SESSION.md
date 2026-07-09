@@ -57,6 +57,17 @@
 - **踩坑**：两 serial.cpp 首次替换误留 `>>>>>>> main` 冲突标记 → sed 清除并确认全仓无残留。
 - 验证：4 文件零中文、无标记；**四固件工程 pio run 全 SUCCESS**（octoaxes/octoaxesplus 主线 + joystick×2 含 overseas env）。merge `25d3c5a`，push `890cc16..25d3c5a`。
 
+### 第四轮同步（merge main 的 2 个新提交 = new-W-axis A6，纯软件）
+
+main 新增 2 提交（明场 LED 矩阵 0-100% 亮度滑条）：
+- `04e66b9` feat(illumination) 亮度滑条（widgets.py 加 `led_matrix_update_cmd` 信号 + 亮度缩放；main_window.py 加实时更新处理）
+- `408e997` docs A6
+
+处理：
+- 2 冲突：`documents/new-W-axis_merge_plan.md`（modify/delete → 取删除）+ `widgets.py`（新信号 `led_matrix_update_cmd`）→ 取 main 新代码、注释译英。
+- **翻译范围收窄点（重要）**：本分支约定**只译 `#`/`//`/`/* */` 注释**，Python **docstring 与 GUI 字符串字面量保持中文**（490f975 立的规矩）。故 A6 带入的 `#` 注释（widgets.py 3 处亮度滑条注释块）译英；而 A6 的 docstring（`_brightness_scaled_rgb` 等）+ `QLabel("亮度:")` GUI 串**保持中文**——与全仓已译文件一致。
+- 验证：两 Python 文件 `#` 注释零中文残留、无冲突标记；`py_compile` OK；双 profile 加载正常（octoaxesplus 6 轴 / octoaxes 7 轴）。纯软件改动无固件、未跑 pio。merge `bc25125`，push `b1b21a7..bc25125`。
+
 ### 下次
 
 - 视需要开 PR 合回 main（分支已 push，与 main 完全同步）。
