@@ -103,6 +103,29 @@ main 新增 2 提交：
 - A1c 带入的 Turret `tolerance=10` 注释块中译英（octoaxes 3 行详版 + octoaxesplus 2 行简版）。
 - 验证：无冲突标记、axis.cpp 零中文；**两 firmware pio run 均 SUCCESS**。merge `68d0214`，push `59c9987..68d0214`。
 
+### 第八轮同步（merge main 的 9 提交 = W 滤光轮丢步修复 + 轴收口重构，本轮最大）
+
+main 新增 9 提交：
+- `dc41a4a`/`907b7e6` octoaxes W `MICROSTEPPING_FILTERWHEEL` 8→64（修 Next 每格 8× 过冲转整圈）+ 最大加速度 400→200 减丢步
+- `76c87fc`/`6e80051`/`4d55653` W Test 增强：编码器丢步检测 + 大孔距跳转阶段 + 「轮询到稳定再读」防大移动读途中值假丢步
+- `5bcbcf0` E4(滤光轮2) 参数对齐 W（pitch 100→1/ms 8→64 纠陈旧错值）
+- `09873dc` **轴收口重构**：octoaxes 6 轴 X/Y/Z/W/**W2**/Turret（E3 删除、E4→W2 改名）
+- `1ba815f` startup `set_limits` 改按类型判断（滤光轮/物镜跳过，修 octoaxesplus W1 漏跳，不硬编码轴名）
+- `4ea5c4d`/`2d866fa` docs
+
+处理：
+- 冲突 6 文件（+ `documents/new-W-axis_merge_plan.md` modify/delete 取删除）取 main 新代码、注释译英：
+  - `config.h`×2（MICROSTEPPING=64、accel 200）
+  - `define.py`×3（AXIS_MOVE/MOVETO_CMD_MAP 去 E3/E4、W2/Turret/W1 重排）
+  - `main_window.py`×2（删 homing 注释 + W Test `_move_check` 新增函数）
+  - `widgets.py`×3（`["Z","E3"]`→`["Z"]` E3 移除）
+  - `test_04_tmc_status.py`×1（AXIS_NAMES→X/Y/Z/W/W2/Turret）
+  - `constants.py`×1（display_name Objectives→Turret）
+- **另译大量自动合并（无冲突）带回中文**：config.h `currentRange` 注释 / constants.py E4 对齐块（5 行）/ main_window.py W Test 多处内联注释（stage 2 / profile-safe / slot 计算 / net 判定）。
+- **翻译范围**：`#`/`//` 注释全译；main_window.py W Test 的 **docstring 与 `self.log(...)` 日志字符串（含「格/微步/疑似丢步」）按约定保持中文**（与该方法 HEAD 已有中文日志一致）。
+- **踩坑**：config.h + main_window.py 各一处 Edit 误留 `>>>>>>> main` 标记 → 全仓 grep 兜底、sed 清除（本轮第二次犯，须警惕替换块尾的 `>>>>>>>`）。
+- 验证：全仓无冲突标记、merge-touched 文件 `#`/`//` 注释零中文；**两 firmware pio run SUCCESS** + py_compile OK + **verify_profiles 双 profile 6 轴全通过**（octoaxes `['Turret','W','W2','X','Y','Z']`）。merge `6cc609e`，push `34549c1..6cc609e`。
+
 ### 下次
 
 - 视需要开 PR 合回 main（分支已 push，与 main 完全同步）。

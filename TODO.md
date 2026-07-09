@@ -8,9 +8,9 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-### 2026-07-09 注释英文化分支七轮同步 main（chore/translate-comments-to-english）
+### 2026-07-09 注释英文化分支八轮同步 main（chore/translate-comments-to-english）
 
-> 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。本次分七轮同步 main 的 new-W-axis 融合修复，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 2026-07-09。
+> 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。本次分八轮同步 main 的 new-W-axis 融合修复，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 2026-07-09。
 
 - [x] **第一轮 merge `691e732`**（TMC2240 enable 改 shadow-register 规避不可靠 Cover 读）— 冲突 1 处 MotorControl.cpp 取 main 新代码+注释译英；另译 MotorControl.h（ChopconfDump）+ serial.cpp×2（S:DUMP_TOFF 注释 + 调试串 `(非 TMC2240，跳过)`→`(not TMC2240, skipped)`）。merge `8ab7961`。
 - [x] **删除合并带回的 `documents/new-W-axis_merge_plan.md`**（本分支约定已删 documents/，规划文档不翻译；用户拍板）。commit `3e2cebe`。
@@ -20,7 +20,8 @@
 - [x] **第五轮 merge main 2 提交 = new-W-axis A1a Turret homing**（`c27f4ae` 两段式 homing 全速粗找+慢速精逼近 a3cde03 / velocity 残留清除 8d01838 漂移绕圈根因 / homing 结束关右硬停 b97e814 / search+leaving 方向改 homing_direct 9e72ddd+dddeff3 / latch 解锁 aad7b42 / `ea1883b` docs）— 冲突 3 文件：doc modify/delete 取删除 + objectives.cpp×2（octoaxes 4 + octoaxesplus 5 冲突）取 main 新代码+注释译英。另译大量自动合并带回的中文：objectives.h×2（`_slowApproach`/`SLOW_APPROACH_RATIO` 字段）+ objectives.cpp×2（右硬停使能/latch 解锁/两段式 stage 1/2/慢速 homingVel 注释块）。**两 firmware pio run 均 SUCCESS**（含新 `homingVel` 变量）。merge `7d4a6d7`，push `ab92a4c..7d4a6d7`。
 - [x] **第六轮 merge main 2 提交 = new-W-axis A1b 弹片自定位**（`145a085` `wakeForMotion()` + `_autoDisableAtRest` 成员 + `motor_syncXActualToEncoder()` 防跳枪 + disableAxis 断电机电流让弹片归中不碰 PID + homing 起步关芯片 PID bd3f47f / `117bbd3` docs）— 冲突 7 文件：doc modify/delete 取删除 + axis.cpp/.h×2 + MotorControl.cpp/.h 取 main 新代码+注释译英（MotorControl 处理：把 ChopconfDump 注释复位到其函数上方，比 main 布局更整齐）。另译大量自动合并带回的中文：objectives.cpp×2 begin() 弹片块 + axis.cpp×2 disableAxis/enableAxis/startHoming/wakeForMotion 调用点（~10 块/文件）。踩坑：octoaxesplus/axis.h 漏含 `<<<<<<<` 行留孤立标记，sed 清除。**两 firmware pio run 均 SUCCESS**。merge `31476fb`，push `0fc40be..31476fb`。
 - [x] **第七轮 merge main 2 提交 = new-W-axis A1c（本轮最轻）**（`b060fb2` Turret PID tolerance 收紧到 10 = 物镜盘 ±0.10°/÷2.75 齿轮比，W 滤光轮维持 20 / `2d866fa` docs = A1 firmware 侧全部完成）— axis.cpp×2 自动合并无内容冲突，仅 doc modify/delete 取删除；A1c 带入的 Turret tolerance 注释块中译英。**两 firmware pio run 均 SUCCESS**。merge `68d0214`，push `59c9987..68d0214`。
-- [x] **验证**：七轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（前三轮 + 五/六/七轮）/ py_compile + profile 加载 OK（第四轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
+- [x] **第八轮 merge main 9 提交 = W 滤光轮丢步修复 + 轴收口重构（本轮最大）**（`dc41a4a`/`907b7e6` W MICROSTEPPING 8→64 + accel 400→200 减丢步 / `76c87fc`/`6e80051`/`4d55653` W Test 编码器丢步检测+大孔距跳转+稳定后再读 / `5bcbcf0` E4 参数对齐 W / `09873dc` **轴收口 6 轴 X/Y/Z/W/W2/Turret（E3 删除、E4→W2）** / `1ba815f` startup set_limits 按类型判断修 W1 漏跳 / `4ea5c4d`+`2d866fa` docs）— 冲突 6 文件+doc：config.h×2 / define.py×3（CMD_MAP 去 E3/E4）/ main_window.py×2（W Test _move_check）/ widgets.py×3（["Z","E3"]→["Z"]）/ test_04×1 / constants.py×1（Turret display_name）取 main 新代码+注释译英。另译自动合并带回中文（config.h currentRange / constants.py E4 对齐块 / main_window.py W Test 内联注释）；docstring+log 字符串按约定留中文。踩坑：config.h+main_window.py 各一处误留 `>>>>>>> main` 标记 sed 清除。**两 firmware pio run SUCCESS + py_compile OK + verify_profiles 双 profile 6 轴全通过**。merge `6cc609e`，push `34549c1..6cc609e`。
+- [x] **验证**：八轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八轮）/ py_compile + profile 加载/verify_profiles OK（四/八轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
 - [ ] （可选）开 PR 合回 main。
 
 ### 2026-06-09 Z 变体切换软件化（限位极性走 cmd 20 下发）
