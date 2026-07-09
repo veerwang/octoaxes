@@ -173,7 +173,7 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_X_mm = 500;
 		const float MAX_ACCELERATION_Y_mm = 500;
 		const float MAX_ACCELERATION_Z_mm = 20;
-		const float MAX_ACCELERATION_FILTERWHEEL_mm = 400 * SCREW_PITCH_FILTERWHEEL_MM;
+		const float MAX_ACCELERATION_FILTERWHEEL_mm = 200 * SCREW_PITCH_FILTERWHEEL_MM;   // 2026-07-09 400→200：W Test 反复 next/previous 出现丢步，降加速度减起停扭矩需求。若仍丢步可再降(100)；若太慢可回升。配合 microstepping 8→64（起步冲击 ASTART chip 寄存器随之 8×，见 astartMM 注释）
 		// 2026-05-29 objectives 分支：实测 200 mm/s² 配 1A 弱电流丢步严重，
 		// 降到 80 mm/s² 留 margin。配合 EXPAND1_AXIS.currentRange=1 (2A) + motorCurrentMA=1800。
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;
