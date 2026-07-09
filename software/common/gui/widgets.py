@@ -531,7 +531,7 @@ class ControlPanel(QGroupBox):
             text = self.abs_pos_edit.text()
 
             # 根据当前轴类型转换单位
-            if self.current_axis in ["Z", "E3"]:
+            if self.current_axis in ["Z"]:
                 # Z和E3轴：单位是um，直接转换为整数
                 pos_um = int(float(text))
             elif self.current_axis in ["X", "Y"]:
@@ -602,7 +602,7 @@ class ControlPanel(QGroupBox):
 
             # 根据轴类型显示相应的距离输入控件（仅在普通控制页面）
             if target_index == 0:  # 普通控制页面
-                if axis in ["Z", "E3"]:
+                if axis in ["Z"]:
                     # Z和E3轴：显示um输入，隐藏mm输入
                     self.um_distance_widget.setVisible(True)
                     self.mm_distance_widget.setVisible(False)
@@ -672,7 +672,7 @@ class ControlPanel(QGroupBox):
         """获取移动距离（转换为um单位）"""
         try:
             # 根据当前轴类型选择相应的输入控件
-            if self.current_axis in ["Z", "E3"]:
+            if self.current_axis in ["Z"]:
                 # Z和E3轴：输入的是um，直接返回
                 distance = int(self.distance_input_um.text())
                 if 1 <= distance <= 1000:
