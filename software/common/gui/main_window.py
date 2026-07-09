@@ -1562,8 +1562,10 @@ class TeensyControlGUI(QMainWindow):
 
     def startup_launch(self):
         axis = self.get_current_axis()
-        # 滤光轮(W/W2)无位置软限位，启动时跳过 set_limits（E4→W2 改名后同步）
-        if axis not in ["W2", "W"]:
+        # profile-safe：按类型判断，滤光轮/物镜无位置软限位，启动时跳过 set_limits
+        # （不硬编码轴名——否则 octoaxesplus 的 W1 会漏。与 send_homing 的 type 逻辑一致）
+        axis_type = AXIS_CONFIG.get(axis, {}).get("type")
+        if axis_type not in ("filter_wheel", "objective"):
             self.set_limits()
         # 先下发 SET_LEAD_SCREW_PITCH + CONFIGURE_STEPPER_DRIVER，
         # 把固件 screwPitch/microstepping 拉回 Octoaxes 默认值
