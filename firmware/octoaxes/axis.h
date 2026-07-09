@@ -116,6 +116,15 @@ protected:
   // Added: axis enable state
   bool _isEnabled;
 
+  // Objectives "auto-disable at rest, spring self-centering" (merged from new-W-axis A1b/52419b0):
+  // axes with _autoDisableAtRest=true (only Objectives/Turret, set in begin()) cut the motor current
+  // on disableAxis so the spring detent mechanically centers the turret; on enableAxis they first call
+  // syncXActualToEncoder to sync position before powering on (prevents a jump). The [timing] of the
+  // disable is driven by the GUI (delayed cmd32 after arrival), the GUI is the sole authority on enabled
+  // state; the firmware only guarantees the enable/disable action itself is atomic and complete. Other
+  // axes = false, behavior completely unchanged.
+  bool _autoDisableAtRest = false;
+
   // Soft-limit state tracking (for automatic restore after homing)
   bool _softLimitsEnabled;
 
@@ -196,6 +205,11 @@ public:
 
   void disableAxis();
   void enableAxis();
+
+  // Objectives "auto-disable at rest" wake-up: called before move/moveRelative/homing actually drives
+  // the motor -- syncs the encoder position (prevents a jump) + restores enable. Only takes effect on
+  // _autoDisableAtRest axes; a no-op on others. Merged from new-W-axis A1b.
+  void wakeForMotion();
 
   // Position control
   virtual void setCurrentPosition(float positionMM);

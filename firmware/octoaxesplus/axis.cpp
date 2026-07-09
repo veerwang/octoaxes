@@ -580,6 +580,9 @@ bool Axis::moveToPositionMicrosteps(int32_t targetMicrosteps) {
     return false;
   }
 
+  // Objectives "auto-disable at rest": wake before starting (sync the encoder position + restore enable); a no-op on other axes. Merged from A1b.
+  wakeForMotion();
+
   if (!isWithinSoftLimits(targetMicrosteps)) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINTLN(":Movement rejected: Outside soft limits");
@@ -650,6 +653,9 @@ bool Axis::moveRelativeMicrosteps(int32_t deltaMicrosteps) {
     return false;
   }
 
+  // Objectives "auto-disable at rest": wake before starting (sync XACTUAL<-ENC_POS then read the current position, so the relative amount is accurate). Merged from A1b.
+  wakeForMotion();
+
   int32_t currentPos = motor_getPositionMicrosteps(_icID);
   int32_t targetPos = currentPos + deltaMicrosteps;
 
@@ -699,13 +705,32 @@ void Axis::smoothStop() {
 
 // Motion-control functions
 void Axis::disableAxis() {
+  // Objectives "auto-disable at rest, spring self-centering" (merged from A1b): cut the motor current
+  // (TOFF, the A2 shadow-register path) so the spring detent mechanically centers the turret. ★ Do not
+  // touch PID. Other axes (_autoDisableAtRest=false) behave exactly as before.
   motor_enableDriver(_icID, false);
   _isEnabled = false; // update the enable state
 }
 
 void Axis::enableAxis() {
+  // Objectives "auto-disable at rest" restore (merged from A1b): before powering on, align XACTUAL/XTARGET
+  // to ENC_POS (the true position after the detent settles), so the closed loop targets the spring-centered
+  // position and doesn't yank back (jump) the instant it powers on. Other axes just power on, unchanged.
+  if (_autoDisableAtRest && _config.enableEncoder) {
+    motor_syncXActualToEncoder(_icID);
+  }
   motor_enableDriver(_icID, true);
   _isEnabled = true; // update the enable state
+}
+
+// Objectives "auto-disable at rest" safety net (merged from A1b): at the start of
+// move/moveRelative/homing, if the motor is still in the rest disabled state, enable it as a fallback.
+// In the normal flow the GUI has already sent cmd32 to enable first (the GUI is the sole authority on
+// enabled state); this only guards against a miss. Only takes effect on _autoDisableAtRest axes.
+void Axis::wakeForMotion() {
+  if (_autoDisableAtRest && _currentState == STATE_IDLE && !_isEnabled) {
+    enableAxis();
+  }
 }
 
 // Set the current position
@@ -785,6 +810,20 @@ bool Axis::startHoming() {
 
   if (_currentState != STATE_IDLE) {
     return false;
+  }
+
+  // Objectives "auto-disable at rest": wake and restore enable before starting homing (PID is turned off
+  // again below for the open-loop velocity search). Merged from A1b.
+  wakeForMotion();
+
+  // homing uses an open-loop velocity search: first disable the chip PID closed loop to avoid
+  // REGULATION_MODUS fighting the velocity command. Only clear the chip registers, leaving the
+  // _pidState.enabled software flag -> auto-restored at the end of performHomingSequence when homing
+  // completes. Merged from new-W-axis A1b (bd3f47f).
+  if (_pidState.enabled) {
+    motor_disablePID(_icID);
+    DEBUG_PRINT(_axisName);
+    DEBUG_PRINTLN(":PID disabled for homing (will restore on completion)");
   }
 
   setState(STATE_HOMING_INIT);

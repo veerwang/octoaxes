@@ -1082,6 +1082,22 @@ void motor_enableDriver(uint8_t icID, bool enable)
     }
 }
 
+// Align XACTUAL/XTARGET to the current ENC_POS (without modifying ENC_POS / VMAX / velocity_mode).
+// Used by the Objectives "auto-disable at rest, spring self-centering" wake-up: while de-energized the
+// spring detent mechanically centers the turret and the encoder has already recorded the true position;
+// before re-enabling, use this to eliminate the deviation between XACTUAL and the true position, avoiding
+// the closed loop yanking the turret back to the old target from the spring center (a jump) the moment it
+// powers on. Unlike motor_setCurrentPositionMicrosteps: it does not touch ENC_POS / VMAX.
+// Merged from new-W-axis A1b (52419b0).
+void motor_syncXActualToEncoder(uint8_t icID)
+{
+    if (icID >= MOTOR_IC_COUNT)
+        return;
+    int32_t enc = (int32_t)tmc4361A_readRegister(icID, TMC4361A_ENC_POS);
+    tmc4361A_writeRegister(icID, TMC4361A_XACTUAL, enc);
+    tmc4361A_writeRegister(icID, TMC4361A_XTARGET, enc);
+}
+
 // Diagnostic: read this axis's CHOPCONF "Cover readback value" vs "shadow reliable value"
 // to confirm the TMC2240 enable/disable failure root cause (Cover reads take the unreliable
 // path; whatever it misreads -> explains "why only W gets stuck"). Only meaningful for

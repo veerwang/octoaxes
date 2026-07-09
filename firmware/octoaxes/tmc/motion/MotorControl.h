@@ -385,6 +385,19 @@ void motor_setRunCurrent(uint8_t icID, float currentMA);
 void motor_enableDriver(uint8_t icID, bool enable);
 
 /**
+ * @brief Align XACTUAL/XTARGET to the current ENC_POS (without modifying ENC_POS / VMAX / velocity_mode)
+ * @param icID  IC identifier
+ *
+ * Used by the Objectives "auto-disable at rest, spring self-centering" wake-up: while the motor is
+ * de-energized the spring detent mechanically centers the turret and the encoder (on the motor tail
+ * shaft) has recorded the true position; before re-powering, use this to eliminate the deviation between
+ * XACTUAL and the true position, avoiding the closed loop yanking the turret back to the old target from
+ * the spring center (a jump) the moment it powers on. Precondition: the axis has enableEncoder (ENC_POS valid).
+ * Merged from new-W-axis A1b (52419b0).
+ */
+void motor_syncXActualToEncoder(uint8_t icID);
+
+/**
  * @brief Diagnostic: read this axis's CHOPCONF "Cover readback value" vs "shadow reliable value"
  *
  * Used to confirm the TMC2240 enable/disable failure root cause: the old enable logic read

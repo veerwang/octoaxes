@@ -15,7 +15,15 @@ Objectives::Objectives(uint8_t csPin, uint8_t axisIndex, const char* axisName, u
 bool Objectives::begin(const AxisConfig& config) {
   // call the base-class init
   bool result = Axis::begin(config);
-  
+
+  // The objective turret stations have spring detent notches: enable "auto-disable at rest, spring
+  // mechanical self-centering" (merged from new-W-axis A1b). After arrival the GUI sends cmd32 to disable
+  // -> disableAxis cuts the motor current so the spring detent centers the turret (more accurate than the
+  // PID ±0.1° dead zone, and it also fixes the motor->turret gear backlash the encoder can't see); the next
+  // move/homing re-enables via wakeForMotion() after syncing the encoder position. Lazy until the GUI takes
+  // over (no disable means no auto-disable).
+  _autoDisableAtRest = true;
+
   if (result) {
     DEBUG_PRINT(_axisName);
     DEBUG_PRINT(":Objectives with ");
