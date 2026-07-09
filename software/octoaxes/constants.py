@@ -140,8 +140,11 @@ AXIS_CONFIG = {
         "limits": (0, 7),
         "movement_sign": 1,
         "index": 6,
-        "actuator_screw_pitch_mm": 100.0,
-        "actuator_microstepping": 8,
+        # 2026-07-09 以 W(滤光轮1) 为基准对齐：E4=滤光轮2，同型硬件参数应一致。
+        # 原 pitch=100/ms=8 是陈旧错值（固件 EXPAND4_AXIS 早已用 FILTERWHEEL 常量 pitch=1/ms=64）。
+        # 编码器暂不加（需 E4 硬件实装 ABN + 加进 _configure_encoders + 固件 encoderLinesPerRev 才生效）。
+        "actuator_screw_pitch_mm": 1.0,    # 对齐 W / 旧 Squid SCREW_PITCH_W_MM=1
+        "actuator_microstepping": 64,      # 对齐 W / 旧 Squid MICROSTEPPING_DEFAULT_W=64
     },
 }
 

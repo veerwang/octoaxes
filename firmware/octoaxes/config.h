@@ -562,7 +562,7 @@ namespace AxisConfigs {
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
         .driverType = DRIVER_AUTO,
-        .currentRange = 0,
+        .currentRange = 2,   // 2026-07-09 0→2 对齐 W_AXIS（同型滤光轮，TMC2660 忽略此字段走 R_sense，对齐仅为一致性）
         .enableEncoder = false,
         .encoderLinesPerRev = 0,
         .invertEncoderDir = false,
