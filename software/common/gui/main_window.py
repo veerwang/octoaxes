@@ -1562,7 +1562,8 @@ class TeensyControlGUI(QMainWindow):
 
     def startup_launch(self):
         axis = self.get_current_axis()
-        if axis not in ["E4", "W"]:
+        # 滤光轮(W/W2)无位置软限位，启动时跳过 set_limits（E4→W2 改名后同步）
+        if axis not in ["W2", "W"]:
             self.set_limits()
         # 先下发 SET_LEAD_SCREW_PITCH + CONFIGURE_STEPPER_DRIVER，
         # 把固件 screwPitch/microstepping 拉回 Octoaxes 默认值

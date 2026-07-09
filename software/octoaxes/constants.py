@@ -106,12 +106,25 @@ AXIS_CONFIG = {
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,      # 2026-05-21 对齐旧 Squid MICROSTEPPING_DEFAULT_W=64
     },
+    "W2": {
+        "display_name": "Filter Wheel 2 - expand4_axis",
+        "type": "filter_wheel",
+        "has_limits": False,
+        "limits": (0, 7),
+        "movement_sign": 1,
+        "index": 4,
+        # 2026-07-09 以 W(滤光轮1) 为基准对齐：E4=滤光轮2，同型硬件参数应一致。
+        # 原 pitch=100/ms=8 是陈旧错值（固件 EXPAND4_AXIS 早已用 FILTERWHEEL 常量 pitch=1/ms=64）。
+        # 编码器暂不加（需 E4 硬件实装 ABN + 加进 _configure_encoders + 固件 encoderLinesPerRev 才生效）。
+        "actuator_screw_pitch_mm": 1.0,    # 对齐 W / 旧 Squid SCREW_PITCH_W_MM=1
+        "actuator_microstepping": 64,      # 对齐 W / 旧 Squid MICROSTEPPING_DEFAULT_W=64
+    },
     "Turret": {
         # 2026-05-29 本电路板 icID=5 槽位接物镜转换器（4 物镜），CS=pin 19/CLK=pin 28。
         # 协议走专属 MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7（不复用 W 命令）。
         # GUI widgets.py 渲染物镜控制页；main_window.previous/next → move_objective()，
         # 齿轮减速比 OBJECTIVE_RATIO=132/48 × SCREW_PITCH_W_MM=1 / OBJECTIVE_HOLES=4 = 0.6875 mm/位。
-        "display_name": "Objectives - expand1_axis",
+        "display_name": "Turret - expand1_axis",
         "type": "objective",
         "has_limits": False,
         "limits": (0, 3),       # 4 物镜 slot 0..3，与 define.py OBJECTIVE_SWITCH_MAX_INDEX=3 一致
@@ -122,29 +135,6 @@ AXIS_CONFIG = {
         "index": 5,             # firmware icID（octoaxes.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # 对齐 config.h SCREW_PITCH_OBJECTIVES_MM=1
         "actuator_microstepping": 64,      # 对齐 config.h MICROSTEPPING_OBJECTIVES=64
-    },
-    "E3": {
-        "display_name": "Step Motor - expand3_axis",
-        "type": "step_motor",
-        "has_limits": True,
-        "limits": (-6000, 6000),
-        "movement_sign": -1,
-        "index": 5,
-        "actuator_screw_pitch_mm": 0.3,
-        "actuator_microstepping": 256,
-    },
-    "E4": {
-        "display_name": "Filter Wheel 2 - expand4_axis",
-        "type": "filter_wheel",
-        "has_limits": False,
-        "limits": (0, 7),
-        "movement_sign": 1,
-        "index": 6,
-        # 2026-07-09 以 W(滤光轮1) 为基准对齐：E4=滤光轮2，同型硬件参数应一致。
-        # 原 pitch=100/ms=8 是陈旧错值（固件 EXPAND4_AXIS 早已用 FILTERWHEEL 常量 pitch=1/ms=64）。
-        # 编码器暂不加（需 E4 硬件实装 ABN + 加进 _configure_encoders + 固件 encoderLinesPerRev 才生效）。
-        "actuator_screw_pitch_mm": 1.0,    # 对齐 W / 旧 Squid SCREW_PITCH_W_MM=1
-        "actuator_microstepping": 64,      # 对齐 W / 旧 Squid MICROSTEPPING_DEFAULT_W=64
     },
 }
 

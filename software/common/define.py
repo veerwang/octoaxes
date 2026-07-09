@@ -127,17 +127,15 @@ class CMD_SET:
 # 轴名称到相对移动命令的映射（两 profile 共享：octoaxes 7 轴 + octoaxesplus 5 轴的并集）
 # 注意：命令码与轴索引不是简单的加法关系
 AXIS_MOVE_CMD_MAP = {
-    # octoaxes 主线（7 轴）
+    # octoaxes 主线（6 轴：X/Y/Z/W/W2/Turret）
     "X": CMD_SET.MOVE_X,      # 0
     "Y": CMD_SET.MOVE_Y,      # 1
     "Z": CMD_SET.MOVE_Z,      # 2
     "W": CMD_SET.MOVE_W,      # 4
+    "W2": CMD_SET.MOVE_W2,    # 19 (滤光轮2 专属命令；firmware handleMoveW2)
     "Turret": CMD_SET.MOVE_TURRET,    # 44 (物镜转换器专属命令，firmware handleMoveTurret→findAxisByName("Turret"))
-    "E3": CMD_SET.MOVE_Z,     # 2 (E3 使用与 Z 相同的命令，通过轴索引区分)
-    "E4": CMD_SET.MOVE_W,     # 4 (E4 使用与 W 相同的命令，通过轴索引区分)
     # octoaxesplus 双相机（W1/W2 = 滤光转盘）
     "W1": CMD_SET.MOVE_W,     # 4 (复用 W 命令；firmware handleMoveW 待加 W→W1 兜底)
-    "W2": CMD_SET.MOVE_W2,    # 19 (专属命令；firmware handleMoveW2 当前 NOT_IMPLEMENTED 待实施)
 }
 
 # 轴名称到绝对移动命令的映射（两 profile 共享）
@@ -147,9 +145,7 @@ AXIS_MOVETO_CMD_MAP = {
     "Z": CMD_SET.MOVETO_Z,    # 8
     "W": CMD_SET.MOVETO_W,    # 18
     "Turret": CMD_SET.MOVETO_TURRET,  # 45 (2026-05-29 物镜转换器专属命令)
-    "E3": CMD_SET.MOVETO_Z,   # 8
-    "E4": CMD_SET.MOVETO_W,   # 18
-    # octoaxesplus（W1/W2 暂复用 W 命令，待 firmware 提供 MOVETO_W2 独立 cmd 后改）
+    "W2": CMD_SET.MOVETO_W2,  # 43 (滤光轮2 专属 cmd；firmware handleMoveToW2 已实施)
+    # octoaxesplus（W1 复用 W 命令）
     "W1": CMD_SET.MOVETO_W,   # 18 (复用 W 命令；firmware handleMoveToW 已加 W→W1 兜底)
-    "W2": CMD_SET.MOVETO_W2,  # 43 (专属 cmd；firmware handleMoveToW2 已实施)
 }
