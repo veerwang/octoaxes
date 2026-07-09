@@ -110,7 +110,7 @@ A2/A3/A4（通用固件健壮性）→ A6（照明）→ A1（物镜类）→ A5
   - **`0a5c915`** serial.cpp USB 冷启动不再死等主机（`while(!SerialUSB)` → 最多等 timeout ms，29c2fec）——修「无上位机冷上电 setup() 卡死 → 手控盒/焦点轮失效」。octoaxes + octoaxesplus 各一份，两 firmware SUCCESS。
   - **`901e8b1`** joystick 编码器读取加 noInterrupts 快照 + pow 浮点改整数位移（ae812bd）。octoaxes + octoaxesplus 两 joystick 变体，teensyLC/teensyLC_overseas 四 env SUCCESS。
   - ❌ **cmd 252 注释（2548292）跳过**：本项目已是 no-op，Mega 只改注释且其注释是 mega 形态专属（「只有 XYZ+W 物镜、无 W2」）对本项目错误，融过来反误导。
-- [ ] A6 LED 亮度滑条
+- [x] **A6 LED 亮度滑条**（2026-07-09 完成，`eb3c42a`，be20270）— IlluminationPanel 加 0-100% 亮度滑条（默认 100%），`_scaled_rgb()` 整体缩放 R/G/B；实时调节走新信号 `led_matrix_update_cmd` → `_send_illu_led_matrix_update` 仅发 cmd13（固件已点亮自动重刷，未点亮只缓存不误点亮）。纯上位机 common/ profile-safe，固件无需改。py_compile + 双 profile 加载 + headless 实例化冒烟测试全过。
 - [ ] A1 物镜类改进
 - [ ] A5 GUI 物镜标定
 - [ ] 组 B 逐项评估
