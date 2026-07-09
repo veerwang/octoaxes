@@ -108,6 +108,10 @@ protected:
   int32_t _moveDirection;
   unsigned long _cmdRecvMicros;   // command-received time (micros)
   unsigned long _moveStartMicros; // movement-start time (micros)
+  // Dynamic timeout for this move (merged from new-W-axis f4c3c35, 2026-06-16): estimated from
+  // distance/velocity; slow/long moves auto-relax, avoiding low-speed moves being cut off partway
+  // by the fixed 5s (MOVEMENT_TIMEOUT_MS). Recomputed on every startMovement.
+  unsigned long _moveTimeoutMs = MOVEMENT_TIMEOUT_MS;
 
   // Added: axis enable state
   bool _isEnabled;

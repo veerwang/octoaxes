@@ -180,6 +180,16 @@ void Axis::setMotionParameters(float maxVelocityMM, float maxAccelerationMM) {
 
   motor_setMaxVelocity(_icID, maxVelocityMM);
   motor_setMaxAcceleration(_icID, maxAccelerationMM);
+
+  // Merged from new-W-axis cf93900 (2026-06-16): write the current max vel/acc back into _config
+  // so it becomes this session's "config default". Otherwise, after the host's
+  // SET_MAX_VELOCITY_ACCELERATION changes the chip VMAX, any later
+  // setMotionParameters(_config.maxVelocityMM) would push VMAX back to the old default
+  // -> symptom: after the host sets a speed, the first move is correct but the second reverts.
+  // When this function is called with _config values it's a self-assignment (no side effect);
+  // only a host speed change actually updates it.
+  _config.maxVelocityMM = maxVelocityMM;
+  _config.maxAccelerationMM = maxAccelerationMM;
 }
 
 // State-machine update
@@ -222,8 +232,10 @@ void Axis::update() {
       }
     }
 
-    // Timeout check while moving
-    if (checkTimeout(MOVEMENT_TIMEOUT_MS)) {
+    // Timeout check while moving (merged from new-W-axis f4c3c35: use the dynamic timeout
+    // _moveTimeoutMs computed at startMovement from distance/velocity, instead of the fixed
+    // MOVEMENT_TIMEOUT_MS, to avoid low-speed moves being cut off partway)
+    if (checkTimeout(_moveTimeoutMs)) {
       handleError("Movement timeout");
     }
   } break;
@@ -447,6 +459,22 @@ void Axis::checkMovementComplete() {
 void Axis::startMovement() {
   _isMoving = true;
   _moveStartMicros = micros();
+
+  // Merged from new-W-axis f4c3c35 (2026-06-16): estimate the timeout from this move's
+  // distance/velocity to avoid low-speed moves being cut off partway by the fixed 5s (measured:
+  // 0.10 mm/s over 0.68mm needs 6.8s > 5s). XTARGET has already been written by
+  // motor_moveToMicrosteps here, so take |XTARGET-XACTUAL| as the distance. Timeout = base
+  // (covers ramp/settle) + travel time x2 (safety factor), with a 60s cap so a real stall
+  // doesn't wait too long. velMM uses _config.maxVelocityMM.
+  int32_t distSteps = motor_getTargetMicrosteps(_icID) - motor_getPositionMicrosteps(_icID);
+  if (distSteps < 0) distSteps = -distSteps;
+  float distMM = motor_microstepsToMM(_icID, distSteps);
+  float velMM = _config.maxVelocityMM;
+  unsigned long expectedMs =
+      (velMM > 0.001f) ? (unsigned long)(distMM / velMM * 1000.0f) : 0UL;
+  _moveTimeoutMs = MOVEMENT_TIMEOUT_MS + expectedMs * 2UL;
+  if (_moveTimeoutMs > 60000UL) _moveTimeoutMs = 60000UL;
+
   setState(STATE_MOVING);
 }
 

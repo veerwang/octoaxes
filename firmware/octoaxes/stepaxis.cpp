@@ -237,7 +237,13 @@ void StepAxis::performLeavingHome() {
       delay(100);
 
       // start the actual homing search
-      int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.maxVelocityMM);
+      // Merged from new-W-axis f254a63: use homingVelocityMM (slow) instead of maxVelocityMM, so that
+      // regardless of whether the start point is inside/outside the zone, the final approach speed to
+      // the home switch is always the same -> consistent latch edge -> the physical position after each
+      // homing is basically identical (the switch has a speed-dependent trigger delay, so a fast approach
+      // shifts the latch). The reverse move out of the zone (else branch) still uses maxVelocity for a
+      // fast retreat; it doesn't latch so it doesn't affect repeatability.
+      int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
       motor_setVelocityInternal(_icID, speedInternal);
       setState(STATE_HOMING_SEARCH);
     } else {
