@@ -144,7 +144,7 @@ namespace AxisConstDefinition {
 		const int MICROSTEPPING_X = 256;
 		const int MICROSTEPPING_Y = 256;
 		const int MICROSTEPPING_Z = 256;
-		const int MICROSTEPPING_FILTERWHEEL = 8;      // 2026-05-26 路径 C 速度优化 v2：16→8（BOW 截断从 7× 进一步缓解到 3.6×，匹配 2026-02 历史最优 microstep=8 配置，1 slot 物理底线 ~70ms）
+		const int MICROSTEPPING_FILTERWHEEL = 64;     // 2026-07-09 8→64 回退：对齐旧 Squid MICROSTEPPING_DEFAULT_W=64 + 本项目 GUI constants W microstepping=64（GUI 按 64 算 μm↔微步、且不给 W 下发配置 → 固件须默认 64 才一致，否则 Next 每格 8× 过冲转整圈）。两软件都驱动 W 时三方统一 64。牺牲 2026-05-26 路径 C 的 ms=8 速度优化，但旧 Squid 本就强制 64、该速度仅纯 benchmark 可得。octoaxesplus 一直是 64（本就一致）
 		const int MICROSTEPPING_OBJECTIVES = 64;
 
 		// 编码器分辨率 (μm/pulse)
