@@ -61,8 +61,14 @@ void SerialProtocolHandler::begin(long baudRate, uint32_t timeout) {
   delay(500);
   SerialUSB.setTimeout(timeout);
   buffer_rx_ptr = 0;
-  while (!SerialUSB) {
-    ; // wait for the serial connection
+  // Merged from new-W-axis 29c2fec (2026-06-23): was `while (!SerialUSB) {;}`, an infinite wait for
+  // the USB host to connect (DTR asserted). On a cold power-up with no host, setup() would hang here
+  // forever -> loop() never runs -> the joystick/focus wheel are all dead until the host software is
+  // opened once to "unlock" it. Changed to wait at most timeout ms (the 300 in begin(115200, 300) was
+  // meant exactly for this but was previously ignored); with no host it proceeds so the firmware runs standalone.
+  uint32_t start = millis();
+  while (!SerialUSB && (millis() - start) < timeout) {
+    ; // wait at most timeout ms; with a host it proceeds as soon as connected, without one it times out and proceeds
   }
 }
 

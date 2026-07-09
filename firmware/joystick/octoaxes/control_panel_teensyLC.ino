@@ -154,16 +154,16 @@ void loop()
   // read joystick
   joystick_delta_x = analogRead(pin_joystick_x) - joystick_offset_x;
 #ifdef REGION_OVERSEAS
-  joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/4;
+  joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*(1 << input_sensitivity_xy)/4;
 #else
-  joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/8;
+  joystick_delta_x = sgn(joystick_delta_x)*max(abs(joystick_delta_x)-joystick_deadband,0)*(1 << input_sensitivity_xy)/8;
 #endif
   joystick_delta_x = sgn(joystick_delta_x)*min(abs(joystick_delta_x),32767);
   joystick_delta_y = analogRead(pin_joystick_y) - joystick_offset_y;
 #ifdef REGION_OVERSEAS
-  joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/4;
+  joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*(1 << input_sensitivity_xy)/4;
 #else
-  joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*pow(2,input_sensitivity_xy)/8;
+  joystick_delta_y = sgn(joystick_delta_y)*max(abs(joystick_delta_y)-joystick_deadband,0)*(1 << input_sensitivity_xy)/8;
 #endif
   joystick_delta_y = sgn(joystick_delta_y)*min(abs(joystick_delta_y),32767);
 
@@ -171,7 +171,14 @@ void loop()
   // debouncing to be added
 
   // send to controller
-  int32_t encoder_pos_ = encoder_pos / 4; // reduce resolution
+  // Merged from new-W-axis ae812bd: defensive noInterrupts protection when reading encoder_pos
+  // (aligns with meijiasquid b33f50a race-condition fix). encoder_pos is a volatile long; on
+  // TeensyLC (Cortex-M0+) long=32-bit so a single read is already atomic, but the snapshot still
+  // guarantees consistency + stays safe if it ever becomes 64-bit. The critical section is very short.
+  noInterrupts();
+  long enc_snapshot = encoder_pos;
+  interrupts();
+  int32_t encoder_pos_ = enc_snapshot / 4; // reduce resolution
   // align to a multiple of 16 to set the minimum step granularity of the focus wheel
   encoder_pos_ = (encoder_pos_ / 16) * 16;
   tmp_uint32 = twos_complement(encoder_pos_,4); 
@@ -254,7 +261,7 @@ uint32_t twos_complement(long signedLong,int N)
   if(signedLong>=0)
     NBytesUnsigned = signedLong;
   else
-    NBytesUnsigned = signedLong + uint64_t(pow(256,N));
+    NBytesUnsigned = signedLong + (uint64_t(1) << (8 * N));  // merged from new-W-axis ae812bd: 2^(8N), integer shift replacing float pow
   return NBytesUnsigned;
 }
 
