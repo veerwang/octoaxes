@@ -44,9 +44,22 @@
 - 翻译分支同步上游时，冲突要**取上游新代码逻辑**（不能取本分支旧实现），再把带入的中文注释译英；自动合并（无冲突）也可能悄悄带回中文，须全文件 grep `[\x{4e00}-\x{9fff}]` 兜底。
 - 规划文档（SESSION/TODO/CLAUDE/merge_plan）不在翻译范围，保持中文；本分支还额外删了 documents/，合并带回要再删。
 
+### 第三轮同步（merge main 的 3 个新提交 = new-W-axis A4 健壮性）
+
+先把 main 快进到 `origin/main`（fast-forward `f5437c6..6377e89`），再切回 chore 合并。main 新增 3 提交：
+- `6d9b0ed` serial.cpp USB 冷启动不再死等主机（`while(!SerialUSB){}` → 最多等 timeout ms，无主机也放行 → 手控盒/焦点轮冷上电可独立运行）
+- `4f85fe1` joystick 编码器读取加 noInterrupts 快照保护 + `pow` 浮点改整数位移
+- `6377e89` docs A4 记录
+
+处理：
+- 5 处冲突：`documents/new-W-axis_merge_plan.md`（modify/delete → 取删除）+ `serial.cpp`×2（USB 冷启动块）+ joystick `control_panel_teensyLC.ino`×2（noInterrupts 快照块）→ 取 main 新代码，注释译英。
+- 另译 2 处自动合并带回的中文：两 `.ino` 的整数位移注释。
+- **踩坑**：两 serial.cpp 首次替换误留 `>>>>>>> main` 冲突标记 → sed 清除并确认全仓无残留。
+- 验证：4 文件零中文、无标记；**四固件工程 pio run 全 SUCCESS**（octoaxes/octoaxesplus 主线 + joystick×2 含 overseas env）。merge `25d3c5a`，push `890cc16..25d3c5a`。
+
 ### 下次
 
-- 视需要开 PR 合回 main（分支已 push）。
+- 视需要开 PR 合回 main（分支已 push，与 main 完全同步）。
 - 主线待办不变：W motor↔wheel 硬件紧固、采集 8s 打点、octoaxes 主线板新 Z 限位实测。
 
 ---

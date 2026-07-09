@@ -8,14 +8,15 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-### 2026-07-09 注释英文化分支两轮同步 main（chore/translate-comments-to-english）
+### 2026-07-09 注释英文化分支三轮同步 main（chore/translate-comments-to-english）
 
-> 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。本次分两轮同步 main 的 new-W-axis 融合修复，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 2026-07-09。
+> 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。本次分三轮同步 main 的 new-W-axis 融合修复，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 2026-07-09。
 
 - [x] **第一轮 merge `691e732`**（TMC2240 enable 改 shadow-register 规避不可靠 Cover 读）— 冲突 1 处 MotorControl.cpp 取 main 新代码+注释译英；另译 MotorControl.h（ChopconfDump）+ serial.cpp×2（S:DUMP_TOFF 注释 + 调试串 `(非 TMC2240，跳过)`→`(not TMC2240, skipped)`）。merge `8ab7961`。
 - [x] **删除合并带回的 `documents/new-W-axis_merge_plan.md`**（本分支约定已删 documents/，规划文档不翻译；用户拍板）。commit `3e2cebe`。
 - [x] **第二轮 merge main 3 提交**（`51f3843` 速度写回 _config / `e24683c` move 动态超时 + axis.h `_moveTimeoutMs` / `f5437c6` StepAxis 重搜索用 homingVelocity）— 7 冲突：doc modify/delete 取删除 + axis.cpp/.h + stepaxis.cpp（两 firmware，6 内容冲突）取 main 新代码+注释译英；另译 2 处自动合并带回的中文（setMotionParameters 回写块 + startMovement 动态超时块）。merge `cef0e32`。
-- [x] **验证**：两轮无冲突标记残留、merge-touched 文件零中文、两 firmware pio run SUCCESS。已 push `origin/chore/translate-comments-to-english`。
+- [x] **第三轮 merge main 3 提交 = new-W-axis A4 健壮性**（`6d9b0ed` serial USB 冷启动不死等主机 / `4f85fe1` joystick 编码器 noInterrupts 保护 + pow 改整数位移 / `6377e89` docs）— 先 fast-forward 本地 main 到 origin/main，再切回 chore 合并。5 冲突：doc modify/delete 取删除 + serial.cpp×2（USB 冷启动块）+ joystick .ino×2（noInterrupts 快照块）取 main 新代码+注释译英；另译 2 处自动合并带回的整数位移注释。踩坑：serial.cpp 首次替换误留 `>>>>>>> main` 标记，sed 清除。**四固件工程 pio run 全 SUCCESS**（主线×2 + joystick×2 含 overseas）。merge `25d3c5a`，push `890cc16..25d3c5a`。
+- [x] **验证**：三轮均无冲突标记残留、merge-touched 文件零中文、固件 pio run SUCCESS。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
 - [ ] （可选）开 PR 合回 main。
 
 ### 2026-06-09 Z 变体切换软件化（限位极性走 cmd 20 下发）
