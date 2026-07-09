@@ -114,6 +114,13 @@ protected:
   // 新增：轴使能状态
   bool _isEnabled;
 
+  // 物镜「到位去使能、弹片自定位」（融合 new-W-axis A1b/52419b0）：_autoDisableAtRest=true
+  // 的轴（仅 Objectives/Turret，begin() 里置位）在 disableAxis 时断电机电流让弹片凹坑把
+  // 转盘机械归中；enableAxis 时先 syncXActualToEncoder 同步位置再通电（防跳枪）。
+  // 去使能的【时序】由 GUI 主导（到位后延迟发 cmd32），GUI 为使能态唯一权威；固件只保证
+  // enable/disable 动作本身原子完整。其它轴 =false，行为完全不变。
+  bool _autoDisableAtRest = false;
+
   // 软限位状态追踪（homing 后自动恢复用）
   bool _softLimitsEnabled;
 
@@ -193,6 +200,10 @@ public:
 
   void disableAxis();
   void enableAxis();
+
+  // 物镜「到位去使能」唤醒：move/moveRelative/homing 真正驱动前调用——同步编码器位置
+  // （防跳枪）+ 恢复使能。仅 _autoDisableAtRest 轴生效，其它轴空转。融合 new-W-axis A1b。
+  void wakeForMotion();
 
   // 位置控制
   virtual void setCurrentPosition(float positionMM);
