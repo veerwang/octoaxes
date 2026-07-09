@@ -6,6 +6,53 @@
 
 ## 最新会话
 
+**日期**: 2026-07-09
+**分支**: chore/translate-comments-to-english
+**位置**: **注释英文化分支两轮同步 main** —— 把 main 的 new-W-axis 融合修复合并进来，合并带入的中文代码注释一并中译英
+
+### 一句话
+
+`chore/translate-comments-to-english` 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。本次分两轮把 main 的新提交同步进来，合并冲突取 main 新代码逻辑 + 注释译英，规划文档 `documents/new-W-axis_merge_plan.md` 按约定保持删除。
+
+### 第一轮同步（merge 691e732）
+
+- main 领先 1 提交 `691e732`（TMC2240 enable 改 shadow-register 规避不可靠 Cover 读，融合 new-W-axis A2）。
+- 冲突 1 处 `MotorControl.cpp`：HEAD=旧实现英文注释版 vs main=新 shadow-register 实现带中文注释 → 取 main 新代码逻辑，注释译英。
+- 另译 `MotorControl.h`（ChopconfDump 结构 + 字段注释）、`serial.cpp`×2（S:DUMP_TOFF 命令块注释 + 调试输出串 `(非 TMC2240，跳过)`→`(not TMC2240, skipped)`）。
+- **决策（用户拍板）**：`documents/new-W-axis_merge_plan.md` 属规划文档、只翻代码注释；本分支约定已删 documents/（23cc5b7），故合并带回后**再次删除**（commit `3e2cebe`）。
+- merge commit `8ab7961`。
+
+### 第二轮同步（merge main 的 3 个新提交）
+
+会话中 HEAD 曾被切到 main；main 又前进 3 提交（new-W-axis A3 健壮性）：
+- `51f3843` setMotionParameters 速度写回 _config（修「设速度后第二次移动回退默认」）
+- `e24683c` move 超时按距离/速度动态计算（axis.h 加 `_moveTimeoutMs`，修低速被固定 5s 砍半路）
+- `f5437c6` StepAxis 重搜索改用 homingVelocity 保 latch 重复性
+
+处理：
+- 7 处冲突：`documents/new-W-axis_merge_plan.md`（modify/delete → 取删除）+ `axis.cpp/.h`、`stepaxis.cpp`（octoaxes + octoaxesplus 各一份，6 内容冲突）→ 取 main 新代码，注释译英。
+- 另有 2 处**自动合并（无冲突）带入的中文**也译英：`axis.cpp` 的 `setMotionParameters` 速度回写块 + `startMovement` 动态超时块（两 firmware）。
+- merge commit `cef0e32`，push 到 `origin/chore/translate-comments-to-english`。
+
+### 验证
+
+- 两轮均：无冲突标记残留、merge-touched 文件零中文、两 firmware `pio run` 均 SUCCESS。
+- clang 报的 Arduino.h/SPI.h not found 是 linter 缺 include 路径，非真实错误。
+
+### 经验
+
+- 翻译分支同步上游时，冲突要**取上游新代码逻辑**（不能取本分支旧实现），再把带入的中文注释译英；自动合并（无冲突）也可能悄悄带回中文，须全文件 grep `[\x{4e00}-\x{9fff}]` 兜底。
+- 规划文档（SESSION/TODO/CLAUDE/merge_plan）不在翻译范围，保持中文；本分支还额外删了 documents/，合并带回要再删。
+
+### 下次
+
+- 视需要开 PR 合回 main（分支已 push）。
+- 主线待办不变：W motor↔wheel 硬件紧固、采集 8s 打点、octoaxes 主线板新 Z 限位实测。
+
+---
+
+## 上次会话
+
 **日期**: 2026-06-09
 **分支**: develop
 **位置**: **Z 变体切换软件化** —— 限位极性走上位机 cmd 20 下发，消除「切 Z 需同步改 config.h + constants.py 两处」的易错点（commit `afb4dc5`，**新 Z + 旧 Z 均上机实测通过**，仓库默认切回旧 Z）

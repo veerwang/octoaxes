@@ -8,6 +8,16 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
+### 2026-07-09 注释英文化分支两轮同步 main（chore/translate-comments-to-english）
+
+> 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。本次分两轮同步 main 的 new-W-axis 融合修复，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 2026-07-09。
+
+- [x] **第一轮 merge `691e732`**（TMC2240 enable 改 shadow-register 规避不可靠 Cover 读）— 冲突 1 处 MotorControl.cpp 取 main 新代码+注释译英；另译 MotorControl.h（ChopconfDump）+ serial.cpp×2（S:DUMP_TOFF 注释 + 调试串 `(非 TMC2240，跳过)`→`(not TMC2240, skipped)`）。merge `8ab7961`。
+- [x] **删除合并带回的 `documents/new-W-axis_merge_plan.md`**（本分支约定已删 documents/，规划文档不翻译；用户拍板）。commit `3e2cebe`。
+- [x] **第二轮 merge main 3 提交**（`51f3843` 速度写回 _config / `e24683c` move 动态超时 + axis.h `_moveTimeoutMs` / `f5437c6` StepAxis 重搜索用 homingVelocity）— 7 冲突：doc modify/delete 取删除 + axis.cpp/.h + stepaxis.cpp（两 firmware，6 内容冲突）取 main 新代码+注释译英；另译 2 处自动合并带回的中文（setMotionParameters 回写块 + startMovement 动态超时块）。merge `cef0e32`。
+- [x] **验证**：两轮无冲突标记残留、merge-touched 文件零中文、两 firmware pio run SUCCESS。已 push `origin/chore/translate-comments-to-english`。
+- [ ] （可选）开 PR 合回 main。
+
 ### 2026-06-09 Z 变体切换软件化（限位极性走 cmd 20 下发）
 
 > 痛点：切换新旧 Z 需同步改两处（固件 `config.h #define Z_VARIANT_NEW` + 软件 `constants.py Z_AXIS_VARIANT`），易漏改。
