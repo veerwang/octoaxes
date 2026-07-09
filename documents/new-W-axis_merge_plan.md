@@ -118,3 +118,40 @@ A2/A3/A4（通用固件健壮性）→ A6（照明）→ A1（物镜类）→ A5
   - **A1 firmware 侧全部完成**（A1a/A1b/A1c）；剩物镜 GUI（弹片自定位时序 cmd32 + 工位标定/绝对定位/PID 下发）归入 A5。
 - [ ] A5 GUI 物镜标定
 - [ ] 组 B 逐项评估
+
+---
+
+## 当前状态（2026-07-09）
+
+**firmware 侧融合全部完成并已同步 github/main**：A2 / A3(×3) / A4(×2) / A6 / A1a / A1b / A1c。
+develop 与 github/main 一致。
+
+**⏸️ 暂停在此，等硬件实测后再进 A5。**
+
+### ⚠️ 未上机验证的项（阻塞 A5）
+A1a / A1b / A1c 三项 firmware **全部编译通过但未烧录**，且相互关联：
+- A1a 改的是本项目**本就暂停/未通过的 Turret homing** 路径
+- A1b 弹片自定位建立在 A1a homing 之上
+- A5（物镜 GUI）又完全建立在 A1a/b/c 之上
+
+→ **必须先烧录实测 Turret，通过后再做 A5**，否则 A5 大量 GUI 工作可能白做。
+
+### 烧录实测清单（Turret，建议用 octoaxesplus 借板）
+1. **homing 方向**：点 Homing，Turret 是否朝 home 传感器方向搜索（不是反向绕远）
+2. **两段式**：是否「全速粗找 → 退出 → 慢速精逼近 → 锁定清零」，不再过冲绕圈
+3. **停位重复性**：反复 homing 多次，物理停位是否基本一致（A1a 核心目标）
+4. **转过 home 区**：homing 后能否正常换位到各工位（含跨 home 区的工位，验证 SET_ZERO 关右硬停）
+5. **不漂移**：连续 homing 5+ 次，落点不逐次漂出 home 区（验证 8d01838 漂移修复）
+6. （若装编码器且 GUI 发 disable）弹片自定位：到位去使能后弹片归中、再动不跳枪
+
+### 实测可能需要的微调（决策 2，硬件相关）
+- Turret 盘几何 / home 区极性与 Mega 不同 → SET_ZERO 关右硬停、homing_direct 方向可能要调
+- `SLOW_APPROACH_RATIO=0.1` 慢逼近比例可能按盘调
+- 若方向反：优先查 constants.py Turret `movement_sign`（推导 homing_direct），别直接改固件
+
+### 实测通过后的下一步
+- **A5**（物镜 GUI）：弹片自定位 cmd32 时序（main_window 移动前使能 + 到位延迟去使能）+
+  工位角度标定/绝对定位（持久化 JSON）+ 单工位分步移动 + PID 启动下发 + constants 加
+  pid/velocity/auto_disable 字段。参考 Mega commit：82e9f0e / 152d50e / 763fe5a /
+  adb5365 / cef69b5 / 518a5c6 / d129a32 / 81d0e68。
+- **组 B**：W 编码器启用 / PID 整定值（硬件重测）/ Z_SAFEPOSITION（谨慎）/ 物镜速度加速度。
