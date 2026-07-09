@@ -111,6 +111,9 @@ A2/A3/A4（通用固件健壮性）→ A6（照明）→ A1（物镜类）→ A5
   - **`901e8b1`** joystick 编码器读取加 noInterrupts 快照 + pow 浮点改整数位移（ae812bd）。octoaxes + octoaxesplus 两 joystick 变体，teensyLC/teensyLC_overseas 四 env SUCCESS。
   - ❌ **cmd 252 注释（2548292）跳过**：本项目已是 no-op，Mega 只改注释且其注释是 mega 形态专属（「只有 XYZ+W 物镜、无 W2」）对本项目错误，融过来反误导。
 - [x] **A6 LED 亮度滑条**（2026-07-09 完成，`eb3c42a`，be20270）— IlluminationPanel 加 0-100% 亮度滑条（默认 100%），`_scaled_rgb()` 整体缩放 R/G/B；实时调节走新信号 `led_matrix_update_cmd` → `_send_illu_led_matrix_update` 仅发 cmd13（固件已点亮自动重刷，未点亮只缓存不误点亮）。纯上位机 common/ profile-safe，固件无需改。py_compile + 双 profile 加载 + headless 实例化冒烟测试全过。
-- [ ] A1 物镜类改进
+- [~] **A1 物镜类改进**（分 A1a/A1b/A1c）
+  - [x] **A1a Turret homing 两段式 + 方向修复**（2026-07-09，`8791e1e`，纯固件）— objectives.cpp/h（octoaxes + octoaxesplus 两 profile，受益 Turret）：两段式 homing（a3cde03）+ homing_direct 方向（9e72ddd/dddeff3）+ latch 解锁（aad7b42）+ 右硬停只在 homing 期间开（b97e814）+ 漂移修复（8d01838）。有意排除 begin() autoDisable（A1b）。两 firmware SUCCESS。**software 不涉及**（现有 GUI Homing 即可测）。⚠️**未烧录，必须上机实测**（本项目 Turret homing 本就暂停/未通过）；Turret 盘几何/home 区极性/慢逼近比例可能需按硬件微调。
+  - [ ] **A1b 弹片自定位基础设施**（axis.cpp/h + motor_syncXActualToEncoder + objectives begin autoDisable）— firmware infra，去使能**时序由 GUI 主导**（需 software：main_window 移动前使能 + 到位后延迟 cmd32）。GUI 未就绪前惰性。
+  - [ ] **A1c Turret PID tolerance=10**（axis.cpp，给 Turret 单开分支，不动 W/W2=20）。
 - [ ] A5 GUI 物镜标定
 - [ ] 组 B 逐项评估
