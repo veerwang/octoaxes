@@ -108,6 +108,10 @@ AXIS_CONFIG = {
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 matches legacy Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,      # 2026-05-21 matches legacy Squid MICROSTEPPING_DEFAULT_W=64
+        # 2026-07-10 add current/hold so the GUI's _configure_actuators also sends them to the filter wheel (= firmware
+        # FILTERWHEEL constants, bit-for-bit equivalent; if not sent, falls back to the firmware default). Same handling as octoaxes W/W2.
+        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA
+        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
     "W2": {
         "display_name": "Filter Wheel 2 - w2_axis",
@@ -121,6 +125,8 @@ AXIS_CONFIG = {
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 matches legacy Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,
+        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA (same as W1/firmware)
+        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
     "Turret": {
         # 2026-06-02 objective turret (4 objectives): physical R axis (HC154 ch3), firmware icID=5.

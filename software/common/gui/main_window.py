@@ -1581,7 +1581,11 @@ class TeensyControlGUI(QMainWindow):
         """
         if self.serial_thread is None:
             return
-        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z}
+        # 2026-07-10 include the filter wheels W/W2 (and octoaxesplus's W1), so the GUI also sends their
+        # pitch/microstepping/current/hold at startup (values taken from constants, matching the firmware config.h FILTERWHEEL constants).
+        # axes missing a field are still skipped by the None guard below -> fall back to the firmware default (same as the legacy Squid logic).
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z,
+                          "W": AXIS.W, "W1": AXIS.W, "W2": AXIS.W2}
         for axis_name, config in AXIS_CONFIG.items():
             protocol_axis = _AXIS_PROTOCOL.get(axis_name)
             if protocol_axis is None:

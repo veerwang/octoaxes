@@ -105,6 +105,11 @@ AXIS_CONFIG = {
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 matches legacy Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,      # 2026-05-21 matches legacy Squid MICROSTEPPING_DEFAULT_W=64
+        # 2026-07-10 add current/hold so the GUI's _configure_actuators also sends cmd21/23 to the filter wheel.
+        # values match the firmware config.h FILTERWHEEL constants -> sending = explicit sync, no behavior change; if legacy
+        # Squid doesn't send, the firmware default is used (all three consistent). firmware begin() and cmd21 both go through motor_initDriver, 3100 is bit-for-bit equivalent.
+        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA
+        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
     "W2": {
         "display_name": "Filter Wheel 2 - expand4_axis",
@@ -118,6 +123,8 @@ AXIS_CONFIG = {
         # encoder not added yet (requires E4 hardware ABN installed + added to _configure_encoders + firmware encoderLinesPerRev to take effect).
         "actuator_screw_pitch_mm": 1.0,    # align with W / legacy Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,      # align with W / legacy Squid MICROSTEPPING_DEFAULT_W=64
+        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA (align with W / firmware)
+        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
     "Turret": {
         # 2026-05-29 on this board the icID=5 slot connects to the objective turret (4 objectives), CS=pin 19/CLK=pin 28.
