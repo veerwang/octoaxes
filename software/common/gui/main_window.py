@@ -1,6 +1,7 @@
 import time
 import datetime
 import os
+import json
 from typing import Optional
 
 from define import CMD_SET, AXIS, AXIS_MOVE_CMD_MAP, AXIS_MOVETO_CMD_MAP, AXIS_LIMIT_CODE_MAP
@@ -10,13 +11,7 @@ from define import (
     OBJECTIVE_RATIO,
     SCREW_PITCH_W_MM,
     OBJECTIVE_HOLES,
-    OBJECTIVE_NEXT_SIGN,
-    OBJECTIVE_GEAR_LARGE,
-    OBJECTIVE_BACKLASH_FACTOR_MM,
-    OBJECTIVE_MOTOR_CURRENT_RMS_MA,
-    OBJECTIVE_MOTOR_I_HOLD,
-    OBJECTIVE_MAX_VELOCITY_MM,
-    OBJECTIVE_MAX_ACCELERATION_MM,
+    objective_slot_angle,
 )
 from define import SQUID_FILTERWHEEL_OFFSET
 from utils.helpers import int_to_payload
@@ -45,7 +40,7 @@ from hardware.serial_thread import SerialThread
 from gui.widgets import AxisStatusDisplay, ControlPanel, LogDisplay, IlluminationPanel
 from gui.test_panel import IntegrationTestPanel
 from hardware.axis_manager import AxisManager
-from utils.constants import AXIS_CONFIG, AXIS_MM_PER_STEP
+from utils.constants import AXIS_CONFIG, AXIS_MM_PER_STEP, FULLSTEPS_PER_REV
 from utils.helpers import format_command, find_teensy_port
 
 
@@ -64,11 +59,9 @@ class TeensyControlGUI(QMainWindow):
         # 添加轴使能状态字典（从 AXIS_CONFIG 动态生成，跟随 profile）
         self.axis_enabled_states = {axis: True for axis in AXIS_CONFIG.keys()}
 
-        # 物镜转换器上次换位方向（齿轮回程间隙补偿用，False=previous 基线）；
-        # homing 后重置
-        self._objective_move_direction = False
-        # 物镜 W 轴电机参数是否已下发（懒加载，首次换位/homing 前下发一次）
-        self._objective_configured = False
+        # 物镜转换器：当前工位 index(0..3) + 工位角度标定持久化路径（融合 new-W-axis A5 闭环版）
+        self._objective_slot = 0
+        self._OBJ_CALIB_PATH = os.path.expanduser("~/.octoaxes/objective_calib.json")
 
         self.init_ui()
         self.setup_timers()
@@ -172,6 +165,13 @@ class TeensyControlGUI(QMainWindow):
         self.control_panel.axis_changed.connect(self.on_axis_changed)
         self.control_panel.move_absolute_clicked.connect(self.moveto_axis)
         self.control_panel.velocity_accel_set.connect(self.send_velocity_acceleration)
+        # 物镜转换器工位标定 + 绝对定位（融合 new-W-axis A5 闭环版）
+        self.control_panel.goto_slot0_clicked.connect(self.goto_objective_slot0)
+        self.control_panel.objective_read_current.connect(self.on_objective_read_current)
+        self.control_panel.objective_goto_slot.connect(self.on_objective_goto_slot)
+        for _e in self.control_panel.objective_angle_edits:
+            _e.editingFinished.connect(self._save_objective_calib)
+        self._load_objective_calib()  # 从配置文件恢复标定值
 
         layout.addWidget(self.control_panel)
 
@@ -674,9 +674,10 @@ class TeensyControlGUI(QMainWindow):
         finally:
             self._query_mutex.unlock()
 
-    def wait_until_idle(self, timeout: float = 10) -> bool:
-        """等待轴回到 IDLE 状态（线程安全）"""
-        axis = self.get_current_axis()
+    def wait_until_idle(self, timeout: float = 10, axis: Optional[str] = None) -> bool:
+        """等待轴回到 IDLE 状态（线程安全）。axis 省略时用当前轴。"""
+        if axis is None:
+            axis = self.get_current_axis()
         start = time.time()
 
         while time.time() - start < timeout:
@@ -716,6 +717,10 @@ class TeensyControlGUI(QMainWindow):
         #   Z   sign=-1 → data[3]=0 (HOME_POSITIVE=朝+方向)
         sign = AXIS_CONFIG.get(axis, {}).get("movement_sign", 1)
         home_dir = 1 if sign == 1 else 0
+        # 物镜「到位去使能」：homing 起步前使能 + 显示置 ON（GUI 唯一权威；到位后在 objective 分支调度去使能）
+        if AXIS_CONFIG.get(axis, {}).get("type") == "objective":
+            self._objective_cancel_rest_disable()
+            self._objective_set_enable(axis, True)
         self._home_or_zero(protocol_axis, home_dir)
 
         # 更新状态
@@ -737,11 +742,22 @@ class TeensyControlGUI(QMainWindow):
             self._move_step_axis_relative_position(axis, offset_um)
             self.log(f"Filter wheel {axis} moving offset: {offset_um} μm")
         elif axis_type == "objective":
-            # 物镜转换器 homing 后无 offset；重置齿隙补偿方向基线
-            self._objective_move_direction = False
-            self.log(f"Objective {axis} homed (no offset needed)")
+            # 纯 homing：只回 home，不再自动移到工位0。
+            # 移到工位0(第一工位)已拆分为独立按钮（见 goto_objective_slot0）。
+            self.log(f"Objective {axis} homed (pure homing, no slot move; use 'Go to Slot 0' to position)")
+            # homing 到位：延迟去使能让弹片把 home 位归中（GUI 主导）
+            self._objective_schedule_rest_disable(axis)
         else:
             self.set_limits()
+
+    def goto_objective_slot0(self):
+        """独立按钮：把物镜移到工位0(第一工位)。从 homing 拆分出来的 offset 动作。"""
+        axis = self.get_current_axis()
+        if AXIS_CONFIG.get(axis, {}).get("type") != "objective":
+            self.log(f"Axis {axis} is not an objective axis, ignoring 'Go to Slot 0'")
+            return
+        self.log(f"Objective {axis} → Go to Slot 0 (first)")
+        self._objective_goto_slot(0)
 
     def send_reset(self):
         command = format_command(self.get_current_axis(), "RESET")
@@ -761,7 +777,7 @@ class TeensyControlGUI(QMainWindow):
         if axis_type == "filter_wheel":
             self.move_filterwheel(False)
         elif axis_type == "objective":
-            self.move_objective(False)
+            self._objective_goto(-1)
 
     def next_position(self):
         """移动到下一个位置（滤光轮/物镜）"""
@@ -770,7 +786,7 @@ class TeensyControlGUI(QMainWindow):
         if axis_type == "filter_wheel":
             self.move_filterwheel(True)
         elif axis_type == "objective":
-            self.move_objective(True)
+            self._objective_goto(+1)
 
     def run_w_test(self):
         """W轴自动测试（丰富版 2026-07-09）：编码器丢步检测。
@@ -923,18 +939,21 @@ class TeensyControlGUI(QMainWindow):
             if axis == self.get_current_axis():
                 self.update_current_axis_display(axis)
 
-                if "position_mm" in status:
-                    sign = AXIS_CONFIG[axis]["movement_sign"]
-                    mm = float(status["position_mm"]) * sign
-                    self.pos_label.setText(f"Current Position: {mm:.4f} mm")
-                if "position_steps" in status:
-                    sign = AXIS_CONFIG[axis]["movement_sign"]
-                    s = int(status['position_steps']) * sign
-                    if AXIS_CONFIG[axis].get("has_encoder"):
-                        enc = int(status.get("encoder_steps", 0)) * sign
-                        self.steps_label.setText(f"Encoder: {enc} | Microsteps: {s}")
-                    else:
-                        self.steps_label.setText(f"Microsteps: {s}")
+                if self._render_objective_position(axis):
+                    pass  # 物镜轴显示工位/角度，跳过默认 mm/microstep 渲染
+                else:
+                    if "position_mm" in status:
+                        sign = AXIS_CONFIG[axis]["movement_sign"]
+                        mm = float(status["position_mm"]) * sign
+                        self.pos_label.setText(f"Current Position: {mm:.4f} mm")
+                    if "position_steps" in status:
+                        sign = AXIS_CONFIG[axis]["movement_sign"]
+                        s = int(status['position_steps']) * sign
+                        if AXIS_CONFIG[axis].get("has_encoder"):
+                            enc = int(status.get("encoder_steps", 0)) * sign
+                            self.steps_label.setText(f"Encoder: {enc} | Microsteps: {s}")
+                        else:
+                            self.steps_label.setText(f"Microsteps: {s}")
                 if "enabled" in status:
                     enabled = status["enabled"] == "YES"
                     self.axis_enabled_states[axis] = enabled
@@ -998,15 +1017,16 @@ class TeensyControlGUI(QMainWindow):
         # 更新当前轴详细显示（pos_label / steps_label / state labels）
         current_axis = self.get_current_axis()
         if current_axis in steps:
-            s    = steps[current_axis]
-            sign = AXIS_CONFIG[current_axis]["movement_sign"]
-            mm_per_step = AXIS_MM_PER_STEP.get(current_axis, 0.0)
-            um   = s * mm_per_step * 1000 * sign
-            self.pos_label.setText(f"Current Position: {um:.2f} μm")
-            if AXIS_CONFIG[current_axis].get("has_encoder"):
-                self.steps_label.setText(f"Position (encoder): {um:.2f} μm")
-            else:
-                self.steps_label.setText(f"Position (steps): {um:.2f} μm")
+            if not self._render_objective_position(current_axis):
+                s    = steps[current_axis]
+                sign = AXIS_CONFIG[current_axis]["movement_sign"]
+                mm_per_step = AXIS_MM_PER_STEP.get(current_axis, 0.0)
+                um   = s * mm_per_step * 1000 * sign
+                self.pos_label.setText(f"Current Position: {um:.2f} μm")
+                if AXIS_CONFIG[current_axis].get("has_encoder"):
+                    self.steps_label.setText(f"Position (encoder): {um:.2f} μm")
+                else:
+                    self.steps_label.setText(f"Position (steps): {um:.2f} μm")
             self.update_current_axis_display(current_axis)
 
     def log(self, message):
@@ -1039,7 +1059,7 @@ class TeensyControlGUI(QMainWindow):
         current_axis = self.get_current_axis()
         self.update_current_axis_display(current_axis)
         status = self.axis_manager.get_axis_status(current_axis)
-        if status:
+        if status and not self._render_objective_position(current_axis):
             sign = AXIS_CONFIG[current_axis]["movement_sign"]
             s    = int(status.get("position_steps", 0))
             mm_per_step = AXIS_MM_PER_STEP.get(current_axis, 0.0)
@@ -1200,7 +1220,13 @@ class TeensyControlGUI(QMainWindow):
         """发送 SET_AXIS_DISABLE_ENABLE 二进制命令，返回是否成功"""
         if self.serial_thread is None:
             return False
-        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W}
+        # 与 send_homing 的协议映射一致（含物镜 Turret + octoaxesplus W1/W2），
+        # 否则物镜「到位去使能」的 cmd32 会因缺映射静默失败。
+        _AXIS_PROTOCOL = {
+            "X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z,
+            "W": AXIS.W, "W1": AXIS.W, "W2": AXIS.W2,
+            "Turret": AXIS.TURRET,
+        }
         protocol_axis = _AXIS_PROTOCOL.get(axis_name)
         if protocol_axis is None:
             self.log(f"Axis {axis_name} does not support enable/disable via binary protocol")
@@ -1334,127 +1360,191 @@ class TeensyControlGUI(QMainWindow):
 
         return self.serial_thread.send_binary_command(cmd)
 
-    def _ensure_objective_configured(self, axis_name: str) -> None:
-        """首次换位前下发物镜 W 轴电机参数（懒加载，仅一次）。
+    # ── 物镜转换器：到位去使能（弹片自定位）+ 工位标定 + 绝对定位（融合 new-W-axis A5 闭环版） ──
+    # 固件不自主定时去使能；GUI 在物镜 move/homing 起步前使能、到位后延迟去使能，
+    # 并在每次 enable/disable 时同步刷新 GUI 显示 → Enabled 显示与真实使能态始终一致。
+    # 固件 enableAxis/disableAxis 对该轴做原子完整动作（enable=同步编码器位置+通电+恢复PID，
+    # disable=松PID+断电），见 firmware/octoaxes/axis.cpp。
 
-        覆盖固件默认为更柔和的运动（与参考 software_20260601 物镜转换器一致）：
-        螺距/微步取自 AXIS_CONFIG（profile-safe），电流/保持/速度/加速度取自
-        define.py 的 OBJECTIVE_* 常量。电流按 RMS 下发（CONFIGURE_STEPPER_DRIVER
-        协议期望 RMS，非峰值）。仅作用于正常换位；homing 仍用固件默认（homing
-        有独立速度，且更高 homing 扭矩无害）。
-        """
-        if self._objective_configured or self.serial_thread is None:
+    def _objective_set_enable(self, axis, enable):
+        """发送 cmd32 使能/去使能 + 仅刷新「Enabled」标签显示。
+        ★ 绝不动 axis_enabled_states / control_panel.set_enable_state —— 那是【按钮使能守卫】
+          (emit_homing/emit_goto_slot0 等靠 control_panel.axis_enabled 判断是否发信号)。rest 自动
+          去使能是透明的，若把守卫置 False 会让 Homing/移动按钮点了不响应。
+          只有用户【手动】Disable 才该卡按钮。这里只更新标签，让显示反映真实驱动态、又不卡按钮。"""
+        if not self._set_axis_enable(axis, enable):
             return
-        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W, "Turret": AXIS.TURRET}
-        protocol_axis = _AXIS_PROTOCOL.get(axis_name)
-        if protocol_axis is None:
-            # 无协议映射的物镜轴，跳过下发，靠固件默认
+        self.axis_manager.update_axis_status(axis, {"enabled": "YES" if enable else "NO"})
+        if axis == self.get_current_axis():
+            self.update_current_axis_display(axis)
+
+    def _objective_cancel_rest_disable(self):
+        """取消挂起的 rest 去使能定时器（起步/拆步前调用，防误触发）。"""
+        t = getattr(self, "_objective_rest_timer", None)
+        if t is not None:
+            t.stop()
+
+    def _objective_schedule_rest_disable(self, axis):
+        """到位后延迟 rest_disable_delay_ms 去使能（非阻塞 QTimer），让弹片把转盘归中。
+        多槽拆步每步都(重)调度，前一步的定时器在下一步起步被 cancel，只有最后一步真正触发。"""
+        self._objective_rest_axis = axis
+        t = getattr(self, "_objective_rest_timer", None)
+        if t is None:
+            t = QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(self._objective_rest_disable_fire)
+            self._objective_rest_timer = t
+        delay = AXIS_CONFIG.get(axis, {}).get("rest_disable_delay_ms", 100)
+        t.start(int(delay))
+
+    def _objective_rest_disable_fire(self):
+        """rest 去使能定时器到点：去使能 + 显示置 OFF。"""
+        axis = getattr(self, "_objective_rest_axis", None)
+        if axis is None:
             return
-        cfg = AXIS_CONFIG.get(axis_name, {})
-        pitch_mm = cfg.get("actuator_screw_pitch_mm", SCREW_PITCH_W_MM)
-        microstepping = cfg.get("actuator_microstepping", 64)
+        self._objective_set_enable(axis, False)
+        self.log(f"Objective {axis} rest: 去使能（弹片自定位）")
 
-        # SET_LEAD_SCREW_PITCH (cmd 23): data[3..4]=pitch*1000 (uint16 大端)
-        pitch_x1000 = int(round(pitch_mm * 1000))
-        cmd = bytearray(8)
-        cmd[1] = CMD_SET.SET_LEAD_SCREW_PITCH
-        cmd[2] = protocol_axis
-        cmd[3] = (pitch_x1000 >> 8) & 0xFF
-        cmd[4] = pitch_x1000 & 0xFF
-        self.serial_thread.send_binary_command(cmd)
+    def _objective_angle_to_position_um(self, axis, deg):
+        """物镜盘角度(°) → 绝对移动 position(μm，电机轴量纲，含齿轮比 2.75 + sign)。"""
+        sign = AXIS_CONFIG[axis]["movement_sign"]
+        ms = AXIS_CONFIG[axis].get("actuator_microstepping", 64)
+        usteps_per_obj_rev = OBJECTIVE_RATIO * FULLSTEPS_PER_REV * ms   # 物镜盘1圈电机µstep
+        physical_microstep = deg / 360.0 * usteps_per_obj_rev * sign
+        mm_per_step = AXIS_MM_PER_STEP[axis]
+        return physical_microstep * mm_per_step * 1000.0
 
-        # CONFIGURE_STEPPER_DRIVER (cmd 21): microstep 编码 + current(uint16,RMS) + hold*255
-        if microstepping == 1:
-            ms_byte = 0
-        elif microstepping >= 256:
-            ms_byte = 255
-        else:
-            ms_byte = int(microstepping) & 0xFF
-        current_int = int(round(OBJECTIVE_MOTOR_CURRENT_RMS_MA)) & 0xFFFF
-        hold_byte = max(0, min(255, int(round(OBJECTIVE_MOTOR_I_HOLD * 255))))
-        cmd = bytearray(8)
-        cmd[1] = CMD_SET.CONFIGURE_STEPPER_DRIVER
-        cmd[2] = protocol_axis
-        cmd[3] = ms_byte
-        cmd[4] = (current_int >> 8) & 0xFF
-        cmd[5] = current_int & 0xFF
-        cmd[6] = hold_byte
-        self.serial_thread.send_binary_command(cmd)
+    def _objective_goto_slot(self, slot):
+        """绝对移动到工位 slot。统一拆步：跨多个槽时一律【一格一格】移动，
+        绕开大跨度单次闭环移动的原地啸叫堵转。
 
-        # SET_MAX_VELOCITY_ACCELERATION (cmd 22)
-        self._set_max_velocity_acceleration(
-            axis_name, OBJECTIVE_MAX_VELOCITY_MM, OBJECTIVE_MAX_ACCELERATION_MM
-        )
+        实测（Mega 2026-06-24）：物镜单次 >1 槽的闭环移动（如 slot0→3）会触发电机原地
+        啸叫堵转、盘不走（疑大跨度积分饱和 / 闭环跟随误差超阈，与 P 大小无关）；而 1 槽
+        移动永远正常。故任意 >1 槽目标都拆成连续的 1 槽移动，每步复用
+        _objective_move_to_slot_single（含 wait_until_idle 等到位）。走非环绕的整数槽路径。"""
+        if not self.is_connected():
+            self.log("Not connected to Teensy")
+            return
+        n = OBJECTIVE_HOLES
+        current = self._objective_slot
+        target = slot % n
+        dist = target - current
+        if dist == 0:
+            # 同槽：仍执行一次绝对移动（兼容显式 goto / 重标定后的微修正）
+            self._objective_move_to_slot_single(target)
+            return
+        step = 1 if dist > 0 else -1
+        if abs(dist) > 1:
+            self.log(f"Objective: {current}→{target}（{abs(dist)} 槽）一格一格拆步移动")
+        s = current
+        while s != target:
+            s += step
+            if not self._objective_move_to_slot_single(s):
+                self.log(f"Objective: 拆步在 Slot {s} 失败/超时，停止后续步进")
+                return
 
-        self._objective_configured = True
-        self.log(
-            f"Objective {axis_name} motor configured: pitch={pitch_mm}mm "
-            f"microstep={microstepping} current={OBJECTIVE_MOTOR_CURRENT_RMS_MA}mA(RMS) "
-            f"hold={OBJECTIVE_MOTOR_I_HOLD} vel={OBJECTIVE_MAX_VELOCITY_MM} "
-            f"acc={OBJECTIVE_MAX_ACCELERATION_MM}"
-        )
-
-    def move_objective(self, is_next):
-        """物镜转换器换位（齿轮减速转盘）。
-
-        与 filter wheel 的不同点：
-        1. 直接 mm → 微步一次 round，不经 μm 整数中转，避免 1 槽 0.6875mm
-           被 int(687.5)=687 截断丢失约 7 微步/槽的累积误差。
-        2. 齿轮（132/48）有回程间隙，换向时先走一小段吃掉齿隙再正式换位，
-           否则换向后第一次换位欠转、物镜偏离光轴。补偿移动需等其完成，
-           否则会被随后的正式换位命令 mid-flight 覆盖（firmware STATE_MOVING
-           覆盖 XTARGET）。
-        3. 运动期间确保轴使能（参考实现 enable→move→disable）。本实现记录
-           移动前的使能状态，结束后恢复：若原本禁用则临时使能、移动到位后再
-           禁用；若原本已使能则保持。注意：使能/失能必须包住整段运动，且断电
-           前必须等正式换位到位，否则中途掉电丢步——故正式换位也改为同步等待。
-        """
+    def _objective_move_to_slot_single(self, slot):
+        """单步：绝对移动到工位 slot（按 lineEdit 标定角度）。返回 True=到位 / False=超时或错误。"""
+        if not self.is_connected():
+            self.log("Not connected to Teensy")
+            return False
         axis = self.get_current_axis()
-        mm_per_ustep = AXIS_MM_PER_STEP.get(axis)
-        if not mm_per_ustep:
-            self.log(f"No mm_per_step for axis: {axis}")
-            return
-
-        # 首次换位前下发柔和的物镜电机参数（懒加载，仅一次）
-        self._ensure_objective_configured(axis)
-
-        move_sign = OBJECTIVE_NEXT_SIGN if is_next else -OBJECTIVE_NEXT_SIGN
-
-        # 运动期间确保使能；记录原状态用于结束恢复
-        was_enabled = self.axis_enabled_states.get(axis, True)
-        if not was_enabled:
-            self._set_axis_enable(axis, True)
-            time.sleep(0.2)
+        n = OBJECTIVE_HOLES
+        self._objective_slot = slot % n
+        slot = self._objective_slot
         try:
-            # 齿轮回程间隙补偿：仅在换向时先吃齿隙
-            if is_next != self._objective_move_direction:
-                backlash_mm = (OBJECTIVE_RATIO * OBJECTIVE_BACKLASH_FACTOR_MM) / OBJECTIVE_GEAR_LARGE
-                backlash_usteps = int(round(move_sign * backlash_mm / mm_per_ustep))
-                if backlash_usteps:
-                    self._move_step_axis_relative_usteps(axis, backlash_usteps)
-                    # 手动置 MOVING 后等完成，确保正式换位不覆盖齿隙补偿
-                    self.axis_manager.axis_status[axis]["state"] = "MOVING"
-                    self.wait_until_idle(15)
-                    self.log(
-                        f"Objective backlash takeup: {backlash_usteps} usteps "
-                        f"(-> {'next' if is_next else 'previous'})"
-                    )
-            self._objective_move_direction = is_next
+            deg = float(self.control_panel.objective_angle_edits[slot].text())
+        except (ValueError, IndexError):
+            deg = slot * (360.0 / n)
+        pos_um = self._objective_angle_to_position_um(axis, deg)
+        target_micro = int(pos_um / 1000.0 / AXIS_MM_PER_STEP[axis])
+        before = (self.axis_manager.get_axis_status(axis) or {}).get("position_steps", 0)
+        # 物镜「到位去使能」起步：取消挂起的延迟去使能 + 使能 + 显示置 ON（GUI 唯一权威）
+        self._objective_cancel_rest_disable()
+        self._objective_set_enable(axis, True)
+        self._move_step_axis_absolute_position(axis, pos_um)
+        # 超时给 65s（≥ 固件该轴动态移动超时上限 60s）：物镜低速移动可达数十秒，
+        # wait_until_idle 会在真正回到 IDLE / 进 ERROR 时提前返回，65 只是兜底上限。
+        ok = self.wait_until_idle(65, axis)
+        if not ok:
+            self.log(f"Objective {axis} moveto timeout")
+        after = (self.axis_manager.get_axis_status(axis) or {}).get("position_steps", 0)
+        self.log(f"Objective {axis} → Slot {slot} ({deg:.1f}°) MOVETO "
+                 f"target_ustep={target_micro} before={before} after={after}")
+        # 到位成功才调度延迟去使能（让弹片归中）；超时/出错则保持使能以便诊断/恢复。
+        # 多槽拆步：本步的定时器会在下一步起步时被 cancel，只有最后一步真正触发去使能。
+        if ok:
+            self._objective_schedule_rest_disable(axis)
+        return ok
 
-            # 正式换位：1 槽 = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES mm
-            mm_per_slot = OBJECTIVE_RATIO * SCREW_PITCH_W_MM / OBJECTIVE_HOLES
-            usteps = int(round(move_sign * mm_per_slot / mm_per_ustep))
-            self._move_step_axis_relative_usteps(axis, usteps)
-            # 断电前必须等到位
-            self.axis_manager.axis_status[axis]["state"] = "MOVING"
-            self.wait_until_idle(15)
-            direction = "Next" if is_next else "Previous"
-            self.log(f"Sent objective move ({direction}): {usteps} usteps")
-        finally:
-            # 恢复移动前的使能状态（原本禁用才回到禁用，避免误改 GUI 跟踪状态）
-            if not was_enabled:
-                self._set_axis_enable(axis, False)
-                time.sleep(0.2)
+    def _objective_goto(self, direction):
+        """物镜 Next(+1)/Previous(-1)：工位 index 循环 → 绝对移动到该工位标定角度。"""
+        self._objective_goto_slot(self._objective_slot + direction)
+
+    def on_objective_goto_slot(self, slot):
+        """「移动到」：把物镜绝对移动到工位 slot 的标定角度。"""
+        axis = self.get_current_axis()
+        if AXIS_CONFIG.get(axis, {}).get("type") != "objective":
+            self.log(f"Axis {axis} is not an objective axis, ignoring 'Go To Slot {slot}'")
+            return
+        self.log(f"Objective {axis} → Go To Slot {slot}")
+        self._objective_goto_slot(slot)
+
+    def on_objective_read_current(self, slot):
+        """「读当前」：把当前显示的物镜盘角度填入工位 slot 的 lineEdit + 持久化。"""
+        axis = self.get_current_axis()
+        if AXIS_CONFIG.get(axis, {}).get("type") != "objective":
+            return
+        status = self.axis_manager.get_axis_status(axis) or {}
+        s = int(status.get("position_steps", 0))
+        sign = AXIS_CONFIG[axis]["movement_sign"]
+        ms = AXIS_CONFIG[axis].get("actuator_microstepping", 64)
+        _, deg = objective_slot_angle(s * sign, ms)
+        try:
+            self.control_panel.objective_angle_edits[slot].setText(f"{deg:.1f}")
+        except IndexError:
+            return
+        self._objective_slot = slot      # 标定该工位即认为当前停在此工位
+        self._save_objective_calib()
+        self.log(f"Slot {slot} calibrated to {deg:.1f}° (current reading)")
+
+    def _save_objective_calib(self):
+        """保存 4 工位角度到配置文件。"""
+        try:
+            angles = [e.text() for e in self.control_panel.objective_angle_edits]
+            os.makedirs(os.path.dirname(self._OBJ_CALIB_PATH), exist_ok=True)
+            with open(self._OBJ_CALIB_PATH, "w", encoding="utf-8") as f:
+                json.dump({"objective_angles": angles}, f)
+        except Exception as e:
+            self.log(f"Failed to save objective calibration: {e}")
+
+    def _load_objective_calib(self):
+        """启动从配置文件恢复 4 工位角度（无文件则保留默认 0/90/180/270）。"""
+        try:
+            if os.path.exists(self._OBJ_CALIB_PATH):
+                with open(self._OBJ_CALIB_PATH, encoding="utf-8") as f:
+                    data = json.load(f)
+                angles = data.get("objective_angles", [])
+                edits = self.control_panel.objective_angle_edits
+                for i, a in enumerate(angles[:len(edits)]):
+                    edits[i].setText(str(a))
+        except Exception as e:
+            self.log(f"Failed to load objective calibration: {e}")
+
+    def _render_objective_position(self, axis):
+        """物镜轴：把 pos_label/steps_label 渲染为「工位 / 物镜盘角度」（含齿轮比 2.75）。
+        返回 True 表示已渲染（调用方应跳过默认 μm/steps 渲染）；非物镜轴返回 False。"""
+        if AXIS_CONFIG.get(axis, {}).get("type") != "objective":
+            return False
+        status = self.axis_manager.get_axis_status(axis) or {}
+        sign = AXIS_CONFIG[axis]["movement_sign"]
+        s = int(status.get("position_steps", 0)) * sign
+        ms = AXIS_CONFIG[axis].get("actuator_microstepping", 64)
+        slot, deg = objective_slot_angle(s, ms)
+        src = "encoder" if AXIS_CONFIG[axis].get("has_encoder") else "steps"
+        self.pos_label.setText(f"Objective: Slot {slot} / Wheel {deg:.1f}°")
+        self.steps_label.setText(f"Position ({src}): Slot {slot} / {deg:.1f}°")
+        return True
 
     # ====== 照明命令发送 ======
 
@@ -1661,10 +1751,15 @@ class TeensyControlGUI(QMainWindow):
             )
 
     def _configure_encoders(self):
-        """启动时为编码器轴下发 CONFIGURE_STAGE_PID"""
+        """启动时为编码器轴下发 CONFIGURE_STAGE_PID（启用编码器上报）；
+        若该轴 pid_enabled，则额外按顺序 SET_PID_ARGUMENTS(前) + ENABLE_STAGE_PID(后)
+        开启闭环（融合 new-W-axis A5：物镜 Turret 闭环）。顺序关键：SET_PID 必须在
+        CONFIGURE 之前（firmware configureStagePID 的 motor_initPID 用当前 _pidState
+        写 chip PID 寄存器）。Turret=AXIS.TURRET(7)。"""
         if self.serial_thread is None:
             return
-        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z, "W": AXIS.W}
+        _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z,
+                          "W": AXIS.W, "Turret": AXIS.TURRET}
         for axis_name, config in AXIS_CONFIG.items():
             if not config.get("has_encoder"):
                 continue
@@ -1673,6 +1768,23 @@ class TeensyControlGUI(QMainWindow):
             protocol_axis = _AXIS_PROTOCOL.get(axis_name)
             if protocol_axis is None or tpr == 0:
                 continue
+            pid_on = config.get("pid_enabled", False)
+            p = int(config.get("pid_p", 0)) & 0xFFFF
+            i = int(config.get("pid_i", 0)) & 0xFF
+            d = int(config.get("pid_d", 0)) & 0xFF
+
+            # ① SET_PID_ARGUMENTS（在 CONFIGURE 之前，供 initPID 写寄存器）
+            if pid_on:
+                pcmd = bytearray(8)
+                pcmd[1] = CMD_SET.SET_PID_ARGUMENTS
+                pcmd[2] = protocol_axis
+                pcmd[3] = (p >> 8) & 0xFF
+                pcmd[4] = p & 0xFF
+                pcmd[5] = i
+                pcmd[6] = d
+                self.serial_thread.send_binary_command(pcmd)
+
+            # ② CONFIGURE_STAGE_PID（启用编码器 + initPID）
             cmd = bytearray(8)
             cmd[1] = CMD_SET.CONFIGURE_STAGE_PID
             cmd[2] = protocol_axis
@@ -1680,7 +1792,17 @@ class TeensyControlGUI(QMainWindow):
             cmd[4] = (tpr >> 8) & 0xFF
             cmd[5] = tpr & 0xFF
             self.serial_thread.send_binary_command(cmd)
-            self.log(f"Encoder configured: {axis_name} tpr={tpr} flip={flip}")
+
+            # ③ ENABLE_STAGE_PID（开闭环）
+            if pid_on:
+                ecmd = bytearray(8)
+                ecmd[1] = CMD_SET.ENABLE_STAGE_PID
+                ecmd[2] = protocol_axis
+                self.serial_thread.send_binary_command(ecmd)
+                self.log(f"Encoder+PID closed-loop: {axis_name} tpr={tpr} flip={flip} "
+                         f"P={p} I={i} D={d}")
+            else:
+                self.log(f"Encoder configured: {axis_name} tpr={tpr} flip={flip}")
 
     def closeEvent(self, event):
         # 关闭日志文件

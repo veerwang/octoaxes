@@ -131,13 +131,14 @@ AXIS_CONFIG = {
     "Turret": {
         # 2026-06-02 物镜转换器（4 物镜）：物理 R 轴（HC154 ch3），firmware icID=5。
         # 复用 octoaxes E1 协议 MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7。
-        # GUI widgets.py 渲染物镜控制页；main_window.previous/next → move_objective()。
+        # GUI widgets.py 渲染物镜控制页；main_window.previous/next → _objective_goto()（融合 A5 闭环：
+        # 绝对定位到工位标定角度）。⚠ octoaxesplus R 轴暂未配 encoder/PID 字段 → 走绝对定位无闭环，
+        # 待该硬件确认编码器后按 octoaxes Turret 补 has_encoder/pid_* 字段。
         "display_name": "Objectives - r_axis",
         "type": "objective",
         "has_limits": False,
         "limits": (0, 3),       # 4 物镜 slot 0..3，与 define.py OBJECTIVE_SWITCH_MAX_INDEX=3 一致
-        # movement_sign=-1：翻转显示（pos/steps/状态表乘 sign），让 Next 显正值；
-        # 不影响 move_objective 物理方向（它硬编码符号，不用 sign）。
+        # movement_sign=1：显示 + _objective_angle_to_position_um 角度→µstep 换算均乘 sign。
         "movement_sign": 1,
         "index": 5,             # firmware icID（octoaxesplus.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # 对齐 config.h SCREW_PITCH_OBJECTIVES_MM=1

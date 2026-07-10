@@ -9,20 +9,10 @@ OBJECTIVE_GEAR_LARGE = 132.0
 OBJECTIVE_GEAR_SMALL = 48.0
 OBJECTIVE_RATIO = OBJECTIVE_GEAR_LARGE / OBJECTIVE_GEAR_SMALL
 SCREW_PITCH_W_MM = 1
-# Next 槽位对应的电机微步方向（负方向前进一格，与历史 move_objective 一致）
-OBJECTIVE_NEXT_SIGN = -1
-# 齿轮回程间隙补偿经验系数（mm）：换向时先走一小段吃掉齿隙，否则换向后第一次
-# 换位欠转、物镜偏离光轴。补偿量 = OBJECTIVE_RATIO * 此系数 / OBJECTIVE_GEAR_LARGE
-# （来自 veerwang objectswitch 参考的经验值）
-OBJECTIVE_BACKLASH_FACTOR_MM = 0.2
-
-# 物镜 W 轴电机参数（上位机首次换位前显式下发，覆盖固件默认为更柔和的运动）。
-# 取值与参考 software_20260601 物镜转换器一致（同作者注明"更柔和/更安静"）：
-#   电流为 RMS（CONFIGURE_STEPPER_DRIVER 协议期望 RMS，非峰值）
-OBJECTIVE_MOTOR_CURRENT_RMS_MA = 1000
-OBJECTIVE_MOTOR_I_HOLD = 0.5
-OBJECTIVE_MAX_VELOCITY_MM = 0.5
-OBJECTIVE_MAX_ACCELERATION_MM = 10.0
+# 注：物镜转换器已于 A5 迁到「编码器+PID 闭环 + 工位标定绝对定位」（见 main_window
+# _objective_* 方法族）。电机电流/hold/速度/加速度改由 constants.py 各轴的 actuator_*
+# / default_velocity / default_acceleration 字段驱动（方案A：软件默认=固件默认）。
+# 旧开环 move_objective 的 NEXT_SIGN / 齿隙补偿 / RMS 电流常量随之移除。
 
 
 def objective_slot_angle(microsteps, microstepping, fullsteps_per_rev=200):
