@@ -129,15 +129,16 @@ AXIS_CONFIG = {
     "Turret": {
         # 2026-05-29 本电路板 icID=5 槽位接物镜转换器（4 物镜），CS=pin 19/CLK=pin 28。
         # 协议走专属 MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7（不复用 W 命令）。
-        # GUI widgets.py 渲染物镜控制页；main_window.previous/next → move_objective()，
-        # 齿轮减速比 OBJECTIVE_RATIO=132/48 × SCREW_PITCH_W_MM=1 / OBJECTIVE_HOLES=4 = 0.6875 mm/位。
+        # GUI widgets.py 渲染物镜控制页；main_window.previous/next → _objective_goto()（融合 A5 闭环：
+        # 绝对定位到工位标定角度，跨槽逐格拆步）。齿轮减速比 OBJECTIVE_RATIO=132/48 ×
+        # SCREW_PITCH_W_MM=1 / OBJECTIVE_HOLES=4 = 0.6875 mm/位（物镜盘 1 圈 = 电机 2.75 圈 = 4 物镜）。
         "display_name": "Turret - expand1_axis",
         "type": "objective",
         "has_limits": False,
         "limits": (0, 3),       # 4 物镜 slot 0..3，与 define.py OBJECTIVE_SWITCH_MAX_INDEX=3 一致
-        # 物镜位置显示符号：move_objective() 硬编码 -1（Next=负方向），但 GUI 期望 Next 显正值。
-        # movement_sign=-1 翻转显示（pos/steps/状态表乘 sign），且让 homing home_dir=0→HOME_POSITIVE
-        # →new_direct=+1 与 EXPAND1_AXIS.homing_direct=1 一致。不影响 move_objective 物理方向（它不用 sign）。
+        # 物镜位置显示 + 角度→位置换算符号：movement_sign=-1 既翻转显示（pos/steps/状态表 + slot/角度
+        # 乘 sign），也参与 _objective_angle_to_position_um（角度×sign→电机 µstep），Next 显正值。
+        # 且让 homing home_dir=0→HOME_POSITIVE→与 EXPAND1_AXIS.homing_direct=1 一致。
         "movement_sign": -1,
         "index": 5,             # firmware icID（octoaxes.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # 对齐 config.h SCREW_PITCH_OBJECTIVES_MM=1
