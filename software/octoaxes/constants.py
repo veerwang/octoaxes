@@ -105,6 +105,11 @@ AXIS_CONFIG = {
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,      # 2026-05-21 对齐旧 Squid MICROSTEPPING_DEFAULT_W=64
+        # 2026-07-10 补齐电流/hold，让 GUI 启动 _configure_actuators 也给滤光轮下发 cmd21/23。
+        # 值与固件 config.h FILTERWHEEL 常量一致 → 下发=显式同步、不改变行为；旧 Squid 不发则
+        # 用固件默认（三方一致）。firmware begin() 与 cmd21 同走 motor_initDriver，3100 逐位等价。
+        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA
+        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
     "W2": {
         "display_name": "Filter Wheel 2 - expand4_axis",
@@ -118,6 +123,8 @@ AXIS_CONFIG = {
         # 编码器暂不加（需 E4 硬件实装 ABN + 加进 _configure_encoders + 固件 encoderLinesPerRev 才生效）。
         "actuator_screw_pitch_mm": 1.0,    # 对齐 W / 旧 Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,      # 对齐 W / 旧 Squid MICROSTEPPING_DEFAULT_W=64
+        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA（对齐 W / 固件）
+        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
     "Turret": {
         # 2026-05-29 本电路板 icID=5 槽位接物镜转换器（4 物镜），CS=pin 19/CLK=pin 28。
