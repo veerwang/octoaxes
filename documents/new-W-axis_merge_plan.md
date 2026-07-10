@@ -116,17 +116,27 @@ A2/A3/A4（通用固件健壮性）→ A6（照明）→ A1（物镜类）→ A5
   - [x] **A1b 弹片自定位基础设施**（2026-07-09，`862abab`，纯固件）— MotorControl 加 `motor_syncXActualToEncoder`；axis.h 加 `_autoDisableAtRest`+`wakeForMotion()` 声明；axis.cpp disableAxis 断流不碰 PID / enableAxis 通电前 sync / wakeForMotion 实现 / move·moveRelative·startHoming 调 wakeForMotion / startHoming 关 PID 走开环；objectives begin `_autoDisableAtRest=true`。octoaxes + octoaxesplus 两 profile，两 firmware SUCCESS。⚠️ 去使能**时序由 GUI 主导（属 A5）**，GUI 未接管前**惰性**（无 cmd32 disable 就不去使能，wakeForMotion 只当安全网），其它轴 =false 行为不变。未烧录（随 A1a 上机验证）。
   - [x] **A1c Turret PID tolerance=10**（2026-07-09，`c9de0b5`）— axis.cpp configureStagePID 加 Turret 专属分支 tolerance=10（物镜盘 ±0.10°），W/W2 维持 20。Mega 是改 W(物镜)，本项目 W 是滤光轮故单开 Turret 分支。两 profile，两 firmware SUCCESS。未烧录。
   - **A1 firmware 侧全部完成**（A1a/A1b/A1c）；剩物镜 GUI（弹片自定位时序 cmd32 + 工位标定/绝对定位/PID 下发）归入 A5。
-- [ ] A5 GUI 物镜标定
+- [x] **A5 GUI 物镜标定（闭环版，2026-07-10 代码完成，未上机）**——落到本项目 objective 轴=Turret，
+      按 A 方案一次性内聚移植（对应 Mega A5 全部 8 提交 82e9f0e/152d50e/763fe5a/adb5365/cef69b5/518a5c6/d129a32/81d0e68），3 内聚提交：
+  - **A5 基础** `508ff6d`（会话前）— Turret constants 启用 encoder(tpr=4000/flip=True)+PID(1536/2/16)+auto_disable；define `objective_slot_angle`（齿轮比 2.75）。
+  - **A5 widgets** `cdf53ad` — ControlPanel 加物镜标定 UI：4 工位角度框(默认0/90/180/270)+每行 Read/Go To、Vel/Acc、独立「Go to Slot 0」按钮；AxisStatusDisplay objective 位置显示「Slot N / 角度°」；3 信号。
+  - **A5 main_window** `4a4f920` — 换位改绝对定位到标定角度(跨槽逐格拆步)；工位标定读/写+持久化(objective_calib.json)；弹片自定位 cmd32 时序(起步使能/到位延迟去使能)；`_configure_encoders` 加 Turret+PID 三步下发(SET_PID→CONFIGURE→ENABLE)；`_render_objective_position` 统一 3 处位置显示；`_set_axis_enable` 补 Turret/W1/W2；`wait_until_idle` 加 axis 参数；homing 拆纯 homing+独立移工位0；删旧开环 move_objective 及 define 遗留常量。
+  - ⚠️ **未上机验证**：Turret 编码器硬件未装，tpr/flip/PID 取 Mega W 起点，须 tune_w_pid.py 重整定。headless：两 profile GUI+Turret 选中+读当前/标定往返+goto 守卫通过；verify_profiles 通过。
+  - octoaxesplus R 轴暂未配 encoder/PID → objective 走绝对定位无闭环（注释注明待硬件确认）。
 - [ ] 组 B 逐项评估
+- [ ] A5 同步 github/main（等用户确认——A5 未上机）
 
 ---
 
-## 当前状态（2026-07-09）
+## 当前状态（2026-07-10）
 
 **firmware 侧融合全部完成并已同步 github/main**：A2 / A3(×3) / A4(×2) / A6 / A1a / A1b / A1c。
-develop 与 github/main 一致。
+**软件侧**：方案A 滤光轮启动下发已同步 github/main（af61bb9）；**A5 物镜 GUI 闭环三提交
+（508ff6d/cdf53ad/4a4f920）已在 develop，尚未同步 github/main**（等用户确认，A5 未上机）。
 
-**⏸️ 暂停在此，等硬件实测后再进 A5。**
+**✅ A5 GUI 物镜标定代码完成**（闭环版，2026-07-10）。下一步二选一：
+1. 烧录固件（A1a/b/c）+ 装 Turret 编码器 → 上机实测 A5 全链路（homing/工位标定/PID 闭环），通过后同步 github/main；
+2. 或先把 A5 三提交同步 github/main（标注未验证），硬件到位后再回归。
 
 ### ⚠️ 未上机验证的项（阻塞 A5）
 A1a / A1b / A1c 三项 firmware **全部编译通过但未烧录**，且相互关联：
