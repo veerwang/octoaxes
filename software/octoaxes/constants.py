@@ -142,6 +142,26 @@ AXIS_CONFIG = {
         "index": 5,             # firmware icID（octoaxes.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # 对齐 config.h SCREW_PITCH_OBJECTIVES_MM=1
         "actuator_microstepping": 64,      # 对齐 config.h MICROSTEPPING_OBJECTIVES=64
+        # 2026-07-10 A5a：补 objective GUI/下发字段，值对齐本项目固件 config.h（方案A 同款：
+        # software 默认=firmware 默认 → 下发即同步、逐位等价；旧 Squid 不发则用固件默认）。
+        "actuator_motor_current_ma": 1800,  # = OBJECTIVES_MOTOR_PEAK_CURRENT_mA（EXPAND1_AXIS currentRange=1）
+        "actuator_motor_hold_ratio": 0.5,   # = OBJECTIVES_MOTOR_I_HOLD
+        # GUI 物镜页速度/加速度输入框预填值（Apply 时下发 SET_MAX_VELOCITY_ACCELERATION，不在启动下发）
+        "default_velocity": 0.5,        # = MAX_VELOCITY_OBJECTIVES_mm（0.5×pitch）
+        "default_acceleration": 80.0,   # = MAX_ACCELERATION_OBJECTIVES_mm（80×pitch）
+        # 弹片自定位（融合 A1b GUI 主导时序，见 A5c）：到位后 GUI 延迟发 cmd32 断电流让弹片归中。
+        # 开环机制（断流→弹片凹坑归中），不依赖编码器。固件 A1b infra 已就绪。
+        "auto_disable_at_rest": True,
+        "rest_disable_delay_ms": 100,
+        # === 闭环 PID（编码器版）——目标形态，当前休眠 ===
+        # 用户确认：物镜转换器最终会用【带编码器】的形式。A5 GUI 代码按「开环可跑 + 闭环就绪」写：
+        # 除 PID 下发外全部编码器无关，开环即工作；PID 下发由 has_encoder 守卫，现 False → 休眠。
+        # 【将来装编码器后激活闭环，只需三处】：
+        #   ① 本处 has_encoder=True + 填 encoder_transitions_per_rev/flip（实测定）+ pid_p/i/d（tune_w_pid.py 重整定）
+        #   ② main_window._configure_encoders 的 _AXIS_PROTOCOL 加 "Turret": AXIS.TURRET
+        #   ③ 固件 EXPAND1_AXIS.encoderLinesPerRev 设值（现 0）
+        # Mega W 参考值（本项目硬件须重测）：tpr=4000(1000线×4) / flip=True / P=1536 I=2 D=16。
+        "has_encoder": False,   # ← 装编码器后改 True 即升级闭环
     },
 }
 
