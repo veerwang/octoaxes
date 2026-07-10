@@ -132,8 +132,8 @@ AXIS_CONFIG = {
         # 2026-06-02 物镜转换器（4 物镜）：物理 R 轴（HC154 ch3），firmware icID=5。
         # 复用 octoaxes E1 协议 MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7。
         # GUI widgets.py 渲染物镜控制页；main_window.previous/next → _objective_goto()（融合 A5 闭环：
-        # 绝对定位到工位标定角度）。⚠ octoaxesplus R 轴暂未配 encoder/PID 字段 → 走绝对定位无闭环，
-        # 待该硬件确认编码器后按 octoaxes Turret 补 has_encoder/pid_* 字段。
+        # 绝对定位到工位标定角度，跨槽逐格拆步）。R 轴同样是【带编码器的物镜转换器】，采用
+        # 编码器+PID 闭环，配置对齐 octoaxes Turret（用户确认：两 profile 物镜转换器一致）。
         "display_name": "Objectives - r_axis",
         "type": "objective",
         "has_limits": False,
@@ -143,6 +143,26 @@ AXIS_CONFIG = {
         "index": 5,             # firmware icID（octoaxesplus.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # 对齐 config.h SCREW_PITCH_OBJECTIVES_MM=1
         "actuator_microstepping": 64,      # 对齐 config.h MICROSTEPPING_OBJECTIVES=64
+        # A5：补 objective GUI/下发字段，值对齐固件 config.h（方案A：software 默认=firmware 默认）
+        "actuator_motor_current_ma": 1800,  # = OBJECTIVES_MOTOR_PEAK_CURRENT_mA
+        "actuator_motor_hold_ratio": 0.5,   # = OBJECTIVES_MOTOR_I_HOLD
+        # GUI 物镜页速度/加速度预填（Apply 时下发 SET_MAX_VELOCITY_ACCELERATION，不在启动下发）
+        "default_velocity": 0.5,        # = MAX_VELOCITY_OBJECTIVES_mm（0.5×pitch）
+        "default_acceleration": 80.0,   # = MAX_ACCELERATION_OBJECTIVES_mm（80×pitch）
+        # 弹片自定位：到位后 GUI 延迟发 cmd32 断电流让弹片归中（精度优于 PID 死区，修得了齿轮空程）
+        "auto_disable_at_rest": True,
+        "rest_disable_delay_ms": 100,
+        # === 编码器 + PID 闭环（R 轴 = 带编码器的物镜转换器）===
+        # GUI 启动 _configure_encoders 对 Turret 下发 SET_PID_ARGUMENTS→CONFIGURE_STAGE_PID→
+        # ENABLE_STAGE_PID 开闭环（运行时下发，覆盖固件 config.h enableEncoder=false 开机默认）。
+        "has_encoder": True,
+        "encoder_transitions_per_rev": 4000,   # 1000 线(PPR)×4 倍频（对齐 Mega W / octoaxes Turret；本硬件须实测确认）
+        "encoder_flip_direction": True,        # 编码器计数方向 vs 电机命令（本硬件须实测确认，与 movement_sign 联合定极性）
+        # PID 值取 Mega W / octoaxes Turret 起点，⚠️ 本 R 轴硬件须用 tune_w_pid.py 重新整定。
+        "pid_enabled": True,
+        "pid_p": 1536,
+        "pid_i": 2,
+        "pid_d": 16,
     },
 }
 
