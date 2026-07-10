@@ -42,6 +42,14 @@
 - **profile-safe 修复**：main_window 启动跳过从硬编码 `["W2","W"]` 改按 `type` 判断（否则 octoaxesplus 的 W1 漏跳）。`b1d2535`。
 - 验证：py_compile OK、无 E3/E4 残留、verify_profiles 两 profile 全过（各 6 轴）。
 
+### D. 滤光轮参数 GUI 启动下发（方案A，`dad8f5c`/`7411606`）
+
+原 `_configure_actuators` 只给 X/Y/Z 下发 pitch/微步/电流/hold，滤光轮全靠固件默认。现让 software 也能设置滤光轮参数：
+- **设计原则**（用户定）：software 默认值 = firmware config.h 值 → 下发是**显式同步、逐位不改变行为**；旧 Squid 不下发就用固件默认 → 三方一致。核实 firmware `begin()` 与 cmd21 同走 `motor_initDriver`（同 rSense/currentRange/runCurrentMA），故下发 3100 与默认等价（cmd21 注释叫「RMS」只是文档，不影响等价）。
+- **改动**：constants 给 W/W2（octoaxes）+ W1/W2（octoaxesplus）补 `actuator_motor_current_ma=3100` / `actuator_motor_hold_ratio=0.5`（= FILTERWHEEL 常量；pitch1/ms64 本就有）；`_configure_actuators._AXIS_PROTOCOL` 加 W/W1/W2。缺字段的轴仍被 None 守卫跳过 → 回退固件默认。
+- 两 profile 滤光轮现均下发 `[pitch1, ms64, cur3100, hold0.5]`；verify 两 profile 通过。纯软件、不用重烧。
+- **好处**：以后改滤光轮微步/电流只改 constants 一行 + 重启 GUI，无需重烧固件。
+
 ### 下次
 
 1. **重烧 octoaxes 固件** → W 速度回 4.2 / 微步 64 / W2 currentRange 生效，再跑 W Test（大孔距应 0 丢步）确认
