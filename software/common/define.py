@@ -25,6 +25,23 @@ OBJECTIVE_MAX_VELOCITY_MM = 0.5
 OBJECTIVE_MAX_ACCELERATION_MM = 10.0
 
 
+def objective_slot_angle(microsteps, microstepping, fullsteps_per_rev=200):
+    """物镜转换器：电机 microstep → (工位号, 物镜盘角度°)。融合 new-W-axis A5（152d50e）。
+
+    含齿轮比 OBJECTIVE_RATIO(=2.75)：物镜盘 1 圈 = 电机 OBJECTIVE_RATIO 圈。
+      物镜盘 1 圈对应电机 µstep = OBJECTIVE_RATIO × fullsteps_per_rev × microstepping
+      一个工位 = 物镜盘 1 圈 / OBJECTIVE_HOLES
+    返回 (slot 0..OBJECTIVE_HOLES-1, 物镜盘角度 deg)。
+    """
+    usteps_per_obj_rev = OBJECTIVE_RATIO * fullsteps_per_rev * microstepping
+    if usteps_per_obj_rev == 0:
+        return 0, 0.0
+    usteps_per_slot = usteps_per_obj_rev / OBJECTIVE_HOLES
+    deg = (microsteps / usteps_per_obj_rev) * 360.0
+    slot = int(round(microsteps / usteps_per_slot)) % OBJECTIVE_HOLES
+    return slot, deg
+
+
 class AXIS:
     """协议轴值（与旧 Squid AXIS 类一致）"""
     X  = 0

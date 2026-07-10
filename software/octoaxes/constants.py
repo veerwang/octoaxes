@@ -150,18 +150,22 @@ AXIS_CONFIG = {
         "default_velocity": 0.5,        # = MAX_VELOCITY_OBJECTIVES_mm（0.5×pitch）
         "default_acceleration": 80.0,   # = MAX_ACCELERATION_OBJECTIVES_mm（80×pitch）
         # 弹片自定位（融合 A1b GUI 主导时序，见 A5c）：到位后 GUI 延迟发 cmd32 断电流让弹片归中。
-        # 开环机制（断流→弹片凹坑归中），不依赖编码器。固件 A1b infra 已就绪。
+        # 断流→弹片凹坑机械归中，精度优于 PID 死区，且修得了编码器（电机尾轴）看不到的齿轮空程。
         "auto_disable_at_rest": True,
         "rest_disable_delay_ms": 100,
-        # === 闭环 PID（编码器版）——目标形态，当前休眠 ===
-        # 用户确认：物镜转换器最终会用【带编码器】的形式。A5 GUI 代码按「开环可跑 + 闭环就绪」写：
-        # 除 PID 下发外全部编码器无关，开环即工作；PID 下发由 has_encoder 守卫，现 False → 休眠。
-        # 【将来装编码器后激活闭环，只需三处】：
-        #   ① 本处 has_encoder=True + 填 encoder_transitions_per_rev/flip（实测定）+ pid_p/i/d（tune_w_pid.py 重整定）
-        #   ② main_window._configure_encoders 的 _AXIS_PROTOCOL 加 "Turret": AXIS.TURRET
-        #   ③ 固件 EXPAND1_AXIS.encoderLinesPerRev 设值（现 0）
-        # Mega W 参考值（本项目硬件须重测）：tpr=4000(1000线×4) / flip=True / P=1536 I=2 D=16。
-        "has_encoder": False,   # ← 装编码器后改 True 即升级闭环
+        # === 编码器 + PID 闭环（用户确认：物镜转换器一定带编码器）===
+        # GUI 启动 _configure_encoders 下发 CONFIGURE_STAGE_PID(Turret, tpr, flip) 运行时启用编码器，
+        # 再 SET_PID_ARGUMENTS + ENABLE_STAGE_PID 开闭环（运行时下发，固件 config.h enableEncoder=false
+        # 只是开机默认，被运行时覆盖）。
+        "has_encoder": True,
+        "encoder_transitions_per_rev": 4000,   # 1000 线(PPR) ×4 倍频 = 4000 counts/转（对齐 Mega W；本项目硬件须实测确认）
+        "encoder_flip_direction": True,        # 编码器计数方向 vs 电机命令（Mega W=True；本项目须实测确认）
+        # PID 值取 Mega W 起点，⚠️ 本项目 Turret 硬件须用 tune_w_pid.py 重新整定（稳定性由加速度主导，
+        # 改 velocity/accel/物镜数须重校验）。运行时下发 SET_PID_ARGUMENTS，改此重启 GUI 即生效。
+        "pid_enabled": True,
+        "pid_p": 1536,
+        "pid_i": 2,
+        "pid_d": 16,
     },
 }
 
