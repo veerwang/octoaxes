@@ -6,13 +6,13 @@
 
 ## 最新会话
 
-**日期**: 2026-07-09
+**日期**: 2026-07-10（起于 07-09）
 **分支**: chore/translate-comments-to-english
-**位置**: **注释英文化分支两轮同步 main** —— 把 main 的 new-W-axis 融合修复合并进来，合并带入的中文代码注释一并中译英
+**位置**: **注释英文化分支九轮同步 main** —— 持续把 main 的 new-W-axis 融合修复合并进来，合并带入的中文代码注释一并中译英
 
 ### 一句话
 
-`chore/translate-comments-to-english` 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。本次分两轮把 main 的新提交同步进来，合并冲突取 main 新代码逻辑 + 注释译英，规划文档 `documents/new-W-axis_merge_plan.md` 按约定保持删除。
+`chore/translate-comments-to-english` 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。本次分九轮把 main 的新提交同步进来，合并冲突取 main 新代码逻辑 + 注释译英，规划文档 `documents/new-W-axis_merge_plan.md` 按约定保持删除。
 
 ### 第一轮同步（merge 691e732）
 
@@ -125,6 +125,18 @@ main 新增 9 提交：
 - **翻译范围**：`#`/`//` 注释全译；main_window.py W Test 的 **docstring 与 `self.log(...)` 日志字符串（含「格/微步/疑似丢步」）按约定保持中文**（与该方法 HEAD 已有中文日志一致）。
 - **踩坑**：config.h + main_window.py 各一处 Edit 误留 `>>>>>>> main` 标记 → 全仓 grep 兜底、sed 清除（本轮第二次犯，须警惕替换块尾的 `>>>>>>>`）。
 - 验证：全仓无冲突标记、merge-touched 文件 `#`/`//` 注释零中文；**两 firmware pio run SUCCESS** + py_compile OK + **verify_profiles 双 profile 6 轴全通过**（octoaxes `['Turret','W','W2','X','Y','Z']`）。merge `6cc609e`，push `34549c1..6cc609e`。
+
+### 第九轮同步（merge main 的 3 提交 = GUI 启动下发滤光轮参数，纯软件）
+
+main 新增 3 提交（方案A：GUI 启动 `_configure_actuators` 也给滤光轮下发 pitch/微步/电流/hold）：
+- `d0c6b15` octoaxes W/W2 补 `actuator_motor_current_ma`/`hold_ratio`（= 固件 FILTERWHEEL 常量，逐位等价）+ main_window 下发
+- `af61bb9` octoaxesplus W1/W2 同款补齐
+- `830e1c0` docs(session)
+
+处理：
+- 冲突 4 文件：`octoaxes/constants.py`×2（W + W2 补 current/hold）+ `octoaxesplus/constants.py`×1（W1）取 main 新代码、注释译英；**`SESSION.md`** 按「markdown 全留」并集——chore 翻译同步条目置顶（最新会话），main 的 `830e1c0` develop 会话条目并入为上次会话，仅删 4 个标记行。
+- 另译自动合并带回中文：`main_window.py` `_configure_actuators` 滤光轮下发注释块（3 行）+ octoaxesplus W2 内联注释。
+- 验证：全仓无冲突标记、merge-touched `#` 注释零中文；py_compile OK + **verify_profiles 双 profile 6 轴全通过**。纯软件无固件、未跑 pio。merge `538ca46`，push `c6edbad..538ca46`。
 
 ### 下次
 
