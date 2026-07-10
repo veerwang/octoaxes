@@ -8,6 +8,19 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
+### 2026-07-10 A5 物镜 GUI 闭环版完成（两 profile 物镜转换器均 PID 闭环，已同步 github/main）
+
+> new-W-axis 融合最后一块：A5 上位机物镜 GUI。落到本项目 objective 类型轴（octoaxes=Turret / octoaxesplus=R）。
+> 用户明确：**物镜转换器一定带编码器 → 走编码器 + PID 闭环**（非开环）。按 A 方案一次性内聚移植（对应 Mega A5 全 8 提交）。详见 SESSION.md 2026-07-10 + `documents/new-W-axis_merge_plan.md`。
+
+- [x] **A5 基础** `508ff6d` — octoaxes Turret constants 启用 encoder(tpr=4000/flip=True)+PID(1536/2/16)+auto_disable；define.py `objective_slot_angle(microsteps, ms)`（含齿轮比 2.75）。
+- [x] **A5 widgets** `cdf53ad` — ControlPanel 物镜标定 UI：4 工位角度框(默认0/90/180/270)+每行 Read/Go To、Vel/Acc、独立「Go to Slot 0」按钮；AxisStatusDisplay objective 位置显示「Slot N / 角度°」；3 信号。
+- [x] **A5 main_window** `4a4f920` — 换位改绝对定位到工位标定角度(跨槽逐格拆步)；工位标定读/写+持久化 objective_calib.json；弹片自定位 cmd32 时序(起步使能/到位延迟去使能)；`_configure_encoders` 加 Turret+PID 三步下发(SET_PID_ARGUMENTS→CONFIGURE_STAGE_PID→ENABLE_STAGE_PID)；`_render_objective_position` 统一 3 处位置显示；`_set_axis_enable` 补 Turret/W1/W2；`wait_until_idle` 加 axis 参数；homing 拆纯 homing+独立移工位0；删旧开环 move_objective + define 遗留常量。
+- [x] **octoaxesplus R 轴同款闭环** `2cacb77` — constants Turret 补 has_encoder/tpr=4000/flip=True/PID=1536·2·16/current=1800/hold=0.5/vel=0.5/acc=80/auto_disable，对齐固件 config.h OBJECTIVES 逐位等价（方案A）。两 profile 物镜转换器统一。
+- [x] **验证（headless，无硬件）** — py_compile + verify_profiles 两 profile 通过；全 GUI 实例化选中 Turret：位置显示「Slot 1 / Wheel 90.0°」、on_objective_read_current 读当前 90° 写入 slot0、标定 JSON 往返、goto 守卫安全；`_configure_encoders` 目标轴=['Turret']。
+- [x] **同步 github/main** — cherry-pick 8+1 提交（含 SESSION.md）→ push，本地 github-main = 远程 github/main = `07ebc9b`，排除 documents/ 后代码零差异。
+- [ ] **⚠️ 上机验证（阻塞收尾，软件已到位）**：① 烧固件 A1a/b/c（两 firmware 未烧，顺带把 W 速度 2.0→4.2 构建重烧）② 装 Turret(octoaxes)/R(octoaxesplus) 编码器 ③ 实测全链路 homing→工位标定(Read)→PID 闭环换位(Next/Previous/Go To Slot) ④ `tpr=4000/flip=True/PID=1536·2·16` 均照抄 Mega W 起点，**必须 tune_w_pid.py 重整定**；flip 与 movement_sign 联合定编码器极性须实测（octoaxes sign=-1 / octoaxesplus sign=1）。
+
 ### 2026-06-09 Z 变体切换软件化（限位极性走 cmd 20 下发）
 
 > 痛点：切换新旧 Z 需同步改两处（固件 `config.h #define Z_VARIANT_NEW` + 软件 `constants.py Z_AXIS_VARIANT`），易漏改。
