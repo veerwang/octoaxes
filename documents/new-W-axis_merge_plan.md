@@ -122,7 +122,9 @@ A2/A3/A4（通用固件健壮性）→ A6（照明）→ A1（物镜类）→ A5
   - **A5 widgets** `cdf53ad` — ControlPanel 加物镜标定 UI：4 工位角度框(默认0/90/180/270)+每行 Read/Go To、Vel/Acc、独立「Go to Slot 0」按钮；AxisStatusDisplay objective 位置显示「Slot N / 角度°」；3 信号。
   - **A5 main_window** `4a4f920` — 换位改绝对定位到标定角度(跨槽逐格拆步)；工位标定读/写+持久化(objective_calib.json)；弹片自定位 cmd32 时序(起步使能/到位延迟去使能)；`_configure_encoders` 加 Turret+PID 三步下发(SET_PID→CONFIGURE→ENABLE)；`_render_objective_position` 统一 3 处位置显示；`_set_axis_enable` 补 Turret/W1/W2；`wait_until_idle` 加 axis 参数；homing 拆纯 homing+独立移工位0；删旧开环 move_objective 及 define 遗留常量。
   - ⚠️ **未上机验证**：Turret 编码器硬件未装，tpr/flip/PID 取 Mega W 起点，须 tune_w_pid.py 重整定。headless：两 profile GUI+Turret 选中+读当前/标定往返+goto 守卫通过；verify_profiles 通过。
-  - octoaxesplus R 轴暂未配 encoder/PID → objective 走绝对定位无闭环（注释注明待硬件确认）。
+  - **octoaxesplus R 轴同样启用编码器+PID 闭环**（`2cacb77`，用户确认两 profile 物镜转换器一致）：
+    constants Turret 补 has_encoder/tpr=4000/flip=True/PID=1536·2·16/current=1800/vel·acc/auto_disable，
+    对齐 octoaxes Turret + 固件 config.h OBJECTIVES 逐位等价。未上机，须 tune_w_pid.py 重整定。
 - [ ] 组 B 逐项评估
 - [ ] A5 同步 github/main（等用户确认——A5 未上机）
 
