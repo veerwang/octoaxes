@@ -6,6 +6,63 @@
 
 ## 最新会话
 
+**日期**: 2026-07-10
+**分支**: develop（A5 及 octoaxesplus R 闭环**已同步 github/main = 50dff98**）
+**位置**: **A5 物镜 GUI 闭环版完成 + 两 profile 物镜转换器均 PID 闭环 + 同步 github-main**
+
+### 一句话
+
+按 A 方案一次性内聚完成 **A5（物镜 GUI）**——落到本项目 objective 轴（octoaxes=Turret / octoaxesplus=R），
+采用**编码器 + PID 闭环**（用户明确：物镜转换器一定带编码器）；随后按用户要求给
+**octoaxesplus R 轴也补齐同款闭环配置**，两 profile 物镜转换器统一；最后把这批 8 提交
+cherry-pick 同步到 **github/main（af61bb9..50dff98）**，代码零差异。**⚠️ 全部未上机验证**。
+
+### A5. 物镜 GUI 闭环（Mega A5 全 8 提交 → 本项目 3 内聚提交，落 objective 类型轴）
+
+融合 Mega `82e9f0e/152d50e/763fe5a/adb5365/cef69b5/518a5c6/d129a32/81d0e68`，取代旧开环 move_objective：
+
+- **A5 基础** `508ff6d`（会话前起步）— octoaxes Turret constants 启用 encoder(tpr=4000/flip=True)
+  +PID(1536/2/16)+auto_disable；define.py `objective_slot_angle(microsteps, ms)` 含齿轮比 2.75。
+- **A5 widgets** `cdf53ad` — ControlPanel 物镜标定 UI：4 工位角度框(默认0/90/180/270)+每行 Read/Go To、
+  Vel/Acc、独立「Go to Slot 0」按钮；AxisStatusDisplay objective 位置显示「Slot N / 角度°」；3 信号。
+- **A5 main_window** `4a4f920` — ①换位改**绝对定位到工位标定角度**（previous/next→`_objective_goto(±1)`，
+  跨槽逐格拆步，绕开大跨度单次闭环啸叫堵转）②工位标定读/写 + 持久化 `~/.octoaxes/objective_calib.json`
+  ③**弹片自定位 cmd32 时序**（move/homing 起步前使能+显示 ON，到位后延迟 rest_disable_delay_ms 去使能，
+  多槽只最后一步真去使能）④`_configure_encoders` 加 Turret + **PID 三步下发**（SET_PID_ARGUMENTS→
+  CONFIGURE_STAGE_PID→ENABLE_STAGE_PID，顺序 load-bearing）⑤`_render_objective_position` 统一 3 处位置显示
+  ⑥`_set_axis_enable` 协议映射补 Turret/W1/W2（否则物镜 cmd32 静默失败）⑦`wait_until_idle` 加可选 axis 参数
+  ⑧homing 拆「纯 homing」+ 独立「移工位0」按钮 ⑨删旧开环 move_objective + define 遗留常量（NEXT_SIGN/齿隙/RMS）。
+
+### A5+. octoaxesplus R 轴也启用编码器 + PID 闭环（用户确认两 profile 一致）
+
+`2cacb77` — octoaxesplus constants Turret 补齐与 octoaxes Turret 同款闭环字段
+（has_encoder/tpr=4000/flip=True/PID=1536·2·16/current=1800/hold=0.5/vel=0.5/acc=80/auto_disable），
+对齐固件 config.h OBJECTIVES **逐位等价（方案A）**。两 profile 物镜转换器现统一为闭环。
+
+### 同步 github/main
+
+`git checkout github-main` → `git cherry-pick 7411606..develop`（8 提交，无冲突）→ `git push github github-main:main`。
+本地 github-main = 远程 github/main = **50dff98**。排除 documents/ 后 **software/+firmware/ 代码零差异**。
+
+### ⚠️ 唯一剩下的关键事项：上机验证（软件到此为止）
+
+1. 烧录固件 A1a/b/c（两 firmware 都还没烧）；同时把 W 速度 2.0→4.2 的构建一并重烧
+2. 装 Turret（octoaxes）/ R 轴（octoaxesplus）编码器
+3. 实测全链路：homing → 工位标定（Read 读当前角度写入 slot）→ PID 闭环换位（Next/Previous/Go To Slot）
+4. `tpr=4000 / flip=True / PID=1536·2·16` 均照抄 Mega W 起点，**必须 `tune_w_pid.py` 重新整定**；
+   flip 与 movement_sign 联合定编码器极性，须实测（octoaxes sign=-1 / octoaxesplus sign=1）
+
+### 验证（headless，无硬件）
+
+- py_compile + `verify_profiles.py` 两 profile 通过
+- 全 GUI headless 实例化：选中 Turret → `_render_objective_position` 显示「Slot 1 / Wheel 90.0°」、
+  `on_objective_read_current(0)` 读当前 90° 写入 slot0、标定 JSON 往返、`goto_objective_slot0` 守卫安全
+- octoaxesplus Turret 闭环字段确认 + `_configure_encoders` 目标轴 = ['Turret']
+
+---
+
+## 会话 2026-07-09
+
 **日期**: 2026-07-09
 **分支**: develop（= github/main 已同步）
 **位置**: **new-W-axis 分支融合（firmware 侧全完成）+ W 滤光轮问题排查 + octoaxes 轴收口 6 轴**
