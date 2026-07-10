@@ -108,6 +108,10 @@ AXIS_CONFIG = {
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,      # 2026-05-21 对齐旧 Squid MICROSTEPPING_DEFAULT_W=64
+        # 2026-07-10 补齐电流/hold，让 GUI 启动 _configure_actuators 也给滤光轮下发（= 固件
+        # FILTERWHEEL 常量，逐位等价；不发则回退固件默认）。与 octoaxes W/W2 同款处理。
+        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA
+        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
     "W2": {
         "display_name": "Filter Wheel 2 - w2_axis",
@@ -121,6 +125,8 @@ AXIS_CONFIG = {
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
         "actuator_microstepping": 64,
+        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA（同 W1/固件）
+        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
     "Turret": {
         # 2026-06-02 物镜转换器（4 物镜）：物理 R 轴（HC154 ch3），firmware icID=5。
