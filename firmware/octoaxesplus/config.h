@@ -482,13 +482,21 @@ namespace AxisConfigs {
     const Axis::AxisConfig W_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = LEFT_SW,
-        .leftSwitchPolarity = 0,
+        // 2026-07-15 W2 上机实测（本板滤光轮 home 传感器）：极性 0 时 STOPL 整圈恒 active、
+        // 仅传感器窗口(~5°)读 inactive → homing 瞬间假完成(HOME_ERROR_F) + 负方向运动被
+        // STOP_LEFT 全程拦截。极性翻 1 后语义正确：仅传感器处 active。W1 同款传感器随模板生效。
+        // 注意与 octoaxes 主线 W_AXIS 无关（那套硬件极性 0 实测正常，两板传感器电平不同）。
+        .leftSwitchPolarity = 1,
         .rightSwitchPolarity = 0,
         .leftIsInactive = 0,
         .rightIsInactive = 0,
         .leftFlipped = false,
         .rightFlipped = false,
-        .enableLeftLimitSwitch = true,
+        // 2026-07-15 W2 实测：转轮轴 + 极性 1 下传感器窗口内 STOPL=active，chip STOP_LEFT
+        // 硬停会拦截窗口内一切负向运动（Next 整圈回到 home 后 Previous 卡死，实测只走 84 µstep）。
+        // 滤光轮 homing 是软件轮询 readLimitSwitches + 软件停车，不依赖 chip 硬停；
+        // 极性/锁存已与 enable 解耦（80f4577），关硬停后 STOPL 仍可读。
+        .enableLeftLimitSwitch = false,
         .enableRightLimitSwitch = false,
         .r_sense = AxisConstDefinition::R_sense_filter,
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,
