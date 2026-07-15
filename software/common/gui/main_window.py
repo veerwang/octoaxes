@@ -1758,8 +1758,11 @@ class TeensyControlGUI(QMainWindow):
         写 chip PID 寄存器）。Turret=AXIS.TURRET(7)。"""
         if self.serial_thread is None:
             return
+        # W1/W2 与 _configure_actuators 同款映射（W1 复用 W 轴码 5，固件 W→W1 兜底；
+        # W2 专属轴码 6）。profile-safe：仅 has_encoder=True 的轴才下发。
         _AXIS_PROTOCOL = {"X": AXIS.X, "Y": AXIS.Y, "Z": AXIS.Z,
-                          "W": AXIS.W, "Turret": AXIS.TURRET}
+                          "W": AXIS.W, "W1": AXIS.W, "W2": AXIS.W2,
+                          "Turret": AXIS.TURRET}
         for axis_name, config in AXIS_CONFIG.items():
             if not config.get("has_encoder"):
                 continue
