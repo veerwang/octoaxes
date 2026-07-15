@@ -151,7 +151,10 @@ protected:
   AxisConfig _config;
 
   // 超时设置
-  static const unsigned long LEAVING_HOME_TIMEOUT_MS = 5000;
+  // 2026-07-15 5000→15000：滤光轮 homing 起点若远离传感器窗口，LEAVING_HOME 阶段
+  // 以 homing 速度(0.15 圈/s)最坏需走近一整圈 ≈6.7s，5s 必假超时（W2 实测 5.2s 报 ERROR）。
+  // 对直线轴/物镜只是放宽错误检测上限，正常路径行为不变。
+  static const unsigned long LEAVING_HOME_TIMEOUT_MS = 15000;
   static const unsigned long MOVEMENT_TIMEOUT_MS = 5000;
 
   elapsedMicros _checkHomeReachTimeout;
