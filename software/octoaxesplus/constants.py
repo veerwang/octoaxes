@@ -120,7 +120,9 @@ AXIS_CONFIG = {
         "limits": (0, 7),
         "movement_sign": 1,
         "index": 4,
-        "has_encoder": False,
+        # 2026-07-15 上机验证：开启纯编码器反馈（CONFIGURE_STAGE_PID 只使能编码器，
+        # 不下发 pid_enabled → 不开 PID 闭环）。tpr/flip 待 S:ENCPOS 实测确认。
+        "has_encoder": True,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1
