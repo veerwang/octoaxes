@@ -165,9 +165,12 @@ void FilterWheel::performHomingSequence() {
         // 硬件方向反相通过 _config.invert_direction 处理（镜像装配硬件设 true）。
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Fast search...");
-        // 2026-07-17 方向可配置：fwHomingDirection(+1=历史行为/-1=整体镜像)，见 axis.h 注释。
-        // 兜底：value-init 为 0 的旧配置按 +1 处理。
-        const int8_t fwDir = (_config.fwHomingDirection < 0) ? -1 : 1;
+        // 2026-07-17 方向可配置（用 homing_direct，反向映射）：搜索方向 = -homing_direct。
+        // 这是旧 Squid W 段的字节语义——host 对 sign=1 发 HOME_NEGATIVE(1)→homing_direct=-1，
+        // 旧 Squid 固件却朝 + 搜索（stage_commands.cpp:621-636，与 X/Y/Z 相反）。反向映射
+        // 忠实编码该约定，等价不变量：搜索方向 = 上位机 movement_sign。config.h 开机默认
+        // homing_direct=-1 与协议写入值语义一致。兜底：0 按 -1（即搜索 +，历史行为）处理。
+        const int8_t fwDir = (_config.homing_direct > 0) ? -1 : 1;
         int32_t speedInternal = fwDir * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         if (_config.invert_direction) speedInternal = -speedInternal;
         motor_setVelocityInternal(_icID, speedInternal);
@@ -235,8 +238,8 @@ void FilterWheel::performLeavingHome() {
       // 2026-05-25 撤销 commit 2b5dce4：恢复硬编码 + 方向 search（与旧 Squid W 段一致）。
       // leave 方向 = -search 方向（按 homingSwitch 二选一原始逻辑）。
       // 硬件反相由 _config.invert_direction 统一处理。
-      // 2026-07-17 方向可配置：搜索方向 = +fwDir（历史 +1），详见 axis.h fwHomingDirection。
-      const int8_t fwDir = (_config.fwHomingDirection < 0) ? -1 : 1;
+      // 2026-07-17 方向可配置：搜索方向 = -homing_direct（映射语义见 performHomingSequence 注释）。
+      const int8_t fwDir = (_config.homing_direct > 0) ? -1 : 1;
       if (_slowApproach) {
         // 先停车，确保慢速逼近起点一致
         motor_setVelocityInternal(_icID, 0);
@@ -261,7 +264,7 @@ void FilterWheel::performLeavingHome() {
       float leaveSpeed = _slowApproach
         ? _config.homingVelocityMM / 5.0   // 慢速移出，减少过冲
         : _config.homingVelocityMM;          // 全速移出
-      const int8_t fwDir = (_config.fwHomingDirection < 0) ? -1 : 1;
+      const int8_t fwDir = (_config.homing_direct > 0) ? -1 : 1;
       int32_t speedInternal = -fwDir * motor_velocityMMToInternal(_icID, leaveSpeed);
       if (_config.invert_direction) speedInternal = -speedInternal;
       motor_setVelocityInternal(_icID, speedInternal);
