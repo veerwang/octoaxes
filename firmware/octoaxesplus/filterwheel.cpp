@@ -165,7 +165,10 @@ void FilterWheel::performHomingSequence() {
         // 硬件方向反相通过 _config.invert_direction 处理（镜像装配硬件设 true）。
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Fast search...");
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        // 2026-07-17 方向可配置：fwHomingDirection(+1=历史行为/-1=整体镜像)，见 axis.h 注释。
+        // 兜底：value-init 为 0 的旧配置按 +1 处理。
+        const int8_t fwDir = (_config.fwHomingDirection < 0) ? -1 : 1;
+        int32_t speedInternal = fwDir * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         if (_config.invert_direction) speedInternal = -speedInternal;
         motor_setVelocityInternal(_icID, speedInternal);
         setState(STATE_HOMING_SEARCH);
@@ -232,33 +235,34 @@ void FilterWheel::performLeavingHome() {
       // 2026-05-25 撤销 commit 2b5dce4：恢复硬编码 + 方向 search（与旧 Squid W 段一致）。
       // leave 方向 = -search 方向（按 homingSwitch 二选一原始逻辑）。
       // 硬件反相由 _config.invert_direction 统一处理。
+      // 2026-07-17 方向可配置：搜索方向 = +fwDir（历史 +1），详见 axis.h fwHomingDirection。
+      const int8_t fwDir = (_config.fwHomingDirection < 0) ? -1 : 1;
       if (_slowApproach) {
         // 先停车，确保慢速逼近起点一致
         motor_setVelocityInternal(_icID, 0);
         delay(100);
         DEBUG_PRINTLN(":Left sensor, slow approach...");
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM / 5.0);
+        int32_t speedInternal = fwDir * motor_velocityMMToInternal(_icID, _config.homingVelocityMM / 5.0);
         if (_config.invert_direction) speedInternal = -speedInternal;
         motor_setVelocityInternal(_icID, speedInternal);
       } else {
         // 快速搜索感应区
         DEBUG_PRINTLN(":Left sensor, fast search...");
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        int32_t speedInternal = fwDir * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         if (_config.invert_direction) speedInternal = -speedInternal;
         motor_setVelocityInternal(_icID, speedInternal);
       }
       setState(STATE_HOMING_SEARCH);
     } else {
-      // 仍在感应区，继续移出（原始旧 Squid 逻辑：按 homingSwitch 二选一）
+      // 仍在感应区，继续移出。
+      // 2026-07-17 方向可配置：移出方向 = -fwDir（搜索方向的反向）。取代原「按 homingSwitch
+      // 二选一」写法——对 LEFT_SW（两项目滤光轮唯一实际取值：移出=负）行为逐位等价；
+      // RGHT_SW 分支从未被滤光轮使用（原写法下移出与搜索同向，本就存疑）。
       float leaveSpeed = _slowApproach
         ? _config.homingVelocityMM / 5.0   // 慢速移出，减少过冲
         : _config.homingVelocityMM;          // 全速移出
-      int32_t speedInternal;
-      if (_config.homingSwitch == RGHT_SW) {
-        speedInternal = motor_velocityMMToInternal(_icID, leaveSpeed);
-      } else {
-        speedInternal = -1 * motor_velocityMMToInternal(_icID, leaveSpeed);
-      }
+      const int8_t fwDir = (_config.fwHomingDirection < 0) ? -1 : 1;
+      int32_t speedInternal = -fwDir * motor_velocityMMToInternal(_icID, leaveSpeed);
       if (_config.invert_direction) speedInternal = -speedInternal;
       motor_setVelocityInternal(_icID, speedInternal);
     }
