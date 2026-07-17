@@ -152,7 +152,11 @@ protected:
   AxisConfig _config;
 
   // 超时设置
-  static const unsigned long LEAVING_HOME_TIMEOUT_MS = 5000;
+  // 2026-07-17 5000→15000（同步 octoaxesplus 2026-07-15 实测修复）：滤光轮 homing
+  // 起点若远离传感器窗口，LEAVING_HOME 阶段以 homing 速度(0.15 圈/s)最坏需走近一整圈
+  // ≈6.7s，5s 必假超时（octoaxesplus W2 实测 5.2s 报 ERROR）。octoaxes 同款潜伏边界，
+  // 起点近传感器时未暴露。对直线轴/物镜只是放宽错误检测上限，正常路径行为不变。
+  static const unsigned long LEAVING_HOME_TIMEOUT_MS = 15000;
   static const unsigned long MOVEMENT_TIMEOUT_MS = 5000;
 
   elapsedMicros _checkHomeReachTimeout;
