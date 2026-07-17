@@ -517,6 +517,7 @@ namespace AxisConfigs {
         .dfinalMM = 0,                                   // 同 astart
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
+        .fwHomingDirection = 1,   // 2026-07-17 滤光轮 homing 方向可配置（+1=历史行为/-1=整体镜像），见 axis.h
         .driverType = DRIVER_AUTO,
         .currentRange = 2,
         .enableEncoder = false,
@@ -653,6 +654,7 @@ namespace AxisConfigs {
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
         .homing_direct = 1,
+        .fwHomingDirection = 1,   // 2026-07-17 滤光轮 homing 方向可配置（+1=历史行为/-1=整体镜像），见 axis.h
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,
