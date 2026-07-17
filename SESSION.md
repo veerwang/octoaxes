@@ -27,6 +27,7 @@ homing 方向可配置**（两固件同步、默认逐位等价）。
 | `dba7e80` | **octoaxes 收口单滤光轮**（删 constants W2 条目，GUI 数据驱动自动少一轴，固件 W2 轴保留死轴容错）+ **octoaxesplus W1 编码器与 W2 统一**（flip/tpr 取 W2 实测值，缺板时 cmd25 静默 no-op）+ verify_profiles 期望集更新 |
 | `a9544ee` | **octoaxes 固件同步**：LEAVING_HOME 假超时 5s→15s（同款潜伏边界）+ EXPAND4_AXIS.encoderLinesPerRev 0→4000 对齐 W（惰性就绪字段） |
 | `baf0816` | **滤光轮 homing 方向可配置**：AxisConfig 新增 `fwHomingDirection`（int8_t 默认 +1=历史行为，-1=整体镜像搜索/移出方向）。**刻意不复用 homing_direct**（被 HOME data[3]/movement_sign 运行时覆盖 = Turret 反面教材），新字段只认 config.h。顺带取代「移出按 homingSwitch 二选一」写法（LEFT_SW 逐位等价；RGHT_SW 分支从未用过且移出与搜索同向存疑）。两固件 filterwheel.cpp 保持逐字节一致 |
+| `6109ced` | **⚠️ 取代 baf0816 字段方案（用户提议更优解）**：删 `fwHomingDirection`，滤光轮搜索方向改 = **`-homing_direct`（反向映射）**——恰好忠实编码旧 Squid W 段字节约定（host 对 sign=1 发 HOME_NEGATIVE→homing_direct=-1，旧 Squid 固件实际朝 + 搜）。不变量：**滤光轮 homing 搜索方向 = movement_sign**。config.h W 系 homing_direct 1→-1（boot 默认对齐协议写入值）。全部发送方（旧 Squid+HCS_v2.ini / 两 GUI / 脚本 b3=1）行为逐位不变；方向配置点升级为"改 constants movement_sign 一行+重启 GUI 不用重烧"（连带翻 Next/Previous，镜像硬件整体自洽） |
 
 ### W2 上机实测结果（07-15，三连修后固件已烧当时那块板）
 
