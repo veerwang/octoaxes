@@ -62,12 +62,12 @@ public:
     float astartMM;              // 起始加速度 (mm/s²), 0=不使用
     float dfinalMM;              // 终止减速度 (mm/s²), 0=同 astart
     uint32_t homing_timeout_ms;
+    // homing_direct 语义按轴类型分两种（值会被 HOME_OR_ZERO data[3] 运行时覆盖）：
+    //   StepAxis/Objectives：搜索方向 = +homing_direct（X/Y/Z 惯例）。
+    //   FilterWheel：搜索方向 = -homing_direct（旧 Squid W 段字节约定——host 对 sign=1
+    //   发 HOME_NEGATIVE(1)→-1，实际朝 + 搜；即搜索方向 = movement_sign）。滤光轮
+    //   config.h 开机默认写 -1 与协议写入值一致。详见 filterwheel.cpp 注释。
     int8_t homing_direct;
-    // 2026-07-17 滤光轮 homing 方向（+1=历史行为 / -1=整体镜像搜索与移出方向）。
-    // 仅 FilterWheel::performHomingSequence/performLeavingHome 使用；刻意独立于
-    // homing_direct —— 后者会被 HOME_OR_ZERO data[3] 运行时覆盖（Turret 反面教材），
-    // 本字段只认 config.h，保证滤光轮 homing 方向不被上位机 movement_sign 意外翻转。
-    int8_t fwHomingDirection = 1;   // 默认 +1 = 历史行为（省略此字段的轴不受影响）
     uint8_t driverType;          // 驱动芯片型号，默认 DRIVER_TMC2660
     uint8_t currentRange;        // TMC2240 CURRENT_RANGE: 0=1A, 1=2A, 2=3A (TMC2660 时忽略)
     bool enableEncoder;          // 是否启用 ABN 编码器，默认 false

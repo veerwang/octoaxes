@@ -516,8 +516,7 @@ namespace AxisConfigs {
         .astartMM = 0,  // 2026-05-21 对齐旧 Squid sRampInit (rstBits USE_ASTART_AND_VSTART)，禁用 jerk-start 消除短距离 ramp 过冲
         .dfinalMM = 0,                                   // 同 astart
         .homing_timeout_ms = 80000,
-        .homing_direct = 1,
-        .fwHomingDirection = 1,   // 2026-07-17 滤光轮 homing 方向可配置（+1=历史行为/-1=整体镜像），见 axis.h
+        .homing_direct = -1,   // 2026-07-17 滤光轮映射=搜索方向取反（-1→搜索+，历史行为）；boot 默认与各 host 对 sign=1 发 NEGATIVE 的协议写入值一致
         .driverType = DRIVER_AUTO,
         .currentRange = 2,
         .enableEncoder = false,
@@ -653,8 +652,7 @@ namespace AxisConfigs {
         .astartMM = 0,  // 2026-05-21 对齐旧 Squid sRampInit (rstBits USE_ASTART_AND_VSTART)，禁用 jerk-start 消除短距离 ramp 过冲
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
-        .homing_direct = 1,
-        .fwHomingDirection = 1,   // 2026-07-17 滤光轮 homing 方向可配置（+1=历史行为/-1=整体镜像），见 axis.h
+        .homing_direct = -1,   // 2026-07-17 滤光轮映射=搜索方向取反（-1→搜索+，历史行为）；boot 默认与各 host 对 sign=1 发 NEGATIVE 的协议写入值一致
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,

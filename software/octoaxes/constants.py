@@ -98,7 +98,9 @@ AXIS_CONFIG = {
         "type": "filter_wheel",
         "has_limits": False,
         "limits": (0, 7),
-        "movement_sign": 1,    # 与旧 Squid 一致（sign=1 → HOME_NEGATIVE → chip 朝 - 方向 search）
+        "movement_sign": 1,    # 与旧 Squid 一致。滤光轮 homing 搜索方向 = movement_sign（固件对
+                               # W 段字节反向映射：sign=1 → data[3]=NEGATIVE → homing_direct=-1
+                               # → 搜索 +，见 firmware filterwheel.cpp 2026-07-17 注释）
         "index": 3,
         "has_encoder": True,    # 2026-05-21 启用 ABN 编码器，GUI 通过 ENC_POS 反映 chip 真实位置
         "encoder_transitions_per_rev": 4000,

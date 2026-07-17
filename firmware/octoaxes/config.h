@@ -439,8 +439,7 @@ namespace AxisConfigs {
         .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 路径 C v2：ASTART=22.5 rev/s²，等效 microstep=8 时代历史最优 chip 寄存器值 288,000 µstep/s²（历史 180 rev/s² × 1600 µstep/rev = 288K; 当前需 22.5 × 12800 = 288K）。短距离避免过冲，长距离仍有 jerk-start 加速优势。
         .dfinalMM = 0,                                   // 同 astart
         .homing_timeout_ms = 80000,
-        .homing_direct = 1,
-        .fwHomingDirection = 1,   // 2026-07-17 滤光轮 homing 方向可配置（+1=历史行为/-1=整体镜像），见 axis.h
+        .homing_direct = -1,   // 2026-07-17 滤光轮映射=搜索方向取反（-1→搜索+，历史行为）；boot 默认与各 host 对 sign=1 发 NEGATIVE 的协议写入值一致
         .driverType = DRIVER_AUTO,
         .currentRange = 2,
         .enableEncoder = false,
@@ -561,8 +560,7 @@ namespace AxisConfigs {
         .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 路径 C v2：W2 同 W (22.5 rev/s² ≈ 288K µstep/s² chip 寄存器，详见 W_AXIS 注释)
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
-        .homing_direct = 1,
-        .fwHomingDirection = 1,   // 2026-07-17 滤光轮 homing 方向可配置（+1=历史行为/-1=整体镜像），见 axis.h
+        .homing_direct = -1,   // 2026-07-17 滤光轮映射=搜索方向取反（-1→搜索+，历史行为）；boot 默认与各 host 对 sign=1 发 NEGATIVE 的协议写入值一致
         .driverType = DRIVER_AUTO,
         .currentRange = 2,   // 2026-07-09 0→2 对齐 W_AXIS（同型滤光轮，TMC2660 忽略此字段走 R_sense，对齐仅为一致性）
         .enableEncoder = false,
