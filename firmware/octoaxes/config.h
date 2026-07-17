@@ -564,7 +564,7 @@ namespace AxisConfigs {
         .driverType = DRIVER_AUTO,
         .currentRange = 2,   // 2026-07-09 0→2 对齐 W_AXIS（同型滤光轮，TMC2660 忽略此字段走 R_sense，对齐仅为一致性）
         .enableEncoder = false,
-        .encoderLinesPerRev = 0,
+        .encoderLinesPerRev = 4000,   // 2026-07-17 0→4000 对齐 W_AXIS（同型滤光轮编码器；与 W 同为运行时 cmd25 启用，boot 不开）
         .invertEncoderDir = false,
         .invert_direction = false   // 2026-05-26 W2 同 W 回归字节级 drop-in（详见 W_AXIS 上方注释）
     };
