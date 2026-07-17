@@ -103,7 +103,10 @@ AXIS_CONFIG = {
         "limits": (0, 7),
         "movement_sign": 1,
         "index": 3,
-        "has_encoder": False,
+        # 2026-07-17 与 W2 统一开编码器反馈（用户确认两滤光轮同配置）。flip/tpr 取
+        # W2 实测值（同款传感器/W_AXIS 模板）；W1 驱动板到位后建议跑 w2_encoder_check.py
+        # 同款流程复核。当前缺板时 cmd25 经 W→W1 兜底落到死轴，静默 no-op 无副作用。
+        "has_encoder": True,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 对齐旧 Squid SCREW_PITCH_W_MM=1

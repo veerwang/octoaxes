@@ -111,21 +111,10 @@ AXIS_CONFIG = {
         "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA
         "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
-    "W2": {
-        "display_name": "Filter Wheel 2 - expand4_axis",
-        "type": "filter_wheel",
-        "has_limits": False,
-        "limits": (0, 7),
-        "movement_sign": 1,
-        "index": 4,
-        # 2026-07-09 以 W(滤光轮1) 为基准对齐：E4=滤光轮2，同型硬件参数应一致。
-        # 原 pitch=100/ms=8 是陈旧错值（固件 EXPAND4_AXIS 早已用 FILTERWHEEL 常量 pitch=1/ms=64）。
-        # 编码器暂不加（需 E4 硬件实装 ABN + 加进 _configure_encoders + 固件 encoderLinesPerRev 才生效）。
-        "actuator_screw_pitch_mm": 1.0,    # 对齐 W / 旧 Squid SCREW_PITCH_W_MM=1
-        "actuator_microstepping": 64,      # 对齐 W / 旧 Squid MICROSTEPPING_DEFAULT_W=64
-        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA（对齐 W / 固件）
-        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
-    },
+    # 2026-07-17 移除 W2（Filter Wheel 2）条目：本硬件只有一个滤光轮，GUI 轴列表由
+    # AXIS_CONFIG.keys() 数据驱动，删条目即不再生成。固件 W2 轴（icID=4）保留不动
+    # （缺板由死轴容错静默处理，装板也不影响其他轴）。恢复：照 W 条目补回 index=4
+    # 的 W2（参数与 W 一致），见 git 历史 2026-07-09 版本。
     "Turret": {
         # 2026-05-29 本电路板 icID=5 槽位接物镜转换器（4 物镜），CS=pin 19/CLK=pin 28。
         # 协议走专属 MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7（不复用 W 命令）。
