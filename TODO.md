@@ -8,6 +8,23 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
+### 2026-07-15～17 滤光轮上机会话：W2 三连修 + 编码器反馈 + 单滤光轮收口 + homing 方向可配置
+
+> octoaxesplus 硬件上机（后转 octoaxes）。6 提交 ce359fd..baf0816，详见 SESSION.md 最新会话。
+
+- [x] **octoaxesplus W2 固件三连修** `ce359fd`（上机实测全通过）— ①传感器极性 0→1（STOPL 整圈恒 active 根因）②LEAVING_HOME 超时 5s→15s（离家最坏走近整圈 6.7s，实测 5.2s 假超时）③滤光轮关芯片硬停（窗口内拦负向穿窗）。修后：homing 最远起点 7.2s 精确设零、整圈双向 16/16、回零残差 0。
+- [x] **W2/W1/W 纯编码器反馈统一** `19573c7`/`dba7e80` — cmd25 只使能编码器不开 PID；`_configure_encoders` 补 W1/W2 协议映射（6-08 审计兜底缺失）；W2 实测 flip=False/tpr=4000 正确（ratio=+0.9994）；新脚本 `w2_encoder_check.py`。
+- [x] **octoaxes 收口单滤光轮** `dba7e80` — 删 constants W2 条目（GUI 数据驱动 5 轴），固件 W2 轴保留死轴容错；verify_profiles 期望集更新，两 profile 通过。
+- [x] **octoaxes 固件同步** `a9544ee` — LEAVING_HOME 假超时同款修复 + EXPAND4 编码器字段对齐 W（惰性就绪）。
+- [x] **滤光轮 homing 方向可配置** `baf0816` — AxisConfig 新增 `fwHomingDirection`（默认+1 逐位等价/-1 整体镜像）；刻意独立于 homing_direct（避开 data[3] 运行时覆盖的 Turret 反面教材）；两固件 filterwheel.cpp 保持逐字节一致。
+- [x] **新 octoaxesplus 板 bring-up 排查**（两则均硬件问题，用户确认）— ①烧得进但串口全静默 = POWER_GOOD 卡死（IC6 LTC2903 原理图 bug 前科，正解 PCB 飞线）；②Z 方向反 = 物理层（换旧 Z 恢复）。
+- [ ] **octoaxes 重烧固件**（a9544ee+baf0816，默认值零行为变化）→ GUI 验收：5 轴列表 + W homing/编码器显示
+- [ ] **octoaxesplus 重烧**（baf0816）→ 重跑 `w2_post_flash_verify2.py` 回归（预期与 07-15 一致）
+- [ ] octoaxesplus W1 接驱动板后：编码器 flip 复核 + homing 实测
+- [ ] 新 octoaxesplus 板 POWER_GOOD 硬件处理（查 24V/PG/飞线）；（可选）固件 PG 超时降级为警告+继续（学 beginAll 28e8eee 保串口诊断）
+- [ ] （可选）滤光轮性能参数统一：octoaxesplus astartMM 0→22.5 / 加速度 400→200（octoaxes 实测调优值，移植需上机 benchmark，防 5-26 ASTART 灾难复发）
+- [ ] push develop → github/main（本地领先 6 提交）
+
 ### 2026-07-10 A5 物镜 GUI 闭环版完成（两 profile 物镜转换器均 PID 闭环，已同步 github/main）
 
 > new-W-axis 融合最后一块：A5 上位机物镜 GUI。落到本项目 objective 类型轴（octoaxes=Turret / octoaxesplus=R）。

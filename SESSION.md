@@ -6,6 +6,69 @@
 
 ## 最新会话
 
+**日期**: 2026-07-15 ～ 2026-07-17（连续上机会话）
+**分支**: develop（本地领先 github/main 6 提交：ce359fd..baf0816，未 push）
+**位置**: **octoaxesplus W2 上机三连修 + 编码器反馈 + 新板 bring-up 排查 + octoaxes 单滤光轮收口 + homing 方向可配置**
+
+### 一句话
+
+octoaxesplus 硬件上机验证滤光轮：W2 全链路暴露并修复**三个层层递进的固件 bug**（传感器极性反 /
+LEAVING_HOME 假超时 / 芯片硬停拦负向穿窗），修后 homing+整圈双向+编码器全通过；启用 W1/W2/W
+**纯编码器反馈**（无 PID）；排查第二块 octoaxesplus 新板「烧得进通不了」= POWER_GOOD 卡死（硬件）；
+随后转 octoaxes 硬件：收口单滤光轮 profile、同步假超时修复、实现 **fwHomingDirection 滤光轮
+homing 方向可配置**（两固件同步、默认逐位等价）。
+
+### 6 个提交（07-15 三个 + 07-17 三个）
+
+| commit | 内容 |
+|---|---|
+| `ce359fd` | **octoaxesplus 固件 W2 三连修**：① W_AXIS 极性 0→1（实测 STOPL 整圈恒 active、仅传感器窗口 ~5° inactive → homing 假完成 + STOP_LEFT 拦全部负向）② axis.h LEAVING_HOME 超时 5000→15000（离家阶段最坏走近整圈 ≈6.7s，实测 5.2s 假超时 ERROR）③ 滤光轮关芯片硬停（极性正确后窗口内 STOPL=active，硬停拦负向穿窗——整圈后 Previous 实测只走 84 µstep 卡死；homing 本就软件轮询+软件停车不依赖硬停，极性/锁存已解耦 80f4577） |
+| `19573c7` | **W2 纯编码器反馈**：constants W2 has_encoder=True（无 pid_enabled → 只发 cmd25 不开闭环）+ `_configure_encoders._AXIS_PROTOCOL` 补 W1(轴码5兜底)/W2(轴码6)（6-08 审计兜底缺失家族）+ 新脚本 `w2_encoder_check.py` |
+| `dba7e80` | **octoaxes 收口单滤光轮**（删 constants W2 条目，GUI 数据驱动自动少一轴，固件 W2 轴保留死轴容错）+ **octoaxesplus W1 编码器与 W2 统一**（flip/tpr 取 W2 实测值，缺板时 cmd25 静默 no-op）+ verify_profiles 期望集更新 |
+| `a9544ee` | **octoaxes 固件同步**：LEAVING_HOME 假超时 5s→15s（同款潜伏边界）+ EXPAND4_AXIS.encoderLinesPerRev 0→4000 对齐 W（惰性就绪字段） |
+| `baf0816` | **滤光轮 homing 方向可配置**：AxisConfig 新增 `fwHomingDirection`（int8_t 默认 +1=历史行为，-1=整体镜像搜索/移出方向）。**刻意不复用 homing_direct**（被 HOME data[3]/movement_sign 运行时覆盖 = Turret 反面教材），新字段只认 config.h。顺带取代「移出按 homingSwitch 二选一」写法（LEFT_SW 逐位等价；RGHT_SW 分支从未用过且移出与搜索同向存疑）。两固件 filterwheel.cpp 保持逐字节一致 |
+
+### W2 上机实测结果（07-15，三连修后固件已烧当时那块板）
+
+- homing：最远起点搜近整圈 7.2s → 传感器两段式定位 → XACT 精确设零（旧 5s 超时必挂，反向验证修复必要）
+- Next×8 + Prev×8 整圈往返（含负向穿传感器窗口）：16/16 步精确 1600 µstep
+- 编码器：flip=False / tpr=4000 实测正确（ratio=+0.9994），双向跟随误差 ≤6 count，回零残差 3 count(≈0.08°)
+- 诊断方法沉淀：`w2_encoder_check.py`（cmd25→逐槽→S:ENCPOS 比对）、去使能后手转转盘 + 实时监视 STOPL 定传感器窗口/极性
+
+### 滤光轮 homing 过程梳理（备查）
+
+`①切 homing 微步256/禁软限位 → ②以 0.15圈/s 朝移出方向(-fwDir)转直到传感器触发（最坏近整圈）→
+③反向(+fwDir)全速穿出窗口停车 → ④慢速(1/5)反向再进窗口 → ⑤慢速正向穿出、在窗口 +fwDir 侧边沿设零 →
+⑥恢复微步/软限位/PID → GUI 补 offset(+102 µstep)`。注意代码内 `limit_state==0x00` 注释叫"在感应区"，
+与部分硬件电平物理含义相反（旧 Squid W 段遗产，状态机靠相位反转收敛）——描述行为以物理过程为准。
+
+### 新 octoaxesplus 板 bring-up（第二块板，硬件问题两则）
+
+1. **烧得进固件但串口全静默** → 定位：`initializeSystem` 等 POWER_GOOD(pin 0) 5s 超时 → `while(1)` 停机
+   （USB 枚举是中断驱动的，setup 卡死也能枚举成功——这是关键判据）。**有前科**：2026-05-13 首块板同坑，
+   根因 IC6 LTC2903 +24V_XY 原理图标签 bug，当年 bypass 未提交已丢失，正解=PCB 飞线。用户确认硬件问题。
+2. **Z 方向反** → 软/固件方向链路两项目逐字节比对一致 → 物理层问题；用户换旧 Z 恢复正常，确认硬件问题。
+3. 教训重提：当年 bring-up 工具（pg_test/clk_test/hc154_test）未提交已丢失；SESSION ~3403 有硬件核对清单。
+
+### 两项目滤光轮差异现状（比对结论备查）
+
+逻辑（filterwheel.cpp/超时）逐字节一致；配置差 4 处：极性 0↔1、硬停 true↔false（**必须不同**，各板传感器
+电平相反）+ astartMM 22.5↔0、加速度 200↔400（性能参数未统一，octoaxes 为实测调优值，octoaxesplus 统一
+需上机 benchmark，暂缓）。
+
+### 下次继续
+
+1. **octoaxes 重烧固件**（a9544ee + baf0816：假超时修复 + 编码器就绪 + 方向可配置，默认值零行为变化）→ GUI 验收 5 轴单滤光轮 + W homing/编码器显示
+2. **octoaxesplus 重烧**（baf0816）→ 重跑 `w2_post_flash_verify2.py` 回归（预期与 07-15 结果一致）
+3. octoaxesplus W1 接驱动板后：编码器 flip 复核（w2_encoder_check.py 同款流程）+ homing 实测
+4. 新 octoaxesplus 板：POWER_GOOD 硬件处理（查 24V/PG 电路/飞线，对照好板）；可选固件改进：PG 超时降级为警告+继续（学 beginAll 28e8eee，保串口诊断）
+5. push develop → github/main（本地领先 6 提交）
+6. 悬挂项不变：Turret/R 闭环上机验证（A5）、W motor↔wheel 机械紧固、octoaxes Turret RGHT_SW 假设实测
+
+---
+
+## 会话 2026-07-10
+
 **日期**: 2026-07-10
 **分支**: develop（A5 及 octoaxesplus R 闭环**已同步 github/main = 50dff98**）
 **位置**: **A5 物镜 GUI 闭环版完成 + 两 profile 物镜转换器均 PID 闭环 + 同步 github-main**

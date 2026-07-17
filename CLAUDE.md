@@ -55,8 +55,9 @@ documents/              文档资料：
 
 ## 当前状态
 
-**最后更新**: 2026-05-26 续二
-**当前硬件**: octoaxes 主线机；W 累积漂移根因已定位为 **motor↔wheel 机械打滑（用户硬件直接观察）**，chip_w deterministic ≤ 0.25° 漂移，软件无法修复，等待硬件紧固。2026-05-26 完成 (1) W2 (Filter Wheel 2) 适配 + W invert_direction 回归 false + INITFILTERWHEEL 字节级偏差修复（解决长 homing 时 5s 超时；两 firmware 同步）; (2) **W 轴速度优化二轮：1 slot 181ms → 72ms (-60%)**，完整报告 `documents/baselines/W-speed-optimization-20260526.md`。octoaxesplus TMC2240 驱动板 W1/W2 端到端通过；LED 矩阵 R/G/B / DAC 直控/GAIN/Read 已实测
+**最后更新**: 2026-07-17
+**最新会话（2026-07-15～17，滤光轮上机）**: octoaxesplus W2 上机暴露并修复固件三 bug（传感器极性反 / LEAVING_HOME 5s 假超时 / 芯片硬停拦负向穿窗，`ce359fd`，实测全通过：homing 7.2s 精确设零 + 整圈双向 16/16 + 编码器 ratio=+0.9994）；W/W1/W2 统一**纯编码器反馈**（cmd25 无 PID，`19573c7`/`dba7e80`）；octoaxes 收口**单滤光轮** profile（删 W2 条目，GUI 数据驱动 5 轴 X/Y/Z/W/Turret，固件 6 轴不变）；octoaxes 固件同步假超时修复（`a9544ee`）；滤光轮 **homing 方向可配置 `fwHomingDirection`**（默认+1 逐位等价，独立于 homing_direct 免 data[3] 覆盖，`baf0816`）。两项目滤光轮：逻辑逐字节一致，配置差极性/硬停（板级传感器电平相反，必须不同）+ astart/加速度（性能未统一）。**octoaxes/octoaxesplus 均待重烧**（改动默认零行为变化）；本地领先 github/main 6 提交未 push。第二块 octoaxesplus 板 POWER_GOOD 卡死（IC6 原理图 bug 前科）+ Z 方向反，均确认硬件问题待处理。
+**历史硬件状态**: octoaxes W motor↔wheel 机械打滑等待硬件紧固（chip_w ≤0.25° 漂移，软件无法修复）；W 速度优化二轮 1 slot 72ms（`documents/baselines/W-speed-optimization-20260526.md`）；LED 矩阵 R/G/B / DAC 直控已实测
 **当前进度（develop 主线，已合并 maxpro 全部进展 + 2026-05-18 illumination 完善）**:
 - **历史汇总**：octoaxes 主线（Z 编码器 + XYZ 速度基线 + Y homing 256/30 + 静默 reject + 协议下降沿即时发 + B.6/B.6.1 判完优化）；octoaxesplus（IC4 虚焊定位 + XYZW1W2 五轴 + software profile 拆分 + 协议 v2 + W2 端到端打通）；详见 SESSION.md
 - **2026-05-18 ttl_test 融合 + LED 矩阵双修**：
