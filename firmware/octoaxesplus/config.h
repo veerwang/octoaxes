@@ -256,7 +256,7 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_X_mm = 500;
 		const float MAX_ACCELERATION_Y_mm = 500;
 		const float MAX_ACCELERATION_Z_mm = 20;
-		const float MAX_ACCELERATION_FILTERWHEEL_mm = 400 * SCREW_PITCH_FILTERWHEEL_MM;
+		const float MAX_ACCELERATION_FILTERWHEEL_mm = 200 * SCREW_PITCH_FILTERWHEEL_MM;   // 2026-07-17 400→200 对齐 octoaxes（用户确认两机滤光轮硬件相同；octoaxes 07-09 实测 W Test 反复 next/previous 丢步后降定的值），待上机回归
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;   // 2026-06-02 对齐 octoaxes E1（齿轮减速物镜防丢步）
 
 		const float HOMING_VELOCITY_X_MM = 10;
@@ -482,21 +482,19 @@ namespace AxisConfigs {
     const Axis::AxisConfig W_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = LEFT_SW,
-        // 2026-07-15 W2 上机实测（本板滤光轮 home 传感器）：极性 0 时 STOPL 整圈恒 active、
-        // 仅传感器窗口(~5°)读 inactive → homing 瞬间假完成(HOME_ERROR_F) + 负方向运动被
-        // STOP_LEFT 全程拦截。极性翻 1 后语义正确：仅传感器处 active。W1 同款传感器随模板生效。
-        // 注意与 octoaxes 主线 W_AXIS 无关（那套硬件极性 0 实测正常，两板传感器电平不同）。
-        .leftSwitchPolarity = 1,
+        // 2026-07-20 极性/硬停回归 octoaxes 值（0 / true）：用户确认两机滤光轮硬件相同，
+        // 且【octoaxesplus 硬件侧将按 octoaxes 整改传感器信号链】。
+        // ⚠️ 前提是硬件整改完成——2026-07-15 在未整改板上实测：极性 0 时 STOPL 整圈恒
+        // active、仅传感器窗口(~5°)读 inactive → homing 瞬间假完成 + STOP_LEFT 拦截全部
+        // 负向运动（三 bug 见 ce359fd）。若烧到未整改板，上述三 bug 会原样复活；
+        // 届时诊断法：去使能后手转转盘 + S:DUMPREGS 监视 STOPL（见 SESSION 2026-07-15）。
+        .leftSwitchPolarity = 0,
         .rightSwitchPolarity = 0,
         .leftIsInactive = 0,
         .rightIsInactive = 0,
         .leftFlipped = false,
         .rightFlipped = false,
-        // 2026-07-15 W2 实测：转轮轴 + 极性 1 下传感器窗口内 STOPL=active，chip STOP_LEFT
-        // 硬停会拦截窗口内一切负向运动（Next 整圈回到 home 后 Previous 卡死，实测只走 84 µstep）。
-        // 滤光轮 homing 是软件轮询 readLimitSwitches + 软件停车，不依赖 chip 硬停；
-        // 极性/锁存已与 enable 解耦（80f4577），关硬停后 STOPL 仍可读。
-        .enableLeftLimitSwitch = false,
+        .enableLeftLimitSwitch = true,
         .enableRightLimitSwitch = false,
         .r_sense = AxisConstDefinition::R_sense_filter,
         .screwPitchMM = AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,
@@ -513,7 +511,7 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 0,  // 2026-05-21 对齐旧 Squid sRampInit (rstBits USE_ASTART_AND_VSTART)，禁用 jerk-start 消除短距离 ramp 过冲
+        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-07-17 0→22.5 对齐 octoaxes（用户确认两机滤光轮硬件相同；octoaxes 5-26 W 速度优化二轮实测值，jerk-start 22.5 rev/s² ≈ 288K µstep/s² chip 寄存器 @ms=64），待上机回归
         .dfinalMM = 0,                                   // 同 astart
         .homing_timeout_ms = 80000,
         .homing_direct = -1,   // 2026-07-17 滤光轮映射=搜索方向取反（-1→搜索+，历史行为）；boot 默认与各 host 对 sign=1 发 NEGATIVE 的协议写入值一致
@@ -649,7 +647,7 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 0,  // 2026-05-21 对齐旧 Squid sRampInit (rstBits USE_ASTART_AND_VSTART)，禁用 jerk-start 消除短距离 ramp 过冲
+        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-07-17 0→22.5 对齐 octoaxes（用户确认两机滤光轮硬件相同；octoaxes 5-26 W 速度优化二轮实测值，jerk-start 22.5 rev/s² ≈ 288K µstep/s² chip 寄存器 @ms=64），待上机回归
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
         .homing_direct = -1,   // 2026-07-17 滤光轮映射=搜索方向取反（-1→搜索+，历史行为）；boot 默认与各 host 对 sign=1 发 NEGATIVE 的协议写入值一致
