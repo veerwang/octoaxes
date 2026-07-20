@@ -376,7 +376,7 @@ void CommandProcessor::handleSetLimSwitchPolarity(const byte *data) {
     return;
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (!axis) return;
   uint8_t polarity = data[3];
   axis->getMutableConfig().leftSwitchPolarity = polarity;
@@ -392,7 +392,7 @@ void CommandProcessor::handleConfigureStepperDriver(const byte *data) {
   // data[2]: 协议轴; data[3]: 微步; data[4..5]: RMS 电流 (mA); data[6]: 保持电流 (0-255)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (!axis) return;
 
   // 微步特殊处理: 0→1, 1-128→原值, >128→256
@@ -412,7 +412,7 @@ void CommandProcessor::handleSetMaxVelocityAcceleration(const byte *data) {
   // data[2]: 协议轴; data[3:4]: 速度×100 (mm/s); data[5:6]: 加速度×10 (mm/s²)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (!axis) return;
   float vel_mm = float((uint16_t(data[3]) << 8) | data[4]) / 100.0f;
   float acc_mm = float((uint16_t(data[5]) << 8) | data[6]) / 10.0f;
@@ -423,7 +423,7 @@ void CommandProcessor::handleSetLeadScrewPitch(const byte *data) {
   // data[2]: 协议轴; data[3..4]: 螺距×1000 (uint16, mm)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (!axis) return;
 
   float pitchMM = float((uint16_t(data[3]) << 8) | uint16_t(data[4])) / 1000.0f;
@@ -451,7 +451,7 @@ void CommandProcessor::handleConfigureStagePID(const byte *data) {
   // data[2]: 协议轴; data[3]: flip_direction; data[4:5]: transitions_per_rev (大端序)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (!axis) return;
   bool flip_direction = data[3];
   uint16_t transitions_per_rev = (uint16_t(data[4]) << 8) | uint16_t(data[5]);
@@ -462,7 +462,7 @@ void CommandProcessor::handleEnableStagePID(const byte *data) {
   // data[2]: 协议轴
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (axis) axis->enableStagePID();
 }
 
@@ -470,7 +470,7 @@ void CommandProcessor::handleDisableStagePID(const byte *data) {
   // data[2]: 协议轴
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (axis) axis->disableStagePID();
 }
 
@@ -478,7 +478,7 @@ void CommandProcessor::handleSetHomeSafetyMargin(const byte *data) {
   // data[2]: 协议轴; data[3..4]: 裕量×1000 (uint16, mm)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (!axis) return;
 
   float marginMM = float((uint16_t(data[3]) << 8) | uint16_t(data[4])) / 1000.0f;
@@ -489,7 +489,7 @@ void CommandProcessor::handleSetPIDArguments(const byte *data) {
   // data[2]: 协议轴; data[3:4]: P (大端序 uint16); data[5]: I (uint8); data[6]: D (uint8)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (!axis) return;
   uint16_t p = (uint16_t(data[3]) << 8) | uint16_t(data[4]);
   uint8_t  i = data[5];
@@ -540,7 +540,7 @@ void CommandProcessor::handleSetAxisDisableEnable(const byte *data) {
   // data[2]: 协议轴; data[3]: 0=禁用, 1=启用
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 W→W1 兜底集中治理（审计 S-2：轴码5="W" 在 octoaxesplus 落 W1）
   if (!axis) return;
   if (data[3] == 0) axis->disableAxis();
   else              axis->enableAxis();
