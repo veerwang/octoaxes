@@ -62,16 +62,14 @@ void illumination_init()
     pinMode(Pins::ILLUMINATION_D7, OUTPUT); digitalWrite(Pins::ILLUMINATION_D7, LOW);
     pinMode(Pins::ILLUMINATION_D8, OUTPUT); digitalWrite(Pins::ILLUMINATION_D8, LOW);
 
-    // 通用数字输出引脚：与旧 Squid `init_io()` (init.cpp:74) 行为一致。
-    // 包含激光对焦 AF_LASER（pin 15，旧 Squid `MCU_PINS.AF_LASER`），
-    // 上位机通过 cmd 41 SET_PIN_LEVEL 控制。必须显式 OUTPUT，否则 pin 处于
-    // INPUT 高阻态时控制板内部上拉会让激光默认开启，且 digitalWrite 在
-    // INPUT 模式下不改变实际电平 → 关不掉。
-    static const int kDigitalOutputPins[] = {6, 9, 10, 15};
-    for (size_t i = 0; i < sizeof(kDigitalOutputPins)/sizeof(kDigitalOutputPins[0]); i++) {
-        pinMode(kDigitalOutputPins[i], OUTPUT);
-        digitalWrite(kDigitalOutputPins[i], LOW);
-    }
+    // 2026-07-20 审计 F-2 根治：删除旧 Squid 遗留的 kDigitalOutputPins[]={6,9,10,15}。
+    // 该表按旧 Squid 引脚图写（pin 15=AF_LASER 等），但 squid++ 上这 4 个 pin 全部另有归属：
+    //   pin 6  = CAM_TRI_READY2（相机 2 反馈**输入**，OUTPUT+LOW 会与相机输出驱动对抗）
+    //   pin 9  = CAMERA_TRIGGER_1 / pin 15 = CAMERA_TRIGGER_5（trigger_init 管，空闲 HIGH
+    //            负脉冲触发；本函数先于 trigger_init 执行，拉 LOW = 每次开机误触发相机）
+    //   pin 10 = ILLUMINATION_D8（上文 TTL 端口初始化已覆盖，重复）
+    // 旧表担心的 cmd 41 SET_PIN_LEVEL 目标引脚（AF 激光等）已由 handleSetPinLevel
+    // 首写强制 pinMode(OUTPUT) 兜底（2026-05-18），无需在此预初始化。
 
     // LED 驱动 SYNC：2 MHz PWM，50% 占空比
     pinMode(Pins::LED_DRIVER_SYNC, OUTPUT);
