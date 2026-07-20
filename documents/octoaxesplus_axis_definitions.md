@@ -53,10 +53,12 @@ const int T_AXIS_CS  = 4;    // HC154 Y4
 
 | icID | HC154 通道 | 标识 | 时钟源 |
 |---|---|---|---|
-| 0 | `HC154_AXIS_X` = 10 | X | `CLOCK_STANDARD` (pin 37) |
-| 1 | `HC154_AXIS_Y` = 9 | Y | `CLOCK_STANDARD` |
+| 0 | `HC154_AXIS_Y` = 9 | X（物理 X 电机） | `CLOCK_STANDARD` (pin 37) |
+| 1 | `HC154_AXIS_X` = 10 | Y（物理 Y 电机） | `CLOCK_STANDARD` |
 
-> **2026-07-20 更新**：X/Y icID 对调为 X=0 / Y=1，与 octoaxes 主线约定统一
+> **2026-07-20 更新**：① X/Y icID 对调为 X=0 / Y=1，与 octoaxes 主线约定统一；
+> ② 实测本机 X/Y 电机接线与 HC154 通道命名相反（GUI X 经 ch10 动的是物理 Y），
+> 按 octoaxes 主线先例做 axisName↔CS 交叉补偿——轴名跟物理电机，通道常量名保持板级标签。
 > （本表其余行是 2026-04 的 8 轴规划快照，当前实际 icID 3=W1 / 4=W2 / 5=Turret，见 §4 代码）。
 | 2 | `HC154_AXIS_Z1` = 8 | Z1（主焦点） | `CLOCK_STANDARD` |
 | 3 | `HC154_AXIS_F1` = 7 | F1（滤光转盘 1） | `CLOCK_STANDARD` |
