@@ -150,22 +150,31 @@ void ISR_strobeTimer()
 
         unsigned long elapsed = now - timestamp_trigger_rising_edge[i];
 
-        // 2026-07-20 审计 F-1 修复：原短曝光（≤30ms）路径在 ISR 内用 delayMicroseconds
-        // 阻塞（最长 30ms/帧，冻结主循环：位置广播/命令 ack/电机状态机轮询全部延迟）。
-        // 统一为异步两步式（原长曝光路径），开/关灯时刻受 100µs 定时器粒度限制：
-        // 照明窗口精度 ±100µs（10ms 曝光 ≈ ±1%，显微成像无感）；on_time < 100µs 时
-        // 实际最短点亮约一个定时器周期。
-        if (!strobe_on[i]) {
-            // 步骤 1：等待 strobe_delay 后开灯
-            if (elapsed >= strobe_delay_us[i]) {
+        if (illumination_on_time_us[i] <= 30000) {
+            // 短曝光（≤ 30ms）：同步模式
+            // 等待 strobe_delay 后开灯，持续 illumination_on_time 后关灯
+            if (!strobe_on[i] && elapsed >= strobe_delay_us[i]) {
                 turn_on_illumination();
                 strobe_on[i] = true;
+                // 短曝光直接用 delayMicroseconds 精确控制
+                delayMicroseconds(illumination_on_time_us[i]);
+                turn_off_illumination();
+                strobe_on[i] = false;
+                control_strobe[i] = false;  // 完成一次频闪，清除标志
             }
-        } else if (elapsed >= strobe_delay_us[i] + illumination_on_time_us[i]) {
-            // 步骤 2：持续 illumination_on_time 后关灯
-            turn_off_illumination();
-            strobe_on[i] = false;
-            control_strobe[i] = false;  // 完成一次频闪，清除标志
+        } else {
+            // 长曝光（> 30ms）：异步模式，两步分离
+            if (!strobe_on[i] && elapsed >= strobe_delay_us[i]) {
+                // 步骤 1：开灯
+                turn_on_illumination();
+                strobe_on[i] = true;
+            } else if (strobe_on[i] &&
+                       elapsed >= strobe_delay_us[i] + illumination_on_time_us[i]) {
+                // 步骤 2：关灯
+                turn_off_illumination();
+                strobe_on[i] = false;
+                control_strobe[i] = false;  // 完成一次频闪，清除标志
+            }
         }
     }
 }
