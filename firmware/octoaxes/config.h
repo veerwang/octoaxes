@@ -178,7 +178,7 @@ namespace AxisConstDefinition {
 		// 降到 80 mm/s² 留 margin。配合 EXPAND1_AXIS.currentRange=1 (2A) + motorCurrentMA=1800。
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;
 
-		const float HOMING_VELOCITY_X_MM = 10;
+		const float HOMING_VELOCITY_X_MM = 30;  // 2026-07-20 10→30 对齐 Y（用户拍板）：10 是未调优遗留值，比旧 Squid 实际 homing 速度(0.8×max_vel30=24)慢 2.4×；X/Y 同款平台电机，取 Y 的实测调优值。旧 Squid 无 homing 速度下发通道，此默认即其得到的速度
 		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 实测确定：256 微步 + 30 mm/s 最安静
 		const float HOMING_VELOCITY_Z_MM = 1;   // 开机安全默认=1mm/s（旧 Z 历史值，drop-in 等价；旧 Squid 无 homing 速度下发通道，只能用此默认）。新 Z 由 octoaxes GUI 启动按变体下发 S:SET_HOMING_VEL 提到 2mm/s（避免长行程回零超时）
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
