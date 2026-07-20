@@ -91,8 +91,12 @@ void ISR_strobeTimer()
     unsigned long now = micros();
 
     for (int i = 0; i < NUM_TRIGGER_CHANNELS; i++) {
-        // 仅处理启用了频闪控制的已触发通道
-        if (!control_strobe[i] || trigger_output_level[i] == HIGH)
+        // 仅处理启用了频闪控制的通道。
+        // 2026-07-20 修复（与 octoaxesplus 同步）：删除 `trigger_output_level[i] == HIGH`
+        // 门卫——NORMAL 模式触发脉冲仅 50µs 即恢复 HIGH，而 strobe_delay 是毫秒级，
+        // 该门卫使频闪开灯永远不执行（硬件触发模式下照明恒灭）。频闪生命周期由
+        // control_strobe/strobe_on 完整描述，与触发引脚电平无关（对齐旧 Squid ISR）。
+        if (!control_strobe[i])
             continue;
 
         unsigned long elapsed = now - timestamp_trigger_rising_edge[i];
