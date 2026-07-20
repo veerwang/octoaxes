@@ -77,11 +77,11 @@ bool initializeSystem() {
 
   // 创建轴对象并添加到管理器
   //
-  // squid++ 双相机硬件不需要 octoaxes 主线的 CS 引脚 swap：
-  // squid++ HC154 片选通道命名与物理硬件接线对齐（HC154_AXIS_X=10 直接驱动物理 X 电机）。
-  // 2026-07-20 起 X/Y 的 icID 与 octoaxes 主线统一为 X=0 / Y=1（tmc_ic_configs[] 中
-  // icID=0 → HC154_AXIS_X, icID=1 → HC154_AXIS_Y），40 字节扩展包槽位随之 X 在前。
-  // (octoaxes 主线的 CS swap 是为了兼容老 Squid PCB 的反向接线，详见 octoaxes/octoaxes.ino)
+  // 2026-07-20 实测：本机（squid++ 板）X/Y 电机接线与 HC154 通道命名相反——
+  // GUI X 命令经 ch10（标 X）驱动的是物理 Y 电机。与 octoaxes 主线 2026-05-08 同款病，
+  // 同款修法：axisName 与 CS 交叉补偿（轴名跟物理电机走，CS 常量名保持板级标签）。
+  // icID 与 octoaxes 主线统一为 X=0 / Y=1（40 字节扩展包槽位 X 在前），
+  // tmc_ic_configs[] 中 icID=0 → HC154_AXIS_Y(ch9)=物理 X, icID=1 → HC154_AXIS_X(ch10)=物理 Y。
   //
   // ──────────────────────────────────────────────────────────────────────
   // 当前模式：XYZW1W2 五轴（2026-05-15 起）
@@ -92,9 +92,9 @@ bool initializeSystem() {
   //     W2: HC154 通道 4（原 AXIS_T  资源）
   // Z 轴 axisName 用 "Z"（与上位机一致；axesmrg.cpp::beginAll 同时支持 "Z"/"Z1"）。
   // ──────────────────────────────────────────────────────────────────────
-  // 2026-07-20 X/Y icID 对调（X=0/Y=1），与 octoaxes 主线约定一致；CS 通道跟随轴名不变
-  Axis *xAxis  = new StepAxis    (Pins::X_AXIS_CS,  0, "X");    // icID=0, HC154 ch10 = 物理 X 电机
-  Axis *yAxis  = new StepAxis    (Pins::Y_AXIS_CS,  1, "Y");    // icID=1, HC154 ch9  = 物理 Y 电机
+  // 2026-07-20 X/Y icID 统一 X=0/Y=1 + axisName↔CS 交叉（本机接线补偿，用户实测拍板）
+  Axis *xAxis  = new StepAxis    (Pins::Y_AXIS_CS,  0, "X");    // icID=0, HC154 ch9  = 物理 X 电机
+  Axis *yAxis  = new StepAxis    (Pins::X_AXIS_CS,  1, "Y");    // icID=1, HC154 ch10 = 物理 Y 电机
   Axis *zAxis  = new StepAxis    (Pins::Z_AXIS_CS,  2, "Z");    // icID=2, HC154 ch8  = 主焦点 Z
   Axis *w1Axis = new FilterWheel (Pins::W1_AXIS_CS, 3, "W1");   // icID=3, HC154 ch6  = 滤光转盘 1
   Axis *w2Axis = new FilterWheel (Pins::W2_AXIS_CS, 4, "W2");   // icID=4, HC154 ch4  = 滤光转盘 2
