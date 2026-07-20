@@ -57,7 +57,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-10, 115000),
         "movement_sign": 1,
-        "index": 1,
+        "index": 0,  # firmware icID（2026-07-20 X/Y 对调，与 octoaxes 主线统一 X=0/Y=1）
         "default_velocity": 25.0,
         "default_acceleration": 500.0,
         "has_encoder": False,
@@ -74,7 +74,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-10, 76000),
         "movement_sign": 1,
-        "index": 0,
+        "index": 1,  # firmware icID（2026-07-20 X/Y 对调，与 octoaxes 主线统一 X=0/Y=1）
         "default_velocity": 25.0,
         "default_acceleration": 500.0,
         "has_encoder": False,

@@ -77,11 +77,11 @@ bool initializeSystem() {
 
   // 创建轴对象并添加到管理器
   //
-  // squid++ 双相机硬件不需要 octoaxes 主线的 X/Y swap：
-  // squid++ HC154 片选通道命名与物理硬件接线对齐（HC154_AXIS_X=10 直接驱动物理 X 电机），
-  // tmc_ic_configs[] 中 icID=0 → HC154_AXIS_Y, icID=1 → HC154_AXIS_X，
-  // 故 axisName="Y" + icID=0 + Y_AXIS_CS、axisName="X" + icID=1 + X_AXIS_CS 即正确映射。
-  // (octoaxes 主线的 swap 是为了兼容老 Squid PCB 的反向接线，详见 octoaxes/octoaxes.ino)
+  // squid++ 双相机硬件不需要 octoaxes 主线的 CS 引脚 swap：
+  // squid++ HC154 片选通道命名与物理硬件接线对齐（HC154_AXIS_X=10 直接驱动物理 X 电机）。
+  // 2026-07-20 起 X/Y 的 icID 与 octoaxes 主线统一为 X=0 / Y=1（tmc_ic_configs[] 中
+  // icID=0 → HC154_AXIS_X, icID=1 → HC154_AXIS_Y），40 字节扩展包槽位随之 X 在前。
+  // (octoaxes 主线的 CS swap 是为了兼容老 Squid PCB 的反向接线，详见 octoaxes/octoaxes.ino)
   //
   // ──────────────────────────────────────────────────────────────────────
   // 当前模式：XYZW1W2 五轴（2026-05-15 起）
@@ -92,8 +92,9 @@ bool initializeSystem() {
   //     W2: HC154 通道 4（原 AXIS_T  资源）
   // Z 轴 axisName 用 "Z"（与上位机一致；axesmrg.cpp::beginAll 同时支持 "Z"/"Z1"）。
   // ──────────────────────────────────────────────────────────────────────
-  Axis *yAxis  = new StepAxis    (Pins::Y_AXIS_CS,  0, "Y");    // icID=0, HC154 ch9  = 物理 Y 电机
-  Axis *xAxis  = new StepAxis    (Pins::X_AXIS_CS,  1, "X");    // icID=1, HC154 ch10 = 物理 X 电机
+  // 2026-07-20 X/Y icID 对调（X=0/Y=1），与 octoaxes 主线约定一致；CS 通道跟随轴名不变
+  Axis *xAxis  = new StepAxis    (Pins::X_AXIS_CS,  0, "X");    // icID=0, HC154 ch10 = 物理 X 电机
+  Axis *yAxis  = new StepAxis    (Pins::Y_AXIS_CS,  1, "Y");    // icID=1, HC154 ch9  = 物理 Y 电机
   Axis *zAxis  = new StepAxis    (Pins::Z_AXIS_CS,  2, "Z");    // icID=2, HC154 ch8  = 主焦点 Z
   Axis *w1Axis = new FilterWheel (Pins::W1_AXIS_CS, 3, "W1");   // icID=3, HC154 ch6  = 滤光转盘 1
   Axis *w2Axis = new FilterWheel (Pins::W2_AXIS_CS, 4, "W2");   // icID=4, HC154 ch4  = 滤光转盘 2
@@ -103,7 +104,7 @@ bool initializeSystem() {
 
   // 按 axisIndex 顺序添加；顺序必须与 tmc/hal/TMC_SPI.cpp 的 tmc_ic_configs[] HC154 分支一致
   // tmc_ic_configs[] 数组保持 8 项（icID 6-7 槽位空置但不被访问，无副作用）
-  if (!axisManager.addAxis(yAxis)  || !axisManager.addAxis(xAxis)  ||
+  if (!axisManager.addAxis(xAxis)  || !axisManager.addAxis(yAxis)  ||
       !axisManager.addAxis(zAxis)  || !axisManager.addAxis(w1Axis) ||
       !axisManager.addAxis(w2Axis) || !axisManager.addAxis(turretAxis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");
