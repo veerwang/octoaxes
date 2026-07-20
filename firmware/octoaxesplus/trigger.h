@@ -30,24 +30,25 @@ const int camera_trigger_pins[NUM_TRIGGER_CHANNELS] = {
     Pins::CAMERA_TRIGGER_8   // pin 39
 };
 
-// 外部触发 IN/OUT（squid++ 双相机：与外部设备双向同步，pin 1-4）
+// 外部触发 IN/OUT（squid++ 双相机：与外部设备双向同步）
 // 上位机协议接入待办（CAM_TRI_READY 握手 + handler 命令字 TBD）
+// 2026-07-20：pin 4（原 TRIGGER_IN2）实测为相机 2 触发线，退出 ext IN → IN 仅剩 1 路
 const int NUM_EXT_TRIGGERS = 2;
+const int NUM_EXT_TRIGGER_IN = 1;
 
 const int ext_trigger_out_pins[NUM_EXT_TRIGGERS] = {
     Pins::TRIGGER_OUT1,  // pin 1
     Pins::TRIGGER_OUT2,  // pin 3
 };
 
-const int ext_trigger_in_pins[NUM_EXT_TRIGGERS] = {
+const int ext_trigger_in_pins[NUM_EXT_TRIGGER_IN] = {
     Pins::TRIGGER_IN1,   // pin 2
-    Pins::TRIGGER_IN2,   // pin 4
 };
 
-// 双相机 READY 反馈输入（squid++ 双相机：相机 1/2 READY 状态）
+// 双相机 READY 反馈输入（squid++ 双相机：相机 1/2 等待触发反馈，2026-07-20 按勘察表定案）
 const int cam_tri_ready_pins[NUM_EXT_TRIGGERS] = {
-    Pins::CAM_TRI_READY1,  // pin 7（相机 1）
-    Pins::CAM_TRI_READY2,  // pin 6（相机 2）
+    Pins::CAM_TRI_READY1,  // pin 7（相机 1 等待触发）
+    Pins::CAM_TRI_READY2,  // pin 5（相机 2 等待触发）
 };
 
 // =============================================================================

@@ -123,9 +123,13 @@ namespace Pins {
     const int RX2 = 16;
     const int TX2 = 17;
 
-    // 相机触发（squid++ 双相机：8 路，来源 documents/squid++（双相机）配置.md §1）
-    const int CAMERA_TRIGGER_1 = 9;    // CAM_TRI_OUT1（相机 1）
-    const int CAMERA_TRIGGER_2 = 8;    // CAM_TRI_OUT2（相机 2）
+    // 相机触发（squid++ 双相机：8 路）
+    // 2026-07-20 实测定案（cmd41 逐引脚脉冲 + Toupcam 外触发数帧）：实际接线以
+    // documents/squid++（双相机）配置.md §1 的"功能描述"列（xlsx 勘察）为准，
+    // 原理图信号名不可信——相机 1 触发接 pin 6（信号名 CAM_TRI_READY2）、相机 2
+    // 触发接 pin 4（信号名 TRIGGER_IN2）；pin 9/8（CAM_TRI_OUT1/2）实测无接线（脉冲 0 帧）。
+    const int CAMERA_TRIGGER_1 = 6;    // 相机 1 触发（实测：脉冲 → Toupcam 出帧）
+    const int CAMERA_TRIGGER_2 = 4;    // 相机 2 触发（按同批勘察备注，相机 2 上机后复验）
     const int CAMERA_TRIGGER_3 = 23;
     const int CAMERA_TRIGGER_4 = 22;
     const int CAMERA_TRIGGER_5 = 15;
@@ -140,14 +144,14 @@ namespace Pins {
     const int TRIGGER_OUT1 = 1;
     const int TRIGGER_IN1  = 2;
     const int TRIGGER_OUT2 = 3;
-    const int TRIGGER_IN2  = 4;
+    // TRIGGER_IN2 (pin 4)：2026-07-20 实测该引脚实际接线为相机 2 触发 →
+    // 已改作 CAMERA_TRIGGER_2，不再作为 ext trigger IN（见 trigger.h NUM_EXT_TRIGGER_IN）
 
     // 双相机握手 READY 输入（squid++ 双相机：相机就绪/采集完成反馈）
-    // 注意：squid++ 文档 pin 6/7 描述与名称不一致（pin 6 标"相机1_触发"、pin 7 标
-    // "相机1_等待触发"，与名称 CAM_TRI_READY2/1 不对应），按命名作为输入引脚处理，
-    // 文档描述存疑，待核实原表
+    // 2026-07-20 定案：pin 6 实测为相机 1 触发线（旧"按命名作输入"假设作废），
+    // READY 按勘察表——相机1_等待触发=pin 7、相机2_等待触发=pin 5
     const int CAM_TRI_READY1 = 7;   // 相机 1 READY 反馈
-    const int CAM_TRI_READY2 = 6;   // 相机 2 READY 反馈
+    const int CAM_TRI_READY2 = 5;   // 相机 2 READY 反馈（勘察表"相机2_等待触发"）
 
     // 74HC154 4→16 译码器片选（squid++ 双相机）
     // A3:A2:A1:A0 二进制值 n → Yn 输出拉低，其余保持高；作为所有 SPI 设备的统一片选

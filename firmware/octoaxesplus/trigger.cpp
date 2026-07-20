@@ -53,6 +53,8 @@ void trigger_init()
     for (int i = 0; i < NUM_EXT_TRIGGERS; i++) {
         pinMode(ext_trigger_out_pins[i], OUTPUT);
         digitalWrite(ext_trigger_out_pins[i], LOW);
+    }
+    for (int i = 0; i < NUM_EXT_TRIGGER_IN; i++) {
         pinMode(ext_trigger_in_pins[i], INPUT_PULLUP);
     }
 
@@ -90,7 +92,7 @@ bool ext_trigger_pulse_out(uint8_t channel, uint32_t pulse_width_us)
 
 bool ext_trigger_read_in(uint8_t channel)
 {
-    if (channel >= NUM_EXT_TRIGGERS) return true;  // 越界默认去激活态
+    if (channel >= NUM_EXT_TRIGGER_IN) return true;  // 越界默认去激活态
     return digitalRead(ext_trigger_in_pins[channel]) == HIGH;
 }
 
