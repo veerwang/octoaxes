@@ -55,8 +55,8 @@ documents/              文档资料：
 
 ## 当前状态
 
-**最后更新**: 2026-07-17
-**最新会话（2026-07-15～17，滤光轮上机）**: octoaxesplus W2 上机暴露并修复固件三 bug（传感器极性反 / LEAVING_HOME 5s 假超时 / 芯片硬停拦负向穿窗，`ce359fd`，实测全通过：homing 7.2s 精确设零 + 整圈双向 16/16 + 编码器 ratio=+0.9994）；W/W1/W2 统一**纯编码器反馈**（cmd25 无 PID，`19573c7`/`dba7e80`）；octoaxes 收口**单滤光轮** profile（删 W2 条目，GUI 数据驱动 5 轴 X/Y/Z/W/Turret，固件 6 轴不变）；octoaxes 固件同步假超时修复（`a9544ee`）；滤光轮 **homing 方向可配置 `fwHomingDirection`**（默认+1 逐位等价，独立于 homing_direct 免 data[3] 覆盖，`baf0816`）。两项目滤光轮：逻辑逐字节一致，配置差极性/硬停（板级传感器电平相反，必须不同）+ astart/加速度（性能未统一）。**octoaxes/octoaxesplus 均待重烧**（改动默认零行为变化）；本地领先 github/main 6 提交未 push。第二块 octoaxesplus 板 POWER_GOOD 卡死（IC6 原理图 bug 前科）+ Z 方向反，均确认硬件问题待处理。
+**最后更新**: 2026-07-20
+**最新会话（2026-07-20，biforst 适配 + 硬件触发打通）**: 用户换用 **biforst 上位机**（Cephla squid 2026 fork）驱动 octoaxesplus：定位 checksum 死循环根因 = 固件周期广播 **40 字节 0xFD 扩展包且从不回显 cmd_id**，biforst 侧实现帧分隔/包转换/**ack 仿真**（25ms 守卫，biforst 仓库 `d11d1ce6`）；**X/Y icID 两工程统一 X=0/Y=1**（`b949cb9`）+ 实测本板接线交叉 → **axisName↔CS 交叉补偿**（`698f111`，octoaxes 5-08 同款病）；**相机硬件触发打通**：逐引脚脉冲+数帧实测定案触发线实际接 **pin 6（相机1）/pin 4（相机2）**、原理图信号名 CAM_TRI_OUT(9/8) 不可信（`c8843f1`，用户实测可用）；修**频闪门卫 bug**（硬件触发模式矩阵灯恒灭根因，`c9a55cd`，**待烧**）；**审计收口**：F-2 根治（`867870c`）、S-2 根治（`e5ea05e`）、F-1 **wontfix-by-design**（用户拍板 µs 级照明窗口精度硬需求，`c16181c` 回退）。**已同步 github/main=f402ce5**。旧结论修正：两项目滤光轮配置已全面对齐（`5fab89a`，07-17「必须不同」作废）。板上现为 ~c8843f1，**待重烧 c9a55cd+c16181c 终态**；octoaxes 板亦待重烧。第二块 octoaxesplus 板 POWER_GOOD 卡死 + Z 方向反，硬件问题待处理。
 **历史硬件状态**: octoaxes W motor↔wheel 机械打滑等待硬件紧固（chip_w ≤0.25° 漂移，软件无法修复）；W 速度优化二轮 1 slot 72ms（`documents/baselines/W-speed-optimization-20260526.md`）；LED 矩阵 R/G/B / DAC 直控已实测
 **当前进度（develop 主线，已合并 maxpro 全部进展 + 2026-05-18 illumination 完善）**:
 - **历史汇总**：octoaxes 主线（Z 编码器 + XYZ 速度基线 + Y homing 256/30 + 静默 reject + 协议下降沿即时发 + B.6/B.6.1 判完优化）；octoaxesplus（IC4 虚焊定位 + XYZW1W2 五轴 + software profile 拆分 + 协议 v2 + W2 端到端打通）；详见 SESSION.md
