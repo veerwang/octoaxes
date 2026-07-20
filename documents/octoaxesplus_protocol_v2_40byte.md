@@ -32,14 +32,14 @@ F1/Z2/F2/R/T）。**24 字节包的位置字段不够 5+ 轴用**，导致：
 |---|---|---|
 | `byte[0]` | **cmd_id = 0xFD (253)** ← 标识扩展位置包 | uint8 |
 | `byte[1]` | 状态：0=COMPLETED, 1=IN_PROGRESS, 2=CRC_ERROR | uint8 |
-| `byte[2-5]` | icID=0 位置（octoaxesplus = Y 轴） | int32 BE |
-| `byte[6-9]` | icID=1 位置（X 轴） | int32 BE |
+| `byte[2-5]` | icID=0 位置（octoaxesplus = X 轴，2026-07-20 X/Y 对调对齐 octoaxes） | int32 BE |
+| `byte[6-9]` | icID=1 位置（Y 轴） | int32 BE |
 | `byte[10-13]` | icID=2 位置（Z 轴） | int32 BE |
 | `byte[14-17]` | icID=3 位置（W1 滤光转盘） | int32 BE |
 | `byte[18-21]` | icID=4 位置（W2 滤光转盘） | int32 BE |
-| `byte[22-25]` | icID=5 位置（F2 预留） | int32 BE |
-| `byte[26-29]` | icID=6 位置（R 预留） | int32 BE |
-| `byte[30-33]` | icID=7 位置（T 预留） | int32 BE |
+| `byte[22-25]` | icID=5 位置（Turret 物镜转换器，2026-06-02 启用） | int32 BE |
+| `byte[26-29]` | icID=6 位置（预留） | int32 BE |
+| `byte[30-33]` | icID=7 位置（预留） | int32 BE |
 | `byte[34]` | 状态位（bit0 = 摇杆按钮） | uint8 |
 | `byte[35-37]` | 保留 | uint24 |
 | `byte[38]` | 固件版本（高半字节=major，低半字节=minor） | uint8 |

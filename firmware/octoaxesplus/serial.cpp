@@ -243,7 +243,8 @@ void SerialProtocolHandler::send_position_update() {
   _us_since_last_pos_update = 0;
 
   // 读取所有 axis 位置（按 firmware icID 索引，0..7）
-  // octoaxesplus XYZW1W2 五轴：icID 0=Y, 1=X, 2=Z, 3=W1, 4=W2；icID 5-7 占位填 0
+  // octoaxesplus XYZW1W2 五轴：icID 0=X, 1=Y, 2=Z, 3=W1, 4=W2（2026-07-20 X/Y 对调对齐
+  // octoaxes 主线约定）；icID 5-7 占位填 0
   // count 已在上面 any_moving 检测时拿过，直接复用
   int32_t positions[8] = {0};
   for (uint8_t i = 0; i < count && i < 8; i++) {
