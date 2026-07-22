@@ -8,9 +8,12 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-### 2026-07-22 移植 Mega joystick 焦点轮修正（focusPosition 过期致 Z 突跳）
+### 2026-07-22 移植 Mega joystick 焦点轮修正 + AF 对焦激光开机确定性关闭
 
-> 移植 Mega 仓库 `94e8a12` → 本仓库 `3e4abb9`（两固件同步），已同步 github/main=16443ab。详见 SESSION.md 最新会话。
+> joystick 修正移植 Mega `94e8a12` → `3e4abb9`（两固件）；AF 激光 `fab4f27`（仅 octoaxesplus）。详见 SESSION.md 最新会话。
+
+- [x] **AF 对焦激光 pin 5 开机确定性关闭** `fab4f27` — 排查用户提问「上电激光关闭还是不确定」：pin 5 实为 AF 激光（07-21 定案），却被固件当 CAM_TRI_READY2 配 INPUT_PULLUP 弱上拉 → 上电有误亮风险。修复：config.h 删 CAM_TRI_READY2 加 AF_LASER=5、illumination_init OUTPUT+LOW、pin 5 退出 READY 表（PULLUP 覆盖顺序坑）、看门狗超时补关（刻意不进 cmd 39——成像流程 API 会误杀采集中的激光对焦）。编译 SUCCESS。**待烧录实测：上电不接 GUI 激光保持灭**。
+- [ ] 相机 2 READY 反馈引脚重新勘定（原勘察表 pin 5 已判归 AF 激光；随相机 2 上机复验一起做）
 
 - [x] **焦点轮 focusPosition 过期致 Z 突跳修复** `3e4abb9` — `do_focus_control` 只首次懒同步且永不失效，GUI 移 Z/homing 后再摇轮 `moveTo(过期坐标)` Z 满速跳回（物理风险）；且只挡 homing 不挡 isMoving()。入口守卫：外部运动时清 focusWheelDelta + focusPositionSynced=false，结束后重同步。两固件编译 SUCCESS。**待烧录实测 3 场景**（①摇轮→GUI 移 Z→摇轮不跳回 ②摇轮→homing→摇轮 ③GUI 移动中摇轮不干扰）。
 - [x] **同步 github/main** — cherry-pick `3e4abb9`→`16443ab`，排除 documents 后代码零差异。
