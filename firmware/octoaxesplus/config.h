@@ -149,9 +149,16 @@ namespace Pins {
 
     // 双相机握手 READY 输入（squid++ 双相机：相机就绪/采集完成反馈）
     // 2026-07-20 定案：pin 6 实测为相机 1 触发线（旧"按命名作输入"假设作废），
-    // READY 按勘察表——相机1_等待触发=pin 7、相机2_等待触发=pin 5
+    // READY 按勘察表——相机1_等待触发=pin 7
     const int CAM_TRI_READY1 = 7;   // 相机 1 READY 反馈
-    const int CAM_TRI_READY2 = 5;   // 相机 2 READY 反馈（勘察表"相机2_等待触发"）
+
+    // 激光对焦 AF 激光（2026-07-22 用户确认实际接线 = pin 5，取代勘察表
+    // "相机2_等待触发"旧归属；biforst _def.py MCU_PINS.AF_LASER=5 同步定案）。
+    // 开机 illumination_init 强制 OUTPUT+LOW 确定性关闭（此前无人初始化，
+    // 反被 trigger_init 当 READY 输入配 INPUT_PULLUP 弱上拉，有上电误亮风险）；
+    // 运行时由上位机 cmd 41 SET_PIN_LEVEL 直控开关。
+    // 相机 2 READY 反馈待相机 2 上机复验后重新勘定引脚。
+    const int AF_LASER = 5;
 
     // 74HC154 4→16 译码器片选（squid++ 双相机）
     // A3:A2:A1:A0 二进制值 n → Yn 输出拉低，其余保持高；作为所有 SPI 设备的统一片选

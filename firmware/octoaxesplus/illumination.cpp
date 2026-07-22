@@ -62,6 +62,13 @@ void illumination_init()
     pinMode(Pins::ILLUMINATION_D7, OUTPUT); digitalWrite(Pins::ILLUMINATION_D7, LOW);
     pinMode(Pins::ILLUMINATION_D8, OUTPUT); digitalWrite(Pins::ILLUMINATION_D8, LOW);
 
+    // 激光对焦 AF 激光（pin 5，2026-07-22 用户确认接线）：开机强制 OUTPUT+LOW
+    // 确定性关闭。此前该脚无人初始化、反被 trigger_init 当 READY 输入配
+    // INPUT_PULLUP 弱上拉，上电激光状态取决于激光板输入偏置（可能误亮）。
+    // 运行时由上位机 cmd 41 SET_PIN_LEVEL 直控。
+    pinMode(Pins::AF_LASER, OUTPUT);
+    digitalWrite(Pins::AF_LASER, LOW);
+
     // 2026-07-20 审计 F-2 根治：删除旧 Squid 遗留的 kDigitalOutputPins[]={6,9,10,15}。
     // 该表按旧 Squid 引脚图写（pin 15=AF_LASER 等），但 squid++ 上这 4 个 pin 全部另有归属：
     //   pin 6  = CAM_TRI_READY2（相机 2 反馈**输入**，OUTPUT+LOW 会与相机输出驱动对抗）
@@ -618,6 +625,10 @@ void watchdog_check()
 {
     if (watchdog_enabled && (millis() - last_serial_message_time >= watchdog_timeout_ms)) {
         turn_off_all_ports();
+        // AF 激光（cmd 41 直控，不属于 D 端口）也纳入无人值守关断。
+        // 刻意不放进 turn_off_all_ports()：cmd 39 是上位机成像流程 API
+        // （多端口采集后关照明），在那里关 AF 激光会误杀采集中的激光对焦。
+        digitalWrite(Pins::AF_LASER, LOW);
         watchdog_enabled = false;  // 单次触发，不重复
     }
 }
