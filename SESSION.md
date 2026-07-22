@@ -7,8 +7,8 @@
 ## 最新会话
 
 **日期**: 2026-07-22
-**分支**: develop（**已同步 github/main = 16443ab**）
-**位置**: **移植 Mega joystick 焦点轮修正（focusPosition 过期致 Z 突跳）到两固件**
+**分支**: develop（已同步 github/main）
+**位置**: **移植 Mega joystick 焦点轮修正（focusPosition 过期致 Z 突跳）到两固件 + AF 对焦激光 pin 5 开机确定性关闭（octoaxesplus）**
 
 ### 一句话
 
@@ -38,6 +38,31 @@ new-W-axis-80160 分支）当天提交 `94e8a12` 的 joystick 焦点轮修正：
 - 同步 github/main：cherry-pick `3e4abb9`→`16443ab` push；develop vs github-main
   排除 documents 后代码零差异。
 
+### AF 对焦激光 pin 5 开机确定性关闭（下午，commit `fab4f27`，仅 octoaxesplus）
+
+用户问「上电时激光对焦的激光是关闭还是不确定？」——排查结论：**octoaxesplus 上是不确定
+甚至偏向误亮**：AF 激光实际接 pin 5（07-21 用户确认，biforst `MCU_PINS.AF_LASER=5`），
+但固件把 pin 5 当 `CAM_TRI_READY2`（勘察表"相机2_等待触发"旧归属）在 `trigger_init` 配成
+**INPUT_PULLUP 弱上拉**（22-100kΩ 拉向 3.3V）→ 上电激光状态取决于激光板输入偏置；
+biforst 启动不主动发 turn_off_AF_laser（只有 GUI 面板开关两处调用）。对照：octoaxes 主线
+保留旧 Squid `kDigitalOutputPins{6,9,10,15}`，pin 15（旧布局 AF 激光）上电 OUTPUT+LOW
+确定关闭，无此问题。
+
+**修复**（用户确认 pin 5=激光后实施，4 文件）：
+- `config.h`：删 `CAM_TRI_READY2`，新增 `Pins::AF_LASER = 5`
+- `illumination_init`：AF_LASER 开机 OUTPUT+LOW 确定性关闭
+- `trigger.h/cpp`：pin 5 退出 `cam_tri_ready_pins`（新 `NUM_CAM_TRI_READY=1` 仅剩 pin 7）
+  ——**必须移除**：trigger_init 晚于 illumination_init，PULLUP 会覆盖关断
+- `watchdog_check`：超时后补 `AF_LASER=LOW`（cmd 41 直控脚不属 D 端口，原
+  turn_off_all_ports 覆盖不到——补上看门狗"防激光无人值守"的缺口）
+
+**刻意取舍**：AF 激光关断**不放进** `turn_off_all_ports()`（cmd 39）——biforst 侧核实
+cmd 39 是成像流程 API（多端口采集后关照明 + 启动探测固件版本），在其中关 AF 激光会
+误杀采集中的激光对焦。
+
+编译 SUCCESS 待烧录；烧录后可实测：上电不接 GUI，激光应保持灭。
+遗留：相机 2 READY 反馈引脚待相机 2 上机复验后重新勘定。
+
 ### 重要线索（Mega 同场审计带出）
 
 - **byte[8] 按钮极性反**：手控盒固件 `packet[8]=digitalRead(INPUT_PULLUP 脚)` →
@@ -52,8 +77,8 @@ new-W-axis-80160 分支）当天提交 `94e8a12` 的 joystick 焦点轮修正：
 
 ### 下次继续
 
-1. **octoaxesplus 重烧**（板上 ~c8843f1 → 终态 = c16181c+3e4abb9）：验证硬件触发下矩阵灯
-   随帧频闪 + 焦点轮 3 场景 + `w2_post_flash_verify2.py` 回归
+1. **octoaxesplus 重烧**（板上 ~c8843f1 → 终态 = c16181c+3e4abb9+fab4f27）：验证硬件触发下
+   矩阵灯随帧频闪 + 焦点轮 3 场景 + 上电 AF 激光保持灭 + `w2_post_flash_verify2.py` 回归
 2. **octoaxes 重烧**（a9544ee+baf0816+7181cfb+3e4abb9）+ GUI 验收 5 轴 + W homing/编码器
 3. 摇杆按钮 byte[8] 极性方案拍板（盒侧改 or 控制器侧忽略）
 4. 其余悬挂项见 07-20 会话（相机 2/pin 4 复验、新板 POWER_GOOD、A5 上机、W 机械紧固、
