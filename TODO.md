@@ -8,9 +8,9 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-### 2026-07-09 注释英文化分支九轮同步 main（chore/translate-comments-to-english）
+### 2026-07-09 注释英文化分支十轮同步 main（chore/translate-comments-to-english）
 
-> 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。本次分九轮同步 main 的 new-W-axis 融合修复，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 2026-07-09。
+> 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。已分十轮同步 main 的新提交，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 最新会话。
 
 - [x] **第一轮 merge `691e732`**（TMC2240 enable 改 shadow-register 规避不可靠 Cover 读）— 冲突 1 处 MotorControl.cpp 取 main 新代码+注释译英；另译 MotorControl.h（ChopconfDump）+ serial.cpp×2（S:DUMP_TOFF 注释 + 调试串 `(非 TMC2240，跳过)`→`(not TMC2240, skipped)`）。merge `8ab7961`。
 - [x] **删除合并带回的 `documents/new-W-axis_merge_plan.md`**（本分支约定已删 documents/，规划文档不翻译；用户拍板）。commit `3e2cebe`。
@@ -22,7 +22,8 @@
 - [x] **第七轮 merge main 2 提交 = new-W-axis A1c（本轮最轻）**（`b060fb2` Turret PID tolerance 收紧到 10 = 物镜盘 ±0.10°/÷2.75 齿轮比，W 滤光轮维持 20 / `2d866fa` docs = A1 firmware 侧全部完成）— axis.cpp×2 自动合并无内容冲突，仅 doc modify/delete 取删除；A1c 带入的 Turret tolerance 注释块中译英。**两 firmware pio run 均 SUCCESS**。merge `68d0214`，push `59c9987..68d0214`。
 - [x] **第八轮 merge main 9 提交 = W 滤光轮丢步修复 + 轴收口重构（本轮最大）**（`dc41a4a`/`907b7e6` W MICROSTEPPING 8→64 + accel 400→200 减丢步 / `76c87fc`/`6e80051`/`4d55653` W Test 编码器丢步检测+大孔距跳转+稳定后再读 / `5bcbcf0` E4 参数对齐 W / `09873dc` **轴收口 6 轴 X/Y/Z/W/W2/Turret（E3 删除、E4→W2）** / `1ba815f` startup set_limits 按类型判断修 W1 漏跳 / `4ea5c4d`+`2d866fa` docs）— 冲突 6 文件+doc：config.h×2 / define.py×3（CMD_MAP 去 E3/E4）/ main_window.py×2（W Test _move_check）/ widgets.py×3（["Z","E3"]→["Z"]）/ test_04×1 / constants.py×1（Turret display_name）取 main 新代码+注释译英。另译自动合并带回中文（config.h currentRange / constants.py E4 对齐块 / main_window.py W Test 内联注释）；docstring+log 字符串按约定留中文。踩坑：config.h+main_window.py 各一处误留 `>>>>>>> main` 标记 sed 清除。**两 firmware pio run SUCCESS + py_compile OK + verify_profiles 双 profile 6 轴全通过**。merge `6cc609e`，push `34549c1..6cc609e`。
 - [x] **第九轮 merge main 3 提交 = GUI 启动下发滤光轮参数（方案A，纯软件）**（`d0c6b15` octoaxes W/W2 补 current/hold + _configure_actuators 下发 / `af61bb9` octoaxesplus W1/W2 同款 / `830e1c0` docs）— 冲突 4 文件：constants.py×2（octoaxes W/W2）+ octoaxesplus constants.py×1（W1）取 main current/hold 代码+注释译英；**SESSION.md 按 markdown 全留做并集**（chore 翻译条目置顶 + main 830e1c0 develop 条目并入，删 4 标记行）。另译自动合并带回中文（main_window.py _configure_actuators 滤光轮下发注释块 + octoaxesplus W2 内联）。py_compile OK + verify_profiles 双 profile 6 轴全通过，纯软件无固件。merge `538ca46`，push `c6edbad..538ca46`。
-- [x] **验证**：九轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八轮）/ py_compile + profile 加载/verify_profiles OK（四/八/九轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
+- [x] **第十轮 merge main 28 提交 = A5 物镜 GUI 闭环 + 滤光轮上机修复 + biforst/硬件触发（2026-07-22，本轮最大）**（A5 `34b2b5a`..`40448e4` Turret/R 编码器+PID 闭环+工位标定+main_window 大重构 / 滤光轮 `49d7177`..`85d3d90` W2 纯编码器+LEAVING_HOME 15s+octoaxes 收口单滤光轮+两工程配置对齐+homing_direct 反向映射 / biforst `edb9f41`..`a41d449` X homing30+S-2 W→W1 兜底×10+X/Y icID 统一交叉补偿+F-2 根治+相机触发 pin6/4 定案+频闪门卫修复+F-1 wontfix 回退）— 冲突 17 文件+doc 取删除：firmware×15 + define.py + main_window.py（8 处，大重构采「冲突取 main 侧→全文件统一译注释」策略）+ constants.py×2 取 main 新代码+注释译英；SESSION/TODO 并集恰好首尾相接删 4 标记行即成。另译自动合并带回中文（commandprocessor S-2×10 / octoaxesplus config.h 极性块 / widgets A5 UI / w2_encoder_check 新文件）。**两 firmware clean pio run SUCCESS + py_compile + verify_profiles 双 profile 通过 + 全部冲突文件剥离注释与 main 逐行一致**。merge `e229b49`。
+- [x] **验证**：十轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八/十轮）/ py_compile + profile 加载/verify_profiles OK（四/八/九/十轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
 - [ ] （可选）开 PR 合回 main。
 
 ### 2026-07-20 biforst 适配 + X/Y 统一 + 相机硬件触发打通 + 审计 F-1/F-2 收口
