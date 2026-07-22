@@ -166,8 +166,21 @@ static void check_joystick() {
 // =============================================================================
 
 static void do_focus_control() {
-  if (!axisZ || axisZ->isHomingInProgress())
+  if (!axisZ)
     return;
+
+  // 外部运动（上位机命令移动 / homing）期间：丢弃焦点轮增量并标记重同步。
+  // focusPosition 不跟踪外部运动（MOVE_Z/MOVETO_Z/homing SET_ZERO 都不写它），
+  // 若不失效，外部运动后第一次摇轮会 moveTo(过期坐标) 使 Z 满速跳回旧位置。
+  // isMoving() 是 Axis FSM 标志，焦点轮自身的 motor_moveToMicrosteps 不经 Axis，
+  // 不会误触发本守卫。
+  if (axisZ->isMoving() || axisZ->isHomingInProgress()) {
+    noInterrupts();
+    focusWheelDelta = 0;
+    interrupts();
+    focusPositionSynced = false;
+    return;
+  }
 
   // 读取并清零累计增量
   noInterrupts();
