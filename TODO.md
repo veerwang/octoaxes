@@ -8,6 +8,15 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
+### 2026-07-22 移植 Mega joystick 焦点轮修正（focusPosition 过期致 Z 突跳）
+
+> 移植 Mega 仓库 `94e8a12` → 本仓库 `3e4abb9`（两固件同步），已同步 github/main=16443ab。详见 SESSION.md 最新会话。
+
+- [x] **焦点轮 focusPosition 过期致 Z 突跳修复** `3e4abb9` — `do_focus_control` 只首次懒同步且永不失效，GUI 移 Z/homing 后再摇轮 `moveTo(过期坐标)` Z 满速跳回（物理风险）；且只挡 homing 不挡 isMoving()。入口守卫：外部运动时清 focusWheelDelta + focusPositionSynced=false，结束后重同步。两固件编译 SUCCESS。**待烧录实测 3 场景**（①摇轮→GUI 移 Z→摇轮不跳回 ②摇轮→homing→摇轮 ③GUI 移动中摇轮不干扰）。
+- [x] **同步 github/main** — cherry-pick `3e4abb9`→`16443ab`，排除 documents 后代码零差异。
+- [ ] **摇杆按钮 byte[8] 极性方案拍板** — Mega 审计发现盒固件 `packet[8]=digitalRead(INPUT_PULLUP)` 语义全反（没按=1，"for testing only" 占位从未完工）→ **很可能是 07-20「摇杆按钮恒为按下」疑案真根因（非硬件悬空/粘连）**。方案：盒侧 `!digitalRead`（需烧盒）或控制器侧忽略 byte[8]（当前 GUI 不用按钮）。注意 biforst 读此位（边沿 listener+ACK），配现固件有 ACK 风暴风险。
+- [ ] （可选）盒重启伪 delta 突跳防护 — 盒发绝对编码器累计值，盒断电重启归零 → 控制器巨大伪 delta → Z 猛跳；方向：onJoystickPacketReceived 对 |pkt_delta| 加合理性上限，超阈视为新基准。
+
 ### 2026-07-20 biforst 适配 + X/Y 统一 + 相机硬件触发打通 + 审计 F-1/F-2 收口
 
 > 10 提交（5fab89a..c16181c）已同步 github/main=f402ce5；biforst 仓库 d11d1ce6。详见 SESSION.md 最新会话。
@@ -23,7 +32,7 @@
 - [x] **同步 github/main** — cherry-pick 10 提交（documents 冲突按镜像策略丢弃），排除 documents 后代码零差异，push 至 `f402ce5`。
 - [ ] **octoaxesplus 重烧 c9a55cd+c16181c 最终状态**（板上现为 ~c8843f1）→ 验证硬件触发下矩阵灯随帧频闪
 - [ ] **相机 2 触发（pin 4）复验**（相机 2 接上后同款脉冲数帧法）
-- [ ] 摇杆按钮恒为按下（byte34 bit0=1，疑悬空/粘连）——接手控盒前查
+- [ ] ~~摇杆按钮恒为按下（byte34 bit0=1，疑悬空/粘连）~~ → 07-22 定位真根因很可能是盒固件 byte[8] 极性反（见 07-22 块），非硬件问题
 - [ ] （可选）固件广播回显 cmd_id（方案 B）——消除 biforst 每命令 25ms 守卫延迟
 
 ### 2026-07-15～17 滤光轮上机会话：W2 三连修 + 编码器反馈 + 单滤光轮收口 + homing 方向可配置
