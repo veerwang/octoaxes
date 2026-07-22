@@ -6,9 +6,9 @@
 
 ## 最新会话
 
-**日期**: 2026-07-22（第十轮；一至九轮为 07-09～07-10）
+**日期**: 2026-07-22（第十/十一轮；一至九轮为 07-09～07-10）
 **分支**: chore/translate-comments-to-english
-**位置**: **注释英文化分支十轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
+**位置**: **注释英文化分支十一轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
 
 ### 一句话
 
@@ -152,10 +152,22 @@ main 新增 28 提交（07-10～07-20 三个 develop 会话）：
 - **SESSION/TODO markdown 并集**：恰好 HEAD 尾（`## 上次会话`）与 main 头（07-20 条目）首尾相接，删 4 个标记行即成。
 - 验证：全仓无冲突标记；**两 firmware clean pio run SUCCESS**；py_compile OK + **verify_profiles 双 profile 通过**（octoaxes 5 轴 / octoaxesplus 6 轴）；**全部冲突文件剥离注释后与 main 逐行一致**（唯一差异=第一轮既定的 serial.cpp 调试串英文）。merge `e229b49`。
 
+### 第十一轮同步（merge main 的 4 提交 = joystick 焦点轮修正 + AF 激光开机关断）
+
+main 新增 4 提交（07-22 develop 会话）：
+- `16443ab` joystick 焦点轮 focusPosition 过期致 Z 突跳修复（外部运动时丢增量+失效重同步，两固件）
+- `9f5e272` octoaxesplus AF 对焦激光（pin 5）开机确定性关闭 + 看门狗覆盖（CAM_TRI_READY2 → AF_LASER、pin 5 退出 READY 表、NUM_CAM_TRI_READY=1）
+- `c37c25a`/`a471da1` docs
+
+处理：
+- 冲突 6 文件：joystick.cpp×2（外部运动守卫块）+ config.h（AF_LASER=5 取代 CAM_TRI_READY2）+ illumination.cpp（AF 激光 OUTPUT+LOW + 看门狗补关）+ trigger.cpp/.h（READY 表缩 1 路）→ 取 main 新代码、注释译英。
+- SESSION/TODO 并集：首尾相接删 4 标记行即成。
+- 验证：全仓无冲突标记；**两 firmware clean pio run SUCCESS**；**全部冲突文件剥离注释后与 main 逐行一致**。merge `29cb491`。
+
 ### 下次
 
 - 视需要开 PR 合回 main（分支与 main 完全同步）。
-- 主线待办不变：重烧两板固件（octoaxesplus 待 c9a55cd+c16181c 终态）、W motor↔wheel 硬件紧固、采集 8s 打点。
+- 主线待办不变：重烧两板固件（octoaxesplus 待 AF 激光/joystick 终态）、W motor↔wheel 硬件紧固、采集 8s 打点。
 
 ---
 

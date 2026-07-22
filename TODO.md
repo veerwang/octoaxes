@@ -8,7 +8,7 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-### 2026-07-09 注释英文化分支十轮同步 main（chore/translate-comments-to-english）
+### 2026-07-09 注释英文化分支十一轮同步 main（chore/translate-comments-to-english）
 
 > 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。已分十轮同步 main 的新提交，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 最新会话。
 
@@ -23,7 +23,8 @@
 - [x] **第八轮 merge main 9 提交 = W 滤光轮丢步修复 + 轴收口重构（本轮最大）**（`dc41a4a`/`907b7e6` W MICROSTEPPING 8→64 + accel 400→200 减丢步 / `76c87fc`/`6e80051`/`4d55653` W Test 编码器丢步检测+大孔距跳转+稳定后再读 / `5bcbcf0` E4 参数对齐 W / `09873dc` **轴收口 6 轴 X/Y/Z/W/W2/Turret（E3 删除、E4→W2）** / `1ba815f` startup set_limits 按类型判断修 W1 漏跳 / `4ea5c4d`+`2d866fa` docs）— 冲突 6 文件+doc：config.h×2 / define.py×3（CMD_MAP 去 E3/E4）/ main_window.py×2（W Test _move_check）/ widgets.py×3（["Z","E3"]→["Z"]）/ test_04×1 / constants.py×1（Turret display_name）取 main 新代码+注释译英。另译自动合并带回中文（config.h currentRange / constants.py E4 对齐块 / main_window.py W Test 内联注释）；docstring+log 字符串按约定留中文。踩坑：config.h+main_window.py 各一处误留 `>>>>>>> main` 标记 sed 清除。**两 firmware pio run SUCCESS + py_compile OK + verify_profiles 双 profile 6 轴全通过**。merge `6cc609e`，push `34549c1..6cc609e`。
 - [x] **第九轮 merge main 3 提交 = GUI 启动下发滤光轮参数（方案A，纯软件）**（`d0c6b15` octoaxes W/W2 补 current/hold + _configure_actuators 下发 / `af61bb9` octoaxesplus W1/W2 同款 / `830e1c0` docs）— 冲突 4 文件：constants.py×2（octoaxes W/W2）+ octoaxesplus constants.py×1（W1）取 main current/hold 代码+注释译英；**SESSION.md 按 markdown 全留做并集**（chore 翻译条目置顶 + main 830e1c0 develop 条目并入，删 4 标记行）。另译自动合并带回中文（main_window.py _configure_actuators 滤光轮下发注释块 + octoaxesplus W2 内联）。py_compile OK + verify_profiles 双 profile 6 轴全通过，纯软件无固件。merge `538ca46`，push `c6edbad..538ca46`。
 - [x] **第十轮 merge main 28 提交 = A5 物镜 GUI 闭环 + 滤光轮上机修复 + biforst/硬件触发（2026-07-22，本轮最大）**（A5 `34b2b5a`..`40448e4` Turret/R 编码器+PID 闭环+工位标定+main_window 大重构 / 滤光轮 `49d7177`..`85d3d90` W2 纯编码器+LEAVING_HOME 15s+octoaxes 收口单滤光轮+两工程配置对齐+homing_direct 反向映射 / biforst `edb9f41`..`a41d449` X homing30+S-2 W→W1 兜底×10+X/Y icID 统一交叉补偿+F-2 根治+相机触发 pin6/4 定案+频闪门卫修复+F-1 wontfix 回退）— 冲突 17 文件+doc 取删除：firmware×15 + define.py + main_window.py（8 处，大重构采「冲突取 main 侧→全文件统一译注释」策略）+ constants.py×2 取 main 新代码+注释译英；SESSION/TODO 并集恰好首尾相接删 4 标记行即成。另译自动合并带回中文（commandprocessor S-2×10 / octoaxesplus config.h 极性块 / widgets A5 UI / w2_encoder_check 新文件）。**两 firmware clean pio run SUCCESS + py_compile + verify_profiles 双 profile 通过 + 全部冲突文件剥离注释与 main 逐行一致**。merge `e229b49`。
-- [x] **验证**：十轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八/十轮）/ py_compile + profile 加载/verify_profiles OK（四/八/九/十轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
+- [x] **第十一轮 merge main 4 提交 = joystick 焦点轮修正 + AF 激光开机关断（2026-07-22）**（`16443ab` focusPosition 过期致 Z 突跳修复两固件 / `9f5e272` octoaxesplus AF 激光 pin 5 开机 OUTPUT+LOW + 看门狗覆盖 + READY 表缩 1 路 / docs×2）— 冲突 6 文件（joystick.cpp×2 / config.h / illumination.cpp / trigger.cpp/.h）取 main 新代码+注释译英；SESSION/TODO 并集删 4 标记行即成。**两 firmware clean pio run SUCCESS + 冲突文件剥离注释与 main 逐行一致**。merge `29cb491`。
+- [x] **验证**：十一轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八/十/十一轮）/ py_compile + profile 加载/verify_profiles OK（四/八/九/十轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
 - [ ] （可选）开 PR 合回 main。
 
 ### 2026-07-22 移植 Mega joystick 焦点轮修正 + AF 对焦激光开机确定性关闭
