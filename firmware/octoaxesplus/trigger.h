@@ -45,10 +45,13 @@ const int ext_trigger_in_pins[NUM_EXT_TRIGGER_IN] = {
     Pins::TRIGGER_IN1,   // pin 2
 };
 
-// 双相机 READY 反馈输入（squid++ 双相机：相机 1/2 等待触发反馈，2026-07-20 按勘察表定案）
-const int cam_tri_ready_pins[NUM_EXT_TRIGGERS] = {
+// 双相机 READY 反馈输入
+// 2026-07-22：pin 5（原勘察表"相机2_等待触发"）用户确认实际接线为 AF 激光 →
+// 退出 READY 表（否则 trigger_init 的 INPUT_PULLUP 会覆盖 illumination_init
+// 对 AF 激光的 OUTPUT+LOW 关断）。相机 2 READY 待复验后重新勘定。
+const int NUM_CAM_TRI_READY = 1;
+const int cam_tri_ready_pins[NUM_CAM_TRI_READY] = {
     Pins::CAM_TRI_READY1,  // pin 7（相机 1 等待触发）
-    Pins::CAM_TRI_READY2,  // pin 5（相机 2 等待触发）
 };
 
 // =============================================================================
