@@ -161,6 +161,88 @@ main 新增 28 提交（07-10～07-20 三个 develop 会话）：
 
 ## 上次会话
 
+**日期**: 2026-07-22
+**分支**: develop（已同步 github/main）
+**位置**: **移植 Mega joystick 焦点轮修正（focusPosition 过期致 Z 突跳）到两固件 + AF 对焦激光 pin 5 开机确定性关闭（octoaxesplus）**
+
+### 一句话
+
+熟悉并移植 Mega 仓库（`~/github.com/veerwang/mega/New-W-Objectives/t2100_OctoaxesMega`，
+new-W-axis-80160 分支）当天提交 `94e8a12` 的 joystick 焦点轮修正：`do_focus_control` 的
+`focusPosition` 只首次懒同步一次且永不失效（GUI MOVE_Z/MOVETO_Z、Z homing 都不写它）→
+摇轮后经 GUI 移 Z 或 homing、再摇轮会 `moveTo(过期坐标)` 使 **Z 满速跳回旧位置（撞样品/
+物镜物理风险）**；且原来只挡 homing 不挡 `isMoving()`，命令移动中摇轮会劫持 XTARGET。
+本仓库两固件 joystick.cpp 与 Mega 修复前逐字节一致（同带此 bug），原样移植。
+
+### 改动（commit `3e4abb9`，两固件各 +13 行同款守卫）
+
+- `firmware/octoaxes/joystick.cpp` + `firmware/octoaxesplus/joystick.cpp`
+  `do_focus_control()` 入口新增守卫：`isMoving() || isHomingInProgress()` 时——
+  noInterrupts 保护下清空 `focusWheelDelta`（丢弃外部运动期间摇的增量）+
+  `focusPositionSynced = false` 再 return，外部运动结束后下次摇轮从芯片实际位置重新同步。
+- 不误伤点：`isMoving()` 是 Axis FSM 标志，焦点轮自身 `motor_moveToMicrosteps` 不经
+  Axis FSM，不会误触发守卫。
+- 溯源：旧 Squid 无此问题（focusPosition 是 Z 目标单一真源，MOVE 命令/homing 都写它），
+  octoaxes 移植改懒同步解耦时漏掉失效重同步。
+
+### 验证
+
+- 两固件 `pio run -e teensy41` SUCCESS（确认 joystick.cpp.o 真实重编）；**未烧录**。
+- 烧录后实测 3 场景：① 摇轮→GUI 移 Z→再摇轮（应从当前位置微调不跳回）
+  ② 摇轮→homing→摇轮 ③ GUI 移动中摇轮（移动应正常完成不受干扰）。
+- 同步 github/main：cherry-pick `3e4abb9`→`16443ab` push；develop vs github-main
+  排除 documents 后代码零差异。
+
+### AF 对焦激光 pin 5 开机确定性关闭（下午，commit `fab4f27`，仅 octoaxesplus）
+
+用户问「上电时激光对焦的激光是关闭还是不确定？」——排查结论：**octoaxesplus 上是不确定
+甚至偏向误亮**：AF 激光实际接 pin 5（07-21 用户确认，biforst `MCU_PINS.AF_LASER=5`），
+但固件把 pin 5 当 `CAM_TRI_READY2`（勘察表"相机2_等待触发"旧归属）在 `trigger_init` 配成
+**INPUT_PULLUP 弱上拉**（22-100kΩ 拉向 3.3V）→ 上电激光状态取决于激光板输入偏置；
+biforst 启动不主动发 turn_off_AF_laser（只有 GUI 面板开关两处调用）。对照：octoaxes 主线
+保留旧 Squid `kDigitalOutputPins{6,9,10,15}`，pin 15（旧布局 AF 激光）上电 OUTPUT+LOW
+确定关闭，无此问题。
+
+**修复**（用户确认 pin 5=激光后实施，4 文件）：
+- `config.h`：删 `CAM_TRI_READY2`，新增 `Pins::AF_LASER = 5`
+- `illumination_init`：AF_LASER 开机 OUTPUT+LOW 确定性关闭
+- `trigger.h/cpp`：pin 5 退出 `cam_tri_ready_pins`（新 `NUM_CAM_TRI_READY=1` 仅剩 pin 7）
+  ——**必须移除**：trigger_init 晚于 illumination_init，PULLUP 会覆盖关断
+- `watchdog_check`：超时后补 `AF_LASER=LOW`（cmd 41 直控脚不属 D 端口，原
+  turn_off_all_ports 覆盖不到——补上看门狗"防激光无人值守"的缺口）
+
+**刻意取舍**：AF 激光关断**不放进** `turn_off_all_ports()`（cmd 39）——biforst 侧核实
+cmd 39 是成像流程 API（多端口采集后关照明 + 启动探测固件版本），在其中关 AF 激光会
+误杀采集中的激光对焦。
+
+编译 SUCCESS 待烧录；烧录后可实测：上电不接 GUI，激光应保持灭。
+遗留：相机 2 READY 反馈引脚待相机 2 上机复验后重新勘定。
+
+### 重要线索（Mega 同场审计带出）
+
+- **byte[8] 按钮极性反**：手控盒固件 `packet[8]=digitalRead(INPUT_PULLUP 脚)` →
+  没按=1/按下=0 语义全反（"for testing only" 占位从未完工，两版盒固件都有）→
+  **很可能就是 07-20「摇杆按钮恒为按下（byte34 bit0=1）」疑案的真正根因，非硬件悬空/粘连**。
+  方案待定：盒侧 `!digitalRead`（需烧盒）或控制器侧忽略 byte[8]（当前 GUI 不用按钮）。
+  注意 biforst 会读此位（边沿 listener+ACK），配现固件有 ACK 风暴风险。
+- **盒重启伪 delta 突跳**（协议遗留，未修）：盒发绝对编码器累计值，盒断电重启归零 →
+  控制器算出巨大伪 delta → Z 猛跳。方向：onJoystickPacketReceived 对 |pkt_delta| 加
+  合理性上限，超阈视为新基准。
+- Mega 侧遗留：不经运动的纯 SET_ZERO 不触发守卫（focusPosition 仍会过期），日常极少，暂不处理。
+
+### 下次继续
+
+1. **octoaxesplus 重烧**（板上 ~c8843f1 → 终态 = c16181c+3e4abb9+fab4f27）：验证硬件触发下
+   矩阵灯随帧频闪 + 焦点轮 3 场景 + 上电 AF 激光保持灭 + `w2_post_flash_verify2.py` 回归
+2. **octoaxes 重烧**（a9544ee+baf0816+7181cfb+3e4abb9）+ GUI 验收 5 轴 + W homing/编码器
+3. 摇杆按钮 byte[8] 极性方案拍板（盒侧改 or 控制器侧忽略）
+4. 其余悬挂项见 07-20 会话（相机 2/pin 4 复验、新板 POWER_GOOD、A5 上机、W 机械紧固、
+   octoaxes constants X/Y index）
+
+---
+
+## 会话 2026-07-20
+
 **日期**: 2026-07-20
 **分支**: develop（**已同步 github/main = f402ce5**，cherry-pick 链哈希不同内容同）
 **位置**: **biforst 上位机适配 octoaxesplus（40 字节协议）+ X/Y icID 统一与接线补偿 + 相机硬件触发全链路打通（引脚实测定案 + 频闪门卫 bug）+ 审计 F-1/F-2 收口**

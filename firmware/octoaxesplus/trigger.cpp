@@ -58,8 +58,9 @@ void trigger_init()
         pinMode(ext_trigger_in_pins[i], INPUT_PULLUP);
     }
 
-    // dual-camera READY inputs (squid++ dual-camera): INPUT_PULLUP to resist floating
-    for (int i = 0; i < NUM_EXT_TRIGGERS; i++) {
+    // camera READY inputs: INPUT_PULLUP to resist floating
+    // (pin 5 has left this table — it is actually the AF laser, see the trigger.h 2026-07-22 comment)
+    for (int i = 0; i < NUM_CAM_TRI_READY; i++) {
         pinMode(cam_tri_ready_pins[i], INPUT_PULLUP);
     }
 
@@ -98,7 +99,7 @@ bool ext_trigger_read_in(uint8_t channel)
 
 bool cam_tri_read_ready(uint8_t channel)
 {
-    if (channel >= NUM_EXT_TRIGGERS) return false;  // out-of-range defaults to not-ready
+    if (channel >= NUM_CAM_TRI_READY) return false;  // out-of-range defaults to not-ready
     return digitalRead(cam_tri_ready_pins[channel]) == HIGH;
 }
 

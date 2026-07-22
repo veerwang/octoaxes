@@ -166,8 +166,22 @@ static void check_joystick() {
 // =============================================================================
 
 static void do_focus_control() {
-  if (!axisZ || axisZ->isHomingInProgress())
+  if (!axisZ)
     return;
+
+  // During external motion (host-commanded moves / homing): discard focus-wheel increments and
+  // mark for resync. focusPosition does not track external motion (MOVE_Z/MOVETO_Z/homing
+  // SET_ZERO never write it); without invalidation, the first wheel turn after an external move
+  // would moveTo(stale coordinate) and slam Z back to the old position at full speed.
+  // isMoving() is the Axis FSM flag; the focus wheel's own motor_moveToMicrosteps bypasses Axis,
+  // so it cannot falsely trip this guard.
+  if (axisZ->isMoving() || axisZ->isHomingInProgress()) {
+    noInterrupts();
+    focusWheelDelta = 0;
+    interrupts();
+    focusPositionSynced = false;
+    return;
+  }
 
   // read and zero the accumulated delta
   noInterrupts();

@@ -45,10 +45,14 @@ const int ext_trigger_in_pins[NUM_EXT_TRIGGER_IN] = {
     Pins::TRIGGER_IN1,   // pin 2
 };
 
-// dual-camera READY feedback inputs (squid++ dual-camera: camera 1/2 wait-for-trigger feedback, settled 2026-07-20 per survey table)
-const int cam_tri_ready_pins[NUM_EXT_TRIGGERS] = {
+// dual-camera READY feedback inputs
+// 2026-07-22: pin 5 (formerly "camera2_wait-trigger" in the survey table) user-confirmed to be
+// actually wired as the AF laser -> removed from the READY table (otherwise trigger_init's
+// INPUT_PULLUP would override illumination_init's OUTPUT+LOW shutdown of the AF laser).
+// Camera 2 READY to be re-surveyed after re-verification.
+const int NUM_CAM_TRI_READY = 1;
+const int cam_tri_ready_pins[NUM_CAM_TRI_READY] = {
     Pins::CAM_TRI_READY1,  // pin 7 (camera 1 wait-for-trigger)
-    Pins::CAM_TRI_READY2,  // pin 5 (camera 2 wait-for-trigger)
 };
 
 // =============================================================================

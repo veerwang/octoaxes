@@ -151,10 +151,17 @@ namespace Pins {
 
     // dual-camera handshake READY inputs (squid++ dual-camera: camera-ready / capture-complete feedback)
     // 2026-07-20 settled: pin 6 measured as the camera 1 trigger line (old "treat as input per
-    // naming" assumption is void); READY follows the survey table — camera1_wait-trigger = pin 7,
-    // camera2_wait-trigger = pin 5
+    // naming" assumption is void); READY follows the survey table — camera1_wait-trigger = pin 7
     const int CAM_TRI_READY1 = 7;   // camera 1 READY feedback
-    const int CAM_TRI_READY2 = 5;   // camera 2 READY feedback (survey table "camera2_wait-trigger")
+
+    // autofocus AF laser (2026-07-22 user confirmed actual wiring = pin 5, superseding the survey
+    // table's old "camera2_wait-trigger" assignment; biforst _def.py MCU_PINS.AF_LASER=5 settled in sync).
+    // At boot, illumination_init forces OUTPUT+LOW for a deterministic off (previously nobody
+    // initialized it and trigger_init instead configured it as a READY input with INPUT_PULLUP weak
+    // pull-up, risking a spurious laser-on at power-up); at runtime the host controls it directly
+    // via cmd 41 SET_PIN_LEVEL.
+    // Camera 2 READY feedback pin to be re-surveyed once camera 2 is installed and re-verified.
+    const int AF_LASER = 5;
 
     // 74HC154 4->16 decoder chip-select (squid++ dual-camera)
     // the binary value n on A3:A2:A1:A0 -> pulls output Yn low, the rest stay high; serves as the unified chip-select for all SPI devices

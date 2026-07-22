@@ -62,6 +62,14 @@ void illumination_init()
     pinMode(Pins::ILLUMINATION_D7, OUTPUT); digitalWrite(Pins::ILLUMINATION_D7, LOW);
     pinMode(Pins::ILLUMINATION_D8, OUTPUT); digitalWrite(Pins::ILLUMINATION_D8, LOW);
 
+    // autofocus AF laser (pin 5, 2026-07-22 user-confirmed wiring): force OUTPUT+LOW at boot for
+    // a deterministic off. Previously nobody initialized this pin and trigger_init instead
+    // configured it as a READY input with INPUT_PULLUP weak pull-up, so the power-up laser state
+    // depended on the laser board's input bias (possible spurious on).
+    // At runtime the host controls it directly via cmd 41 SET_PIN_LEVEL.
+    pinMode(Pins::AF_LASER, OUTPUT);
+    digitalWrite(Pins::AF_LASER, LOW);
+
     // 2026-07-20 audit F-2 root fix: removed the legacy-Squid leftover kDigitalOutputPins[]={6,9,10,15}.
     // That table followed the legacy Squid pinout (pin 15=AF_LASER etc.), but on squid++ all 4
     // pins have other owners:
@@ -621,6 +629,11 @@ void watchdog_check()
 {
     if (watchdog_enabled && (millis() - last_serial_message_time >= watchdog_timeout_ms)) {
         turn_off_all_ports();
+        // The AF laser (cmd 41 direct control, not a D port) is also covered by the unattended
+        // shutdown. Deliberately NOT put into turn_off_all_ports(): cmd 39 is the host imaging-flow
+        // API (turn off illumination after multi-port acquisition); turning the AF laser off there
+        // would wrongly kill autofocus lasing mid-acquisition.
+        digitalWrite(Pins::AF_LASER, LOW);
         watchdog_enabled = false;  // single-shot, do not repeat
     }
 }
