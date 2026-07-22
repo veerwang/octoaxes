@@ -30,24 +30,25 @@ const int camera_trigger_pins[NUM_TRIGGER_CHANNELS] = {
     Pins::CAMERA_TRIGGER_8   // pin 39
 };
 
-// external trigger IN/OUT (squid++ dual-camera: bidirectional sync with external devices, pin 1-4)
+// external trigger IN/OUT (squid++ dual-camera: bidirectional sync with external devices)
 // host protocol integration TODO (CAM_TRI_READY handshake + handler command word TBD)
+// 2026-07-20: pin 4 (formerly TRIGGER_IN2) measured as the camera 2 trigger line, removed from ext IN -> only 1 IN line remains
 const int NUM_EXT_TRIGGERS = 2;
+const int NUM_EXT_TRIGGER_IN = 1;
 
 const int ext_trigger_out_pins[NUM_EXT_TRIGGERS] = {
     Pins::TRIGGER_OUT1,  // pin 1
     Pins::TRIGGER_OUT2,  // pin 3
 };
 
-const int ext_trigger_in_pins[NUM_EXT_TRIGGERS] = {
+const int ext_trigger_in_pins[NUM_EXT_TRIGGER_IN] = {
     Pins::TRIGGER_IN1,   // pin 2
-    Pins::TRIGGER_IN2,   // pin 4
 };
 
-// dual-camera READY feedback inputs (squid++ dual-camera: camera 1/2 READY status)
+// dual-camera READY feedback inputs (squid++ dual-camera: camera 1/2 wait-for-trigger feedback, settled 2026-07-20 per survey table)
 const int cam_tri_ready_pins[NUM_EXT_TRIGGERS] = {
-    Pins::CAM_TRI_READY1,  // pin 7 (camera 1)
-    Pins::CAM_TRI_READY2,  // pin 6 (camera 2)
+    Pins::CAM_TRI_READY1,  // pin 7 (camera 1 wait-for-trigger)
+    Pins::CAM_TRI_READY2,  // pin 5 (camera 2 wait-for-trigger)
 };
 
 // =============================================================================

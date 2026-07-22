@@ -62,16 +62,17 @@ void illumination_init()
     pinMode(Pins::ILLUMINATION_D7, OUTPUT); digitalWrite(Pins::ILLUMINATION_D7, LOW);
     pinMode(Pins::ILLUMINATION_D8, OUTPUT); digitalWrite(Pins::ILLUMINATION_D8, LOW);
 
-    // general-purpose digital output pins: behavior consistent with legacy Squid `init_io()` (init.cpp:74).
-    // includes the autofocus laser AF_LASER (pin 15, legacy Squid `MCU_PINS.AF_LASER`),
-    // controlled by the host via cmd 41 SET_PIN_LEVEL. Must be explicitly OUTPUT, otherwise while the pin is in
-    // the INPUT high-impedance state the control board's internal pull-up turns the laser on by default, and digitalWrite in
-    // INPUT mode does not change the actual level -> cannot turn it off.
-    static const int kDigitalOutputPins[] = {6, 9, 10, 15};
-    for (size_t i = 0; i < sizeof(kDigitalOutputPins)/sizeof(kDigitalOutputPins[0]); i++) {
-        pinMode(kDigitalOutputPins[i], OUTPUT);
-        digitalWrite(kDigitalOutputPins[i], LOW);
-    }
+    // 2026-07-20 audit F-2 root fix: removed the legacy-Squid leftover kDigitalOutputPins[]={6,9,10,15}.
+    // That table followed the legacy Squid pinout (pin 15=AF_LASER etc.), but on squid++ all 4
+    // pins have other owners:
+    //   pin 6  = CAM_TRI_READY2 (camera 2 feedback **input**; OUTPUT+LOW would fight the camera's output driver)
+    //   pin 9  = CAMERA_TRIGGER_1 / pin 15 = CAMERA_TRIGGER_5 (owned by trigger_init, idle HIGH
+    //            with negative-pulse triggering; this function runs before trigger_init, so
+    //            driving LOW = spurious camera trigger on every boot)
+    //   pin 10 = ILLUMINATION_D8 (already covered by the TTL port init above; duplicate)
+    // The cmd 41 SET_PIN_LEVEL target pins the old table worried about (AF laser etc.) are
+    // already covered by handleSetPinLevel forcing pinMode(OUTPUT) on first write (2026-05-18),
+    // so no pre-initialization is needed here.
 
     // LED driver SYNC: 2 MHz PWM, 50% duty cycle
     pinMode(Pins::LED_DRIVER_SYNC, OUTPUT);

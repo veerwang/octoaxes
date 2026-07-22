@@ -244,7 +244,8 @@ void SerialProtocolHandler::send_position_update() {
   _us_since_last_pos_update = 0;
 
   // read all axis positions (indexed by firmware icID, 0..7)
-  // octoaxesplus XYZW1W2 five axes: icID 0=Y, 1=X, 2=Z, 3=W1, 4=W2; icID 5-7 placeholders filled with 0
+  // octoaxesplus XYZW1W2 five axes: icID 0=X, 1=Y, 2=Z, 3=W1, 4=W2 (2026-07-20 X/Y swapped to
+  // align with the octoaxes mainline convention); icID 5-7 placeholders filled with 0
   // count was already obtained above during the any_moving check, reuse it
   int32_t positions[8] = {0};
   for (uint8_t i = 0; i < count && i < 8; i++) {

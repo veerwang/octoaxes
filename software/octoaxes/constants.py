@@ -98,7 +98,9 @@ AXIS_CONFIG = {
         "type": "filter_wheel",
         "has_limits": False,
         "limits": (0, 7),
-        "movement_sign": 1,    # consistent with legacy Squid (sign=1 -> HOME_NEGATIVE -> the chip searches toward -)
+        "movement_sign": 1,    # consistent with legacy Squid. Filter wheel homing search direction = movement_sign
+                               # (the firmware byte-reverse-maps the W segment: sign=1 -> data[3]=NEGATIVE ->
+                               # homing_direct=-1 -> search +, see firmware filterwheel.cpp 2026-07-17 comment)
         "index": 3,
         "has_encoder": True,    # 2026-05-21 enable the ABN encoder; the GUI reflects the chip's real position via ENC_POS
         "encoder_transitions_per_rev": 4000,
@@ -111,37 +113,60 @@ AXIS_CONFIG = {
         "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA
         "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
     },
-    "W2": {
-        "display_name": "Filter Wheel 2 - expand4_axis",
-        "type": "filter_wheel",
-        "has_limits": False,
-        "limits": (0, 7),
-        "movement_sign": 1,
-        "index": 4,
-        # 2026-07-09 align against W (filter wheel 1) as the baseline: E4=filter wheel 2, same hardware type so parameters should match.
-        # the original pitch=100/ms=8 were stale wrong values (firmware EXPAND4_AXIS has long used the FILTERWHEEL constants pitch=1/ms=64).
-        # encoder not added yet (requires E4 hardware ABN installed + added to _configure_encoders + firmware encoderLinesPerRev to take effect).
-        "actuator_screw_pitch_mm": 1.0,    # align with W / legacy Squid SCREW_PITCH_W_MM=1
-        "actuator_microstepping": 64,      # align with W / legacy Squid MICROSTEPPING_DEFAULT_W=64
-        "actuator_motor_current_ma": 3100,   # = FILTERWHEEL_MOTOR_PEAK_CURRENT_mA (align with W / firmware)
-        "actuator_motor_hold_ratio": 0.5,    # = FILTERWHEEL_MOTOR_I_HOLD
-    },
+    # 2026-07-17 removed the W2 (Filter Wheel 2) entry: this hardware has only one filter wheel;
+    # the GUI axis list is data-driven from AXIS_CONFIG.keys(), so deleting the entry stops it
+    # from being generated. The firmware W2 axis (icID=4) is kept untouched (a missing board is
+    # silently handled by dead-axis tolerance, and an installed board doesn't affect other axes).
+    # To restore: add back a W2 entry with index=4 modeled on W (same parameters as W), see the
+    # 2026-07-09 version in git history.
     "Turret": {
         # 2026-05-29 on this board the icID=5 slot connects to the objective turret (4 objectives), CS=pin 19/CLK=pin 28.
         # the protocol uses dedicated MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7 (does not reuse the W command).
-        # GUI widgets.py renders the objective-control page; main_window.previous/next -> move_objective(),
-        # gear reduction OBJECTIVE_RATIO=132/48 * SCREW_PITCH_W_MM=1 / OBJECTIVE_HOLES=4 = 0.6875 mm/slot.
+        # GUI widgets.py renders the objective-control page; main_window.previous/next -> _objective_goto() (A5 closed loop:
+        # absolute positioning to the slot-calibrated angle, multi-slot moves split slot by slot). Gear reduction
+        # OBJECTIVE_RATIO=132/48 * SCREW_PITCH_W_MM=1 / OBJECTIVE_HOLES=4 = 0.6875 mm/slot (1 turret rev = 2.75 motor revs = 4 objectives).
         "display_name": "Turret - expand1_axis",
         "type": "objective",
         "has_limits": False,
         "limits": (0, 3),       # 4 objectives, slots 0..3, consistent with define.py OBJECTIVE_SWITCH_MAX_INDEX=3
-        # objective position display sign: move_objective() hardcodes -1 (Next=negative direction), but the GUI expects Next to show a positive value.
-        # movement_sign=-1 flips the display (pos/steps/status table multiplied by sign), and makes homing home_dir=0 -> HOME_POSITIVE
-        # -> new_direct=+1 consistent with EXPAND1_AXIS.homing_direct=1. Does not affect move_objective's physical direction (it does not use sign).
+        # objective position display + angle->position conversion sign: movement_sign=-1 both flips the display
+        # (pos/steps/status table + slot/angle multiplied by sign) and participates in
+        # _objective_angle_to_position_um (angle*sign -> motor µstep), so Next shows a positive value.
+        # It also makes homing home_dir=0 -> HOME_POSITIVE -> consistent with EXPAND1_AXIS.homing_direct=1.
         "movement_sign": -1,
         "index": 5,             # firmware icID（octoaxes.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # matches config.h SCREW_PITCH_OBJECTIVES_MM=1
         "actuator_microstepping": 64,      # matches config.h MICROSTEPPING_OBJECTIVES=64
+        # 2026-07-10 A5a: added the objective GUI/send-down fields, values aligned with this project's
+        # firmware config.h (same plan A: software defaults = firmware defaults -> sending them is a
+        # bitwise-equivalent sync; legacy Squid doesn't send them and gets the firmware defaults).
+        "actuator_motor_current_ma": 1800,  # = OBJECTIVES_MOTOR_PEAK_CURRENT_mA (EXPAND1_AXIS currentRange=1)
+        "actuator_motor_hold_ratio": 0.5,   # = OBJECTIVES_MOTOR_I_HOLD
+        # prefill values for the objective page velocity/acceleration inputs (sent via
+        # SET_MAX_VELOCITY_ACCELERATION on Apply, not at startup)
+        "default_velocity": 0.5,        # = MAX_VELOCITY_OBJECTIVES_mm (0.5*pitch)
+        "default_acceleration": 80.0,   # = MAX_ACCELERATION_OBJECTIVES_mm (80*pitch)
+        # spring-plate self-centering (A1b GUI-driven timing, see A5c): after arrival the GUI sends a
+        # delayed cmd32 to cut motor current so the spring plate re-centers. Cutting current -> the
+        # spring detent mechanically centers, more precise than the PID deadband, and it also fixes
+        # gear lash the encoder (on the motor tail shaft) cannot see.
+        "auto_disable_at_rest": True,
+        "rest_disable_delay_ms": 100,
+        # === encoder + PID closed loop (user confirmed: the objective turret always has an encoder) ===
+        # GUI startup _configure_encoders sends CONFIGURE_STAGE_PID(Turret, tpr, flip) to enable the
+        # encoder at runtime, then SET_PID_ARGUMENTS + ENABLE_STAGE_PID to close the loop (runtime
+        # send-down; firmware config.h enableEncoder=false is only the boot default, overridden at runtime).
+        "has_encoder": True,
+        "encoder_transitions_per_rev": 4000,   # 1000-line (PPR) *4 quadrature = 4000 counts/rev (aligned with Mega W; must be verified on this project's hardware)
+        "encoder_flip_direction": True,        # encoder count direction vs motor command (Mega W=True; must be verified on this project's hardware)
+        # PID values taken from the Mega W starting point; ⚠️ this project's Turret hardware must be
+        # re-tuned with tune_w_pid.py (stability is dominated by acceleration; re-verify after changing
+        # velocity/accel/objective count). Sent at runtime via SET_PID_ARGUMENTS; changing this takes
+        # effect after a GUI restart.
+        "pid_enabled": True,
+        "pid_p": 1536,
+        "pid_i": 2,
+        "pid_d": 16,
     },
 }
 

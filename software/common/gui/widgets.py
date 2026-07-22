@@ -19,6 +19,7 @@ from PyQt5.QtCore import pyqtSignal, Qt, QTimer
 from PyQt5.QtGui import QIntValidator, QDoubleValidator, QFont, QColor
 
 from utils.constants import AXIS_CONFIG
+from define import objective_slot_angle   # objective microstep -> (slot, angle) (merged A5)
 
 # illumination port metadata (the profile decides the number of ports/DAC/GAIN etc.). Provide safe defaults when the profile does not define them
 # to keep backward compatibility (before the old octoaxes constants.py is upgraded)
@@ -129,7 +130,13 @@ class AxisStatusDisplay(QGroupBox):
             labels["state"].setText(status["state"])
             self.set_state_color(labels["state"], status["state"])
 
-        if "position_mm" in status:
+        # objective axes: position displayed as "slot number / turret angle" (merged A5); other axes display mm
+        if AXIS_CONFIG.get(axis, {}).get("type") == "objective" and "position_steps" in status:
+            sign = AXIS_CONFIG[axis]["movement_sign"]
+            ms = AXIS_CONFIG[axis].get("actuator_microstepping", 64)
+            slot, deg = objective_slot_angle(int(status["position_steps"]) * sign, ms)
+            labels["position"].setText(f"Slot {slot} / {deg:.1f}°")
+        elif "position_mm" in status:
             value = status["position_mm"] * AXIS_CONFIG[axis]["movement_sign"]
             labels["position"].setText(f"{value}")
 
@@ -189,6 +196,10 @@ class ControlPanel(QGroupBox):
     enable_toggled = pyqtSignal(bool)  # added: enable-state toggle signal
     axis_changed = pyqtSignal(str)
     velocity_accel_set = pyqtSignal(float, float)  # vel_mm_s, acc_mm_s2
+    # objective turret (merged new-W-axis A5, used only by objective axes)
+    objective_read_current = pyqtSignal(int)   # "Read current": arg = slot number 0..3, fill the current angle into that slot
+    objective_goto_slot = pyqtSignal(int)      # "Go to": arg = slot number 0..3, absolute move to that slot's calibrated angle
+    goto_slot0_clicked = pyqtSignal()          # "Go to Slot 0": standalone action split out of homing
 
     def __init__(self):
         super().__init__("Motor Control")
@@ -363,12 +374,72 @@ class ControlPanel(QGroupBox):
         placeholder.setStyleSheet("color: gray; font-style: italic; padding: 10px;")
         layout.addWidget(placeholder)
 
+        # objective slot calibration (shown only for objective axes; visibility controlled by set_current_axis). Merged new-W-axis A5.
+        # 4 lineEdits store each slot's turret angle (°), defaults 0/90/180/270; "Read current" fills
+        # the currently displayed angle into that slot and persists it; "Go to"/Next/Previous make
+        # absolute moves based on these values.
+        self.objective_calib_container = QWidget()
+        calib_layout = QVBoxLayout(self.objective_calib_container)
+        calib_layout.setContentsMargins(0, 0, 0, 0)
+        calib_layout.addWidget(QLabel("Objective Slot Angle Calibration (°):"))
+        self.objective_angle_edits = []
+        _obj_defaults = ["0", "90", "180", "270"]
+        for i in range(4):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(f"Slot {i}"))
+            edit = QLineEdit(_obj_defaults[i])
+            edit.setValidator(QDoubleValidator())
+            edit.setMaximumWidth(90)
+            self.objective_angle_edits.append(edit)
+            row.addWidget(edit)
+            btn = QPushButton("Read")
+            btn.setMaximumWidth(70)
+            btn.clicked.connect(lambda _checked, s=i: self.objective_read_current.emit(s))
+            row.addWidget(btn)
+            goto_btn = QPushButton("Go To")
+            goto_btn.setMaximumWidth(70)
+            goto_btn.clicked.connect(lambda _checked, s=i: self.objective_goto_slot.emit(s))
+            row.addWidget(goto_btn)
+            row.addStretch()
+            calib_layout.addLayout(row)
+        layout.addWidget(self.objective_calib_container)
+
+        # objective velocity/acceleration settings (shown only for objective axes). Reuses the velocity_accel_set signal.
+        self.objective_velacc_container = QWidget()
+        velacc_layout = QHBoxLayout(self.objective_velacc_container)
+        velacc_layout.setContentsMargins(0, 0, 0, 0)
+        velacc_layout.addWidget(QLabel("Vel (mm/s):"))
+        self.obj_vel_input = QLineEdit("0.5")
+        self.obj_vel_input.setMaximumWidth(65)
+        _ov = QDoubleValidator(0.01, 655.0, 2)
+        _ov.setNotation(QDoubleValidator.StandardNotation)
+        self.obj_vel_input.setValidator(_ov)
+        velacc_layout.addWidget(self.obj_vel_input)
+        velacc_layout.addWidget(QLabel("Acc (mm/s²):"))
+        self.obj_acc_input = QLineEdit("80.0")
+        self.obj_acc_input.setMaximumWidth(70)
+        _oa = QDoubleValidator(0.1, 6553.0, 1)
+        _oa.setNotation(QDoubleValidator.StandardNotation)
+        self.obj_acc_input.setValidator(_oa)
+        velacc_layout.addWidget(self.obj_acc_input)
+        self.obj_vel_acc_apply_btn = QPushButton("Apply")
+        self.obj_vel_acc_apply_btn.setMaximumWidth(55)
+        self.obj_vel_acc_apply_btn.clicked.connect(self.emit_obj_vel_acc)
+        velacc_layout.addWidget(self.obj_vel_acc_apply_btn)
+        velacc_layout.addStretch()
+        layout.addWidget(self.objective_velacc_container)
+
         layout.addStretch()
 
         # function buttons
         self.home_btn_filter = QPushButton("Homing")
         self.home_btn_filter.clicked.connect(self.emit_homing)
         layout.addWidget(self.home_btn_filter)
+
+        # objective-only: "Go to Slot 0" split out of Homing as a standalone button (shown only for objective). Merged A5.
+        self.goto_slot0_btn = QPushButton("Go to Slot 0 (First)")
+        self.goto_slot0_btn.clicked.connect(self.emit_goto_slot0)
+        layout.addWidget(self.goto_slot0_btn)
 
         self.reset_btn_filter = QPushButton("Reset")
         self.reset_btn_filter.clicked.connect(self.emit_reset)
@@ -559,6 +630,21 @@ class ControlPanel(QGroupBox):
         except ValueError:
             pass
 
+    def emit_obj_vel_acc(self):
+        """物镜 Vel/Acc Apply → 复用 velocity_accel_set 信号下发（融合 A5）。"""
+        try:
+            vel = float(self.obj_vel_input.text())
+            acc = float(self.obj_acc_input.text())
+            if vel > 0 and acc > 0:
+                self.velocity_accel_set.emit(vel, acc)
+        except ValueError:
+            pass
+
+    def emit_goto_slot0(self):
+        """物镜「移到工位0」→ goto_slot0_clicked（仅 objective 轴，融合 A5）。"""
+        if AXIS_CONFIG.get(self.current_axis, {}).get("type") == "objective":
+            self.goto_slot0_clicked.emit()
+
     def on_page_changed(self, index):
         """页面切换时的处理"""
         pass
@@ -588,6 +674,20 @@ class ControlPanel(QGroupBox):
                 self.test_btn.setVisible(is_filter_wheel)
                 self.test_rounds_spin.setVisible(is_filter_wheel)
                 self.rounds_label.setVisible(is_filter_wheel)
+                # objective calibration/velocity/goto-slot0 widgets are shown only for objective axes; the filter wheel Prev/Next/Test only for filter_wheel (merged A5)
+                is_objective = (axis_type == "objective")
+                self.objective_calib_container.setVisible(is_objective)
+                self.objective_velacc_container.setVisible(is_objective)
+                self.goto_slot0_btn.setVisible(is_objective)
+                self.previous_btn.setVisible(True)   # objectives also use Prev/Next to cycle slots
+                self.next_btn.setVisible(True)
+                # objective prefill Vel/Acc (from AXIS_CONFIG default_*)
+                if is_objective:
+                    cfg = AXIS_CONFIG.get(axis, {})
+                    if cfg.get("default_velocity") is not None:
+                        self.obj_vel_input.setText(str(cfg["default_velocity"]))
+                    if cfg.get("default_acceleration") is not None:
+                        self.obj_acc_input.setText(str(cfg["default_acceleration"]))
             else:
                 # normal stepper-motor axes - show page 0
                 target_index = 0

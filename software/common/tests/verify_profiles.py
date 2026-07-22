@@ -83,7 +83,7 @@ def main():
     print("=== Profile 隔离 + 完整性验证 ===")
     print(f"SOFTWARE_DIR: {SOFTWARE_DIR}")
 
-    octoaxes_ok = check_profile("octoaxes", {"X", "Y", "Z", "W", "W2", "Turret"})
+    octoaxes_ok = check_profile("octoaxes", {"X", "Y", "Z", "W", "Turret"})  # 2026-07-17 W2 removed (this hardware has a single filter wheel)
     octoaxesplus_ok = check_profile("octoaxesplus", {"X", "Y", "Z", "W1", "W2", "Turret"})
 
     print()

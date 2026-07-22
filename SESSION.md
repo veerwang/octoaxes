@@ -147,6 +147,182 @@ main 新增 3 提交（方案A：GUI 启动 `_configure_actuators` 也给滤光�
 
 ## 上次会话
 
+**日期**: 2026-07-20
+**分支**: develop（**已同步 github/main = f402ce5**，cherry-pick 链哈希不同内容同）
+**位置**: **biforst 上位机适配 octoaxesplus（40 字节协议）+ X/Y icID 统一与接线补偿 + 相机硬件触发全链路打通（引脚实测定案 + 频闪门卫 bug）+ 审计 F-1/F-2 收口**
+
+### 一句话
+
+用户换用李红全 biforst（Cephla squid 2026 fork）驱动 octoaxesplus 板：定位「Bad checksum 死循环」根因 =
+**octoaxesplus 固件周期广播是 40 字节 0xFD 扩展包且从不回显 cmd_id**（`sendResponse` 是死代码），在 biforst
+侧实现帧分隔/包转换/ack 仿真（守卫防在途旧广播假 ack）打通；随后 **X/Y icID 统一 X=0/Y=1 + 实测发现本板
+接线交叉（GUI X 动物理 Y）→ axisName↔CS 交叉补偿**；**相机硬件触发不起作用 → 逐引脚脉冲+数帧实测定案：
+触发线实际接 pin 6（相机1）/pin 4（相机2），原理图信号名 CAM_TRI_OUT(9/8) 不可信** → 引脚重映射后用户实测
+hardware trigger 可用；接着修**频闪门卫 bug**（硬件触发模式矩阵灯恒灭根因）；F-1 修复后按用户拍板**回退**
+（µs 级照明窗口精度是硬需求，wontfix-by-design）；F-2（开机误触发相机）根治。10 提交同步 github/main。
+
+### octoaxes 仓库 10 提交（上午 3 个未记 + 下午 7 个）
+
+| commit | 内容 |
+|---|---|
+| `5fab89a` | octoaxesplus 滤光轮配置全面对齐 octoaxes（用户确认硬件相同+信号链将整改）——**推翻 07-17「极性/硬停必须不同」结论** |
+| `7181cfb` | octoaxes X homing 速度 10→30 mm/s 对齐 Y（用户拍板） |
+| `e5ea05e` | octoaxesplus 命令处理 10 处 W→W1 兜底集中治理（**审计 S-2 根治**，实机验证） |
+| `b949cb9` | **X/Y icID 对调 X=0/Y=1** 与 octoaxes 统一（TMC_SPI HC154 分支 + .ino + addAxis 顺序 + constants index + 40 字节包槽位 X 在前；biforst 映射同步） |
+| `698f111` | **X/Y axisName↔CS 交叉补偿**：实测 GUI X 动物理 Y → 本板接线与通道命名相反（octoaxes 5-08 同款病同款修）。净效果=CS 表回原位、轴名对调。连带修正「X 的限位/电流配置一直施加在物理 Y 上」的潜伏错位 |
+| `867870c` | **审计 F-2 根治**：删旧 Squid 遗留 `kDigitalOutputPins{6,9,10,15}`——squid++ 上 4 脚全另有归属（6=CAM_TRI_READY2 输入被驱动对抗 / 9,15=相机触发被拉 LOW 开机误触发 / 10=D8 重复）；cmd41 已有首写强制 OUTPUT 兜底 |
+| `c8843f1` | **相机硬件触发引脚重映射 9/8→6/4（实测定案）**：cmd41 逐引脚脉冲 + Toupcam 外触发数帧，pin 6 出帧（相机1）、9/8/4 零帧 → 「配置.md 功能描述列（xlsx 勘察）正确、原理图信号名不可信」定案（连带解决 4 月注释悬案）；READY 归位 7/5；pin 4 退出 ext_trigger_in。**用户烧录实测 hardware trigger 可用** |
+| `c9a55cd` | **频闪门卫 bug（两固件）**：切硬件触发后矩阵灯恒灭根因——ISR `trigger_output_level==HIGH` 门卫使频闪只在触发脉冲 LOW 期间处理，NORMAL 模式脉冲仅 50µs、strobe_delay 毫秒级 → 开灯永不执行。删门卫对齐旧 Squid ISR。**待烧录验证** |
+| `83bbc72` | F-1 修复：频闪短曝光路径去阻塞（统一异步两步式） |
+| `c16181c` | **Revert 83bbc72（用户拍板）**：短曝光照明窗口必须 µs 级精度，ISR 内 delayMicroseconds 阻塞是刻意设计。**审计 F-1 关闭为 wontfix-by-design，勿再按 bug 修**（已存长期记忆） |
+
+### biforst 仓库（github.com/lihongquan/biforst_20260720，master `d11d1ce6`）
+
+- **根因定位**：报错包 `[0×18,1,0,0,0,23,250]` 数学复现 = 40 字节 0xFD 包（status=0/joystick=1/ver=0x17）的 bytes[16:40] 切片，CRC=250 与观测完全吻合；24 字节滑窗 24 种对齐无一合法
+- **改动**（`_def.py`+`microcontroller.py`，+107/-15）：① 混流帧分隔（0xFD 先按 40 验 CRC 再 24 兜底、跨读残余缓冲、重同步优先锁定内部 0xFD 真边界——修掉 zero-checksum 兜底在全零静止流上永不收敛的连带 bug）② 扩展包→24 字节布局转换（icID 槽位、joystick byte34、版本 byte38）③ **ack 仿真**：25ms 守卫 + 见过 IN_PROGRESS 解锁（固件从不回显 cmd_id，防在途旧 COMPLETED 广播假 ack）；CRC_ERROR 走原重发路径
+- **验证**：自建 7 项功能测试全过 + 仓库 28 项测试无回归 + 真板端到端（版本/位置/ack 30ms/X-Y jog 往返）
+- **附带修复**：GUI 启动崩溃（LiveControlWidget 无通道）= `machine_configs/illumination_channel_config.yaml` 缺失（新克隆首配步骤），从 .example 复制并验证默认配置生成
+- 每条即时命令 +25ms 守卫延迟（广播无 cmd_id 的代价）；根治需固件广播回显 cmd_id（方案 B，未做）
+
+### 技术备忘
+
+- **频闪联动机制**：cmd30 bit7=control_illumination，ISR 等 strobe_delay 开灯、on_time 后关灯，作用于**当前选中照明源**（矩阵/激光）——硬件触发下矩阵灯随帧闪是设计行为
+- **偶发开机静默（好板也会）**：F-2 烧录后一次串口全静默（0 字节，USB 正常枚举）→ 再烧一次强制重启即恢复。POWER_GOOD 竞态/坏 upload 遗留，遇 GUI 连不上先拔插 USB 重上电
+- **摇杆按钮恒为按下**（byte34 bit0=1）：可能悬空/粘连，biforst 启动会发一次 ack（无害），接手控盒前值得查
+- github 镜像不含 documents/（含 firmware/*/documents/），cherry-pick 冲突按丢弃文档改动解决
+
+### 下次继续
+
+1. **octoaxesplus 重烧 `c9a55cd`+`c16181c` 最终状态**（板上现为 ~c8843f1：硬件触发通但频闪门卫 bug 未上板）→ 验证硬件触发下矩阵灯随帧频闪（50ms 曝光）；短曝光 ≤30ms 频闪走阻塞路径属预期
+2. **相机 2 触发（pin 4）复验**（今天只实测相机 1/pin 6；相机 2 接上后同款脉冲数帧法）
+3. octoaxes 板重烧（a9544ee+baf0816+7181cfb 等未上板）+ `w2_post_flash_verify2.py` 回归
+4. 悬挂项：新板 POWER_GOOD 硬件处理、Turret/R 闭环上机（A5）、W motor↔wheel 机械紧固、octoaxes constants X/Y index 死配置（启用 40 字节包前须修）
+
+---
+
+## 会话 2026-07-15～17
+
+**日期**: 2026-07-15 ～ 2026-07-17（连续上机会话）
+**分支**: develop（本地领先 github/main 6 提交：ce359fd..baf0816，未 push）
+**位置**: **octoaxesplus W2 上机三连修 + 编码器反馈 + 新板 bring-up 排查 + octoaxes 单滤光轮收口 + homing 方向可配置**
+
+### 一句话
+
+octoaxesplus 硬件上机验证滤光轮：W2 全链路暴露并修复**三个层层递进的固件 bug**（传感器极性反 /
+LEAVING_HOME 假超时 / 芯片硬停拦负向穿窗），修后 homing+整圈双向+编码器全通过；启用 W1/W2/W
+**纯编码器反馈**（无 PID）；排查第二块 octoaxesplus 新板「烧得进通不了」= POWER_GOOD 卡死（硬件）；
+随后转 octoaxes 硬件：收口单滤光轮 profile、同步假超时修复、实现 **fwHomingDirection 滤光轮
+homing 方向可配置**（两固件同步、默认逐位等价）。
+
+### 6 个提交（07-15 三个 + 07-17 三个）
+
+| commit | 内容 |
+|---|---|
+| `ce359fd` | **octoaxesplus 固件 W2 三连修**：① W_AXIS 极性 0→1（实测 STOPL 整圈恒 active、仅传感器窗口 ~5° inactive → homing 假完成 + STOP_LEFT 拦全部负向）② axis.h LEAVING_HOME 超时 5000→15000（离家阶段最坏走近整圈 ≈6.7s，实测 5.2s 假超时 ERROR）③ 滤光轮关芯片硬停（极性正确后窗口内 STOPL=active，硬停拦负向穿窗——整圈后 Previous 实测只走 84 µstep 卡死；homing 本就软件轮询+软件停车不依赖硬停，极性/锁存已解耦 80f4577） |
+| `19573c7` | **W2 纯编码器反馈**：constants W2 has_encoder=True（无 pid_enabled → 只发 cmd25 不开闭环）+ `_configure_encoders._AXIS_PROTOCOL` 补 W1(轴码5兜底)/W2(轴码6)（6-08 审计兜底缺失家族）+ 新脚本 `w2_encoder_check.py` |
+| `dba7e80` | **octoaxes 收口单滤光轮**（删 constants W2 条目，GUI 数据驱动自动少一轴，固件 W2 轴保留死轴容错）+ **octoaxesplus W1 编码器与 W2 统一**（flip/tpr 取 W2 实测值，缺板时 cmd25 静默 no-op）+ verify_profiles 期望集更新 |
+| `a9544ee` | **octoaxes 固件同步**：LEAVING_HOME 假超时 5s→15s（同款潜伏边界）+ EXPAND4_AXIS.encoderLinesPerRev 0→4000 对齐 W（惰性就绪字段） |
+| `baf0816` | **滤光轮 homing 方向可配置**：AxisConfig 新增 `fwHomingDirection`（int8_t 默认 +1=历史行为，-1=整体镜像搜索/移出方向）。**刻意不复用 homing_direct**（被 HOME data[3]/movement_sign 运行时覆盖 = Turret 反面教材），新字段只认 config.h。顺带取代「移出按 homingSwitch 二选一」写法（LEFT_SW 逐位等价；RGHT_SW 分支从未用过且移出与搜索同向存疑）。两固件 filterwheel.cpp 保持逐字节一致 |
+| `6109ced` | **⚠️ 取代 baf0816 字段方案（用户提议更优解）**：删 `fwHomingDirection`，滤光轮搜索方向改 = **`-homing_direct`（反向映射）**——恰好忠实编码旧 Squid W 段字节约定（host 对 sign=1 发 HOME_NEGATIVE→homing_direct=-1，旧 Squid 固件实际朝 + 搜）。不变量：**滤光轮 homing 搜索方向 = movement_sign**。config.h W 系 homing_direct 1→-1（boot 默认对齐协议写入值）。全部发送方（旧 Squid+HCS_v2.ini / 两 GUI / 脚本 b3=1）行为逐位不变；方向配置点升级为"改 constants movement_sign 一行+重启 GUI 不用重烧"（连带翻 Next/Previous，镜像硬件整体自洽） |
+
+### W2 上机实测结果（07-15，三连修后固件已烧当时那块板）
+
+- homing：最远起点搜近整圈 7.2s → 传感器两段式定位 → XACT 精确设零（旧 5s 超时必挂，反向验证修复必要）
+- Next×8 + Prev×8 整圈往返（含负向穿传感器窗口）：16/16 步精确 1600 µstep
+- 编码器：flip=False / tpr=4000 实测正确（ratio=+0.9994），双向跟随误差 ≤6 count，回零残差 3 count(≈0.08°)
+- 诊断方法沉淀：`w2_encoder_check.py`（cmd25→逐槽→S:ENCPOS 比对）、去使能后手转转盘 + 实时监视 STOPL 定传感器窗口/极性
+
+### 滤光轮 homing 过程梳理（备查）
+
+`①切 homing 微步256/禁软限位 → ②以 0.15圈/s 朝移出方向(-fwDir)转直到传感器触发（最坏近整圈）→
+③反向(+fwDir)全速穿出窗口停车 → ④慢速(1/5)反向再进窗口 → ⑤慢速正向穿出、在窗口 +fwDir 侧边沿设零 →
+⑥恢复微步/软限位/PID → GUI 补 offset(+102 µstep)`。注意代码内 `limit_state==0x00` 注释叫"在感应区"，
+与部分硬件电平物理含义相反（旧 Squid W 段遗产，状态机靠相位反转收敛）——描述行为以物理过程为准。
+
+### 新 octoaxesplus 板 bring-up（第二块板，硬件问题两则）
+
+1. **烧得进固件但串口全静默** → 定位：`initializeSystem` 等 POWER_GOOD(pin 0) 5s 超时 → `while(1)` 停机
+   （USB 枚举是中断驱动的，setup 卡死也能枚举成功——这是关键判据）。**有前科**：2026-05-13 首块板同坑，
+   根因 IC6 LTC2903 +24V_XY 原理图标签 bug，当年 bypass 未提交已丢失，正解=PCB 飞线。用户确认硬件问题。
+2. **Z 方向反** → 软/固件方向链路两项目逐字节比对一致 → 物理层问题；用户换旧 Z 恢复正常，确认硬件问题。
+3. 教训重提：当年 bring-up 工具（pg_test/clk_test/hc154_test）未提交已丢失；SESSION ~3403 有硬件核对清单。
+
+### 两项目滤光轮差异现状（比对结论备查）
+
+逻辑（filterwheel.cpp/超时）逐字节一致；配置差 4 处：极性 0↔1、硬停 true↔false（**必须不同**，各板传感器
+电平相反）+ astartMM 22.5↔0、加速度 200↔400（性能参数未统一，octoaxes 为实测调优值，octoaxesplus 统一
+需上机 benchmark，暂缓）。
+
+### 下次继续
+
+1. **octoaxes 重烧固件**（a9544ee + baf0816：假超时修复 + 编码器就绪 + 方向可配置，默认值零行为变化）→ GUI 验收 5 轴单滤光轮 + W homing/编码器显示
+2. **octoaxesplus 重烧**（baf0816）→ 重跑 `w2_post_flash_verify2.py` 回归（预期与 07-15 结果一致）
+3. octoaxesplus W1 接驱动板后：编码器 flip 复核（w2_encoder_check.py 同款流程）+ homing 实测
+4. 新 octoaxesplus 板：POWER_GOOD 硬件处理（查 24V/PG 电路/飞线，对照好板）；可选固件改进：PG 超时降级为警告+继续（学 beginAll 28e8eee，保串口诊断）
+5. push develop → github/main（本地领先 6 提交）
+6. 悬挂项不变：Turret/R 闭环上机验证（A5）、W motor↔wheel 机械紧固、octoaxes Turret RGHT_SW 假设实测
+
+---
+
+## 会话 2026-07-10
+
+**日期**: 2026-07-10
+**分支**: develop（A5 及 octoaxesplus R 闭环**已同步 github/main = 50dff98**）
+**位置**: **A5 物镜 GUI 闭环版完成 + 两 profile 物镜转换器均 PID 闭环 + 同步 github-main**
+
+### 一句话
+
+按 A 方案一次性内聚完成 **A5（物镜 GUI）**——落到本项目 objective 轴（octoaxes=Turret / octoaxesplus=R），
+采用**编码器 + PID 闭环**（用户明确：物镜转换器一定带编码器）；随后按用户要求给
+**octoaxesplus R 轴也补齐同款闭环配置**，两 profile 物镜转换器统一；最后把这批 8 提交
+cherry-pick 同步到 **github/main（af61bb9..50dff98）**，代码零差异。**⚠️ 全部未上机验证**。
+
+### A5. 物镜 GUI 闭环（Mega A5 全 8 提交 → 本项目 3 内聚提交，落 objective 类型轴）
+
+融合 Mega `82e9f0e/152d50e/763fe5a/adb5365/cef69b5/518a5c6/d129a32/81d0e68`，取代旧开环 move_objective：
+
+- **A5 基础** `508ff6d`（会话前起步）— octoaxes Turret constants 启用 encoder(tpr=4000/flip=True)
+  +PID(1536/2/16)+auto_disable；define.py `objective_slot_angle(microsteps, ms)` 含齿轮比 2.75。
+- **A5 widgets** `cdf53ad` — ControlPanel 物镜标定 UI：4 工位角度框(默认0/90/180/270)+每行 Read/Go To、
+  Vel/Acc、独立「Go to Slot 0」按钮；AxisStatusDisplay objective 位置显示「Slot N / 角度°」；3 信号。
+- **A5 main_window** `4a4f920` — ①换位改**绝对定位到工位标定角度**（previous/next→`_objective_goto(±1)`，
+  跨槽逐格拆步，绕开大跨度单次闭环啸叫堵转）②工位标定读/写 + 持久化 `~/.octoaxes/objective_calib.json`
+  ③**弹片自定位 cmd32 时序**（move/homing 起步前使能+显示 ON，到位后延迟 rest_disable_delay_ms 去使能，
+  多槽只最后一步真去使能）④`_configure_encoders` 加 Turret + **PID 三步下发**（SET_PID_ARGUMENTS→
+  CONFIGURE_STAGE_PID→ENABLE_STAGE_PID，顺序 load-bearing）⑤`_render_objective_position` 统一 3 处位置显示
+  ⑥`_set_axis_enable` 协议映射补 Turret/W1/W2（否则物镜 cmd32 静默失败）⑦`wait_until_idle` 加可选 axis 参数
+  ⑧homing 拆「纯 homing」+ 独立「移工位0」按钮 ⑨删旧开环 move_objective + define 遗留常量（NEXT_SIGN/齿隙/RMS）。
+
+### A5+. octoaxesplus R 轴也启用编码器 + PID 闭环（用户确认两 profile 一致）
+
+`2cacb77` — octoaxesplus constants Turret 补齐与 octoaxes Turret 同款闭环字段
+（has_encoder/tpr=4000/flip=True/PID=1536·2·16/current=1800/hold=0.5/vel=0.5/acc=80/auto_disable），
+对齐固件 config.h OBJECTIVES **逐位等价（方案A）**。两 profile 物镜转换器现统一为闭环。
+
+### 同步 github/main
+
+`git checkout github-main` → `git cherry-pick 7411606..develop`（8 提交，无冲突）→ `git push github github-main:main`。
+本地 github-main = 远程 github/main = **50dff98**。排除 documents/ 后 **software/+firmware/ 代码零差异**。
+
+### ⚠️ 唯一剩下的关键事项：上机验证（软件到此为止）
+
+1. 烧录固件 A1a/b/c（两 firmware 都还没烧）；同时把 W 速度 2.0→4.2 的构建一并重烧
+2. 装 Turret（octoaxes）/ R 轴（octoaxesplus）编码器
+3. 实测全链路：homing → 工位标定（Read 读当前角度写入 slot）→ PID 闭环换位（Next/Previous/Go To Slot）
+4. `tpr=4000 / flip=True / PID=1536·2·16` 均照抄 Mega W 起点，**必须 `tune_w_pid.py` 重新整定**；
+   flip 与 movement_sign 联合定编码器极性，须实测（octoaxes sign=-1 / octoaxesplus sign=1）
+
+### 验证（headless，无硬件）
+
+- py_compile + `verify_profiles.py` 两 profile 通过
+- 全 GUI headless 实例化：选中 Turret → `_render_objective_position` 显示「Slot 1 / Wheel 90.0°」、
+  `on_objective_read_current(0)` 读当前 90° 写入 slot0、标定 JSON 往返、`goto_objective_slot0` 守卫安全
+- octoaxesplus Turret 闭环字段确认 + `_configure_encoders` 目标轴 = ['Turret']
+
+---
+
+## 会话 2026-07-09
+
 **日期**: 2026-07-09
 **分支**: develop（= github/main 已同步）
 **位置**: **new-W-axis 分支融合（firmware 侧全完成）+ W 滤光轮问题排查 + octoaxes 轴收口 6 轴**
@@ -182,6 +358,14 @@ main 新增 3 提交（方案A：GUI 启动 `_configure_actuators` 也给滤光�
 - 同步清理 common/ 残留 E3/E4：define.py 删死条目、widgets.py 去 E3、main_window 启动 set_limits 跳过、verify_profiles/test_04 期望集。
 - **profile-safe 修复**：main_window 启动跳过从硬编码 `["W2","W"]` 改按 `type` 判断（否则 octoaxesplus 的 W1 漏跳）。`b1d2535`。
 - 验证：py_compile OK、无 E3/E4 残留、verify_profiles 两 profile 全过（各 6 轴）。
+
+### D. 滤光轮参数 GUI 启动下发（方案A，`dad8f5c`/`7411606`）
+
+原 `_configure_actuators` 只给 X/Y/Z 下发 pitch/微步/电流/hold，滤光轮全靠固件默认。现让 software 也能设置滤光轮参数：
+- **设计原则**（用户定）：software 默认值 = firmware config.h 值 → 下发是**显式同步、逐位不改变行为**；旧 Squid 不下发就用固件默认 → 三方一致。核实 firmware `begin()` 与 cmd21 同走 `motor_initDriver`（同 rSense/currentRange/runCurrentMA），故下发 3100 与默认等价（cmd21 注释叫「RMS」只是文档，不影响等价）。
+- **改动**：constants 给 W/W2（octoaxes）+ W1/W2（octoaxesplus）补 `actuator_motor_current_ma=3100` / `actuator_motor_hold_ratio=0.5`（= FILTERWHEEL 常量；pitch1/ms64 本就有）；`_configure_actuators._AXIS_PROTOCOL` 加 W/W1/W2。缺字段的轴仍被 None 守卫跳过 → 回退固件默认。
+- 两 profile 滤光轮现均下发 `[pitch1, ms64, cur3100, hold0.5]`；verify 两 profile 通过。纯软件、不用重烧。
+- **好处**：以后改滤光轮微步/电流只改 constants 一行 + 重启 GUI，无需重烧固件。
 
 ### 下次
 

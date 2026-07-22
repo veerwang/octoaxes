@@ -63,6 +63,12 @@ public:
     float astartMM;              // start acceleration (mm/s²), 0=unused
     float dfinalMM;              // final deceleration (mm/s²), 0=same as astart
     uint32_t homing_timeout_ms;
+    // homing_direct semantics differ by axis type (the value is overridden at runtime by HOME_OR_ZERO data[3]):
+    //   StepAxis/Objectives: search direction = +homing_direct (X/Y/Z convention).
+    //   FilterWheel: search direction = -homing_direct (legacy Squid W-segment byte convention — the
+    //   host sends HOME_NEGATIVE(1) for sign=1 -> -1, yet actually searches toward +; i.e. search
+    //   direction = movement_sign). Filter wheel config.h boot default is written as -1, matching
+    //   the protocol-written value. See the filterwheel.cpp comment for details.
     int8_t homing_direct;
     uint8_t driverType;          // driver chip model, default DRIVER_TMC2660
     uint8_t currentRange;        // TMC2240 CURRENT_RANGE: 0=1A, 1=2A, 2=3A (ignored for TMC2660)
@@ -154,7 +160,12 @@ protected:
   AxisConfig _config;
 
   // Timeout settings
-  static const unsigned long LEAVING_HOME_TIMEOUT_MS = 5000;
+  // 2026-07-15 5000→15000: if a filter wheel homing run starts far from the sensor window,
+  // the LEAVING_HOME stage at homing speed (0.15 rev/s) may need almost a full revolution
+  // ≈6.7s in the worst case, so 5s always falsely times out (W2 measured 5.2s ERROR).
+  // For linear axes/objectives this only relaxes the error-detection ceiling; normal-path
+  // behavior is unchanged.
+  static const unsigned long LEAVING_HOME_TIMEOUT_MS = 15000;
   static const unsigned long MOVEMENT_TIMEOUT_MS = 5000;
 
   elapsedMicros _checkHomeReachTimeout;

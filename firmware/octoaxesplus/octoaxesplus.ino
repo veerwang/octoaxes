@@ -77,11 +77,13 @@ bool initializeSystem() {
 
   // Create axis objects and add them to the manager
   //
-  // squid++ dual-camera hardware does not need the octoaxes mainline's X/Y swap:
-  // the squid++ HC154 chip-select channel names align with the physical wiring (HC154_AXIS_X=10 directly drives the physical X motor),
-  // in tmc_ic_configs[], icID=0 -> HC154_AXIS_Y, icID=1 -> HC154_AXIS_X,
-  // so axisName="Y" + icID=0 + Y_AXIS_CS and axisName="X" + icID=1 + X_AXIS_CS is the correct mapping.
-  // (the octoaxes mainline swap is to be compatible with the legacy Squid PCB's reversed wiring, see octoaxes/octoaxes.ino)
+  // 2026-07-20 measured: on this machine (squid++ board) the X/Y motor wiring is reversed
+  // relative to the HC154 channel naming — a GUI X command via ch10 (labeled X) drives the
+  // physical Y motor. Same disease as the octoaxes mainline 2026-05-08, same cure: cross-compensate
+  // axisName vs CS (the axis name follows the physical motor, the CS constant name keeps the
+  // board-level label). icID unified with the octoaxes mainline as X=0 / Y=1 (the 40-byte
+  // extended packet puts the X slot first); in tmc_ic_configs[], icID=0 -> HC154_AXIS_Y(ch9) =
+  // physical X, icID=1 -> HC154_AXIS_X(ch10) = physical Y.
   //
   // ──────────────────────────────────────────────────────────────────────
   // current mode: XYZW1W2 five axes (since 2026-05-15)
@@ -92,8 +94,9 @@ bool initializeSystem() {
   // W2: HC154 channel 4 (original AXIS_T resource)
   // the Z axis uses axisName "Z" (consistent with the host; axesmrg.cpp::beginAll supports both "Z"/"Z1").
   // ──────────────────────────────────────────────────────────────────────
-  Axis *yAxis  = new StepAxis    (Pins::Y_AXIS_CS,  0, "Y");    // icID=0, HC154 ch9  = physical Y motor
-  Axis *xAxis  = new StepAxis    (Pins::X_AXIS_CS,  1, "X");    // icID=1, HC154 ch10 = physical X motor
+  // 2026-07-20 X/Y icID unified to X=0/Y=1 + axisName<->CS crossed (this machine's wiring compensation, settled by user measurement)
+  Axis *xAxis  = new StepAxis    (Pins::Y_AXIS_CS,  0, "X");    // icID=0, HC154 ch9  = physical X motor
+  Axis *yAxis  = new StepAxis    (Pins::X_AXIS_CS,  1, "Y");    // icID=1, HC154 ch10 = physical Y motor
   Axis *zAxis  = new StepAxis    (Pins::Z_AXIS_CS,  2, "Z");    // icID=2, HC154 ch8  = main focus Z
   Axis *w1Axis = new FilterWheel (Pins::W1_AXIS_CS, 3, "W1");   // icID=3, HC154 ch6  = filter wheel 1
   Axis *w2Axis = new FilterWheel (Pins::W2_AXIS_CS, 4, "W2");   // icID=4, HC154 ch4  = filter wheel 2
@@ -103,7 +106,7 @@ bool initializeSystem() {
 
   // add in axisIndex order; the order must match the HC154 branch of tmc_ic_configs[] in tmc/hal/TMC_SPI.cpp
   // the tmc_ic_configs[] array keeps 8 entries (icID 6-7 slots are empty but never accessed, no side effects)
-  if (!axisManager.addAxis(yAxis)  || !axisManager.addAxis(xAxis)  ||
+  if (!axisManager.addAxis(xAxis)  || !axisManager.addAxis(yAxis)  ||
       !axisManager.addAxis(zAxis)  || !axisManager.addAxis(w1Axis) ||
       !axisManager.addAxis(w2Axis) || !axisManager.addAxis(turretAxis)) {
     DEBUG_PRINTLN("Failed to add axes to manager");

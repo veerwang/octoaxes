@@ -57,7 +57,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-10, 115000),
         "movement_sign": 1,
-        "index": 1,
+        "index": 0,  # firmware icID (2026-07-20 X/Y swapped, unified with the octoaxes mainline X=0/Y=1)
         "default_velocity": 25.0,
         "default_acceleration": 500.0,
         "has_encoder": False,
@@ -74,7 +74,7 @@ AXIS_CONFIG = {
         "has_limits": True,
         "limits": (-10, 76000),
         "movement_sign": 1,
-        "index": 0,
+        "index": 1,  # firmware icID (2026-07-20 X/Y swapped, unified with the octoaxes mainline X=0/Y=1)
         "default_velocity": 25.0,
         "default_acceleration": 500.0,
         "has_encoder": False,
@@ -103,7 +103,12 @@ AXIS_CONFIG = {
         "limits": (0, 7),
         "movement_sign": 1,
         "index": 3,
-        "has_encoder": False,
+        # 2026-07-17 encoder feedback enabled in unison with W2 (user confirmed both filter wheels
+        # share the same configuration). flip/tpr take W2's measured values (same sensor model /
+        # W_AXIS template); once the W1 driver board is installed, re-verify with the same
+        # w2_encoder_check.py procedure. With the board currently missing, cmd25 falls back W->W1
+        # onto a dead axis — silent no-op, no side effects.
+        "has_encoder": True,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 matches legacy Squid SCREW_PITCH_W_MM=1
@@ -120,7 +125,10 @@ AXIS_CONFIG = {
         "limits": (0, 7),
         "movement_sign": 1,
         "index": 4,
-        "has_encoder": False,
+        # 2026-07-15 verified on machine: pure encoder feedback enabled (CONFIGURE_STAGE_PID only
+        # enables the encoder; pid_enabled not sent -> PID loop stays open). tpr/flip pending
+        # S:ENCPOS measurement confirmation.
+        "has_encoder": True,
         "encoder_transitions_per_rev": 4000,
         "encoder_flip_direction": False,
         "actuator_screw_pitch_mm": 1.0,    # 2026-05-21 matches legacy Squid SCREW_PITCH_W_MM=1
@@ -131,17 +139,41 @@ AXIS_CONFIG = {
     "Turret": {
         # 2026-06-02 objective turret (4 objectives): physical R axis (HC154 ch3), firmware icID=5.
         # reuses the octoaxes E1 protocol MOVE_TURRET(44)/MOVETO_TURRET(45) + HOME_OR_ZERO axis=7.
-        # GUI widgets.py renders the objective-control page; main_window.previous/next -> move_objective().
+        # GUI widgets.py renders the objective-control page; main_window.previous/next -> _objective_goto()
+        # (A5 closed loop: absolute positioning to the slot-calibrated angle, multi-slot moves split slot
+        # by slot). The R axis is likewise an [objective turret with encoder], using encoder + PID closed
+        # loop, configuration aligned with octoaxes Turret (user confirmed: both profiles' turrets are identical).
         "display_name": "Objectives - r_axis",
         "type": "objective",
         "has_limits": False,
         "limits": (0, 3),       # 4 objectives, slots 0..3, consistent with define.py OBJECTIVE_SWITCH_MAX_INDEX=3
-        # movement_sign=-1: flips the display (pos/steps/status table multiplied by sign) so Next shows a positive value;
-        # does not affect move_objective's physical direction (it hardcodes the sign, does not use sign).
+        # movement_sign=1: both the display and the _objective_angle_to_position_um angle->µstep conversion multiply by sign.
         "movement_sign": 1,
         "index": 5,             # firmware icID（octoaxesplus.ino: new Objectives(...,5,"Turret",4)）
         "actuator_screw_pitch_mm": 1.0,    # matches config.h SCREW_PITCH_OBJECTIVES_MM=1
         "actuator_microstepping": 64,      # matches config.h MICROSTEPPING_OBJECTIVES=64
+        # A5: added the objective GUI/send-down fields, values aligned with firmware config.h (plan A: software defaults = firmware defaults)
+        "actuator_motor_current_ma": 1800,  # = OBJECTIVES_MOTOR_PEAK_CURRENT_mA
+        "actuator_motor_hold_ratio": 0.5,   # = OBJECTIVES_MOTOR_I_HOLD
+        # prefill for the objective page velocity/acceleration (sent via SET_MAX_VELOCITY_ACCELERATION on Apply, not at startup)
+        "default_velocity": 0.5,        # = MAX_VELOCITY_OBJECTIVES_mm (0.5*pitch)
+        "default_acceleration": 80.0,   # = MAX_ACCELERATION_OBJECTIVES_mm (80*pitch)
+        # spring-plate self-centering: after arrival the GUI sends a delayed cmd32 to cut current so the
+        # spring plate re-centers (more precise than the PID deadband, also fixes gear lash)
+        "auto_disable_at_rest": True,
+        "rest_disable_delay_ms": 100,
+        # === encoder + PID closed loop (R axis = objective turret with encoder) ===
+        # GUI startup _configure_encoders sends SET_PID_ARGUMENTS -> CONFIGURE_STAGE_PID ->
+        # ENABLE_STAGE_PID for Turret to close the loop (runtime send-down, overriding the firmware
+        # config.h enableEncoder=false boot default).
+        "has_encoder": True,
+        "encoder_transitions_per_rev": 4000,   # 1000-line (PPR) *4 quadrature (aligned with Mega W / octoaxes Turret; must be verified on this hardware)
+        "encoder_flip_direction": True,        # encoder count direction vs motor command (must be verified on this hardware; polarity determined jointly with movement_sign)
+        # PID values taken from the Mega W / octoaxes Turret starting point; ⚠️ this R axis hardware must be re-tuned with tune_w_pid.py.
+        "pid_enabled": True,
+        "pid_p": 1536,
+        "pid_i": 2,
+        "pid_d": 16,
     },
 }
 

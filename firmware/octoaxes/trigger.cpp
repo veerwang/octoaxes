@@ -91,8 +91,14 @@ void ISR_strobeTimer()
     unsigned long now = micros();
 
     for (int i = 0; i < NUM_TRIGGER_CHANNELS; i++) {
-        // only process triggered channels that have strobe control enabled
-        if (!control_strobe[i] || trigger_output_level[i] == HIGH)
+        // only process channels that have strobe control enabled.
+        // 2026-07-20 fix (synced with octoaxesplus): removed the `trigger_output_level[i] == HIGH`
+        // guard — in NORMAL mode the trigger pulse returns to HIGH after only 50µs while
+        // strobe_delay is millisecond-scale, so the guard meant the strobe turn-on never ran
+        // (illumination permanently off in hardware-trigger mode). The strobe lifecycle is fully
+        // described by control_strobe/strobe_on, independent of the trigger pin level (aligned
+        // with the legacy Squid ISR).
+        if (!control_strobe[i])
             continue;
 
         unsigned long elapsed = now - timestamp_trigger_rising_edge[i];

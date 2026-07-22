@@ -9,20 +9,29 @@ OBJECTIVE_GEAR_LARGE = 132.0
 OBJECTIVE_GEAR_SMALL = 48.0
 OBJECTIVE_RATIO = OBJECTIVE_GEAR_LARGE / OBJECTIVE_GEAR_SMALL
 SCREW_PITCH_W_MM = 1
-# the motor microstep direction for the Next slot (advance one slot in the negative direction, consistent with the historical move_objective)
-OBJECTIVE_NEXT_SIGN = -1
-# gear-backlash compensation empirical factor (mm): when reversing, first move a little to take up the backlash, otherwise the first
-# switch after reversing under-rotates and the objective drifts off the optical axis. Compensation = OBJECTIVE_RATIO * this factor / OBJECTIVE_GEAR_LARGE
-# (empirical value from the veerwang objectswitch reference)
-OBJECTIVE_BACKLASH_FACTOR_MM = 0.2
+# Note: the objective turret was migrated in A5 to "encoder + PID closed loop + slot-calibrated
+# absolute positioning" (see the main_window _objective_* method family). Motor current/hold/
+# velocity/acceleration are now driven by each axis's actuator_* / default_velocity /
+# default_acceleration fields in constants.py (plan A: software defaults = firmware defaults).
+# The old open-loop move_objective's NEXT_SIGN / backlash compensation / RMS current constants
+# were removed along with it.
 
-# objective W-axis motor parameters (explicitly sent by the host before the first switch, overriding firmware defaults for gentler motion).
-# values consistent with the reference software_20260601 objective turret (the same author notes "gentler/quieter"):
-# current is RMS (the CONFIGURE_STEPPER_DRIVER protocol expects RMS, not peak)
-OBJECTIVE_MOTOR_CURRENT_RMS_MA = 1000
-OBJECTIVE_MOTOR_I_HOLD = 0.5
-OBJECTIVE_MAX_VELOCITY_MM = 0.5
-OBJECTIVE_MAX_ACCELERATION_MM = 10.0
+
+def objective_slot_angle(microsteps, microstepping, fullsteps_per_rev=200):
+    """物镜转换器：电机 microstep → (工位号, 物镜盘角度°)。融合 new-W-axis A5（152d50e）。
+
+    含齿轮比 OBJECTIVE_RATIO(=2.75)：物镜盘 1 圈 = 电机 OBJECTIVE_RATIO 圈。
+      物镜盘 1 圈对应电机 µstep = OBJECTIVE_RATIO × fullsteps_per_rev × microstepping
+      一个工位 = 物镜盘 1 圈 / OBJECTIVE_HOLES
+    返回 (slot 0..OBJECTIVE_HOLES-1, 物镜盘角度 deg)。
+    """
+    usteps_per_obj_rev = OBJECTIVE_RATIO * fullsteps_per_rev * microstepping
+    if usteps_per_obj_rev == 0:
+        return 0, 0.0
+    usteps_per_slot = usteps_per_obj_rev / OBJECTIVE_HOLES
+    deg = (microsteps / usteps_per_obj_rev) * 360.0
+    slot = int(round(microsteps / usteps_per_slot)) % OBJECTIVE_HOLES
+    return slot, deg
 
 
 class AXIS:

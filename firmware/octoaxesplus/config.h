@@ -123,9 +123,15 @@ namespace Pins {
     const int RX2 = 16;
     const int TX2 = 17;
 
-    // camera trigger (squid++ dual-camera: 8 lines, source documents/squid++（双相机）配置.md section 1)
-    const int CAMERA_TRIGGER_1 = 9;    // CAM_TRI_OUT1 (camera 1)
-    const int CAMERA_TRIGGER_2 = 8;    // CAM_TRI_OUT2 (camera 2)
+    // camera trigger (squid++ dual-camera: 8 lines)
+    // 2026-07-20 settled by measurement (cmd41 per-pin pulses + Toupcam external-trigger frame
+    // counting): actual wiring follows the "function description" column of
+    // documents/squid++（双相机）配置.md §1 (xlsx survey); schematic signal names are NOT
+    // trustworthy — camera 1 trigger is wired to pin 6 (signal name CAM_TRI_READY2), camera 2
+    // trigger to pin 4 (signal name TRIGGER_IN2); pin 9/8 (CAM_TRI_OUT1/2) measured unwired
+    // (pulses produced 0 frames).
+    const int CAMERA_TRIGGER_1 = 6;    // camera 1 trigger (measured: pulse → Toupcam frame out)
+    const int CAMERA_TRIGGER_2 = 4;    // camera 2 trigger (per the same survey notes; re-verify once camera 2 is installed)
     const int CAMERA_TRIGGER_3 = 23;
     const int CAMERA_TRIGGER_4 = 22;
     const int CAMERA_TRIGGER_5 = 15;
@@ -140,14 +146,15 @@ namespace Pins {
     const int TRIGGER_OUT1 = 1;
     const int TRIGGER_IN1  = 2;
     const int TRIGGER_OUT2 = 3;
-    const int TRIGGER_IN2  = 4;
+    // TRIGGER_IN2 (pin 4): 2026-07-20 measured — this pin is actually wired as the camera 2
+    // trigger -> repurposed as CAMERA_TRIGGER_2, no longer an ext trigger IN (see trigger.h NUM_EXT_TRIGGER_IN)
 
     // dual-camera handshake READY inputs (squid++ dual-camera: camera-ready / capture-complete feedback)
-    // note: the squid++ doc's pin 6/7 description does not match the names (pin 6 is labeled "camera1_trigger", pin 7 is labeled
-    // "camera1_wait-trigger", not matching the names CAM_TRI_READY2/1); treated as input pins per the naming,
-    // the doc description is questionable, pending verification against the original table
+    // 2026-07-20 settled: pin 6 measured as the camera 1 trigger line (old "treat as input per
+    // naming" assumption is void); READY follows the survey table — camera1_wait-trigger = pin 7,
+    // camera2_wait-trigger = pin 5
     const int CAM_TRI_READY1 = 7;   // camera 1 READY feedback
-    const int CAM_TRI_READY2 = 6;   // camera 2 READY feedback
+    const int CAM_TRI_READY2 = 5;   // camera 2 READY feedback (survey table "camera2_wait-trigger")
 
     // 74HC154 4->16 decoder chip-select (squid++ dual-camera)
     // the binary value n on A3:A2:A1:A0 -> pulls output Yn low, the rest stay high; serves as the unified chip-select for all SPI devices
@@ -256,7 +263,7 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_X_mm = 500;
 		const float MAX_ACCELERATION_Y_mm = 500;
 		const float MAX_ACCELERATION_Z_mm = 20;
-		const float MAX_ACCELERATION_FILTERWHEEL_mm = 400 * SCREW_PITCH_FILTERWHEEL_MM;
+		const float MAX_ACCELERATION_FILTERWHEEL_mm = 200 * SCREW_PITCH_FILTERWHEEL_MM;   // 2026-07-17 400→200 aligned with octoaxes (user confirmed both machines share the same filter wheel hardware; value octoaxes settled on 07-09 after measured W Test step loss on repeated next/previous), pending on-machine regression
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;   // 2026-06-02 aligned with octoaxes E1 (prevents step loss on the gear-reduced objective)
 
 		const float HOMING_VELOCITY_X_MM = 10;
@@ -482,6 +489,15 @@ namespace AxisConfigs {
     const Axis::AxisConfig W_AXIS = {
         .clockFrequency = SystemConfig::TMC4361_CLOCK_FREQUENCY,
         .homingSwitch = LEFT_SW,
+        // 2026-07-20 polarity/hard-stop reverted to the octoaxes values (0 / true): user confirmed
+        // both machines share the same filter wheel hardware, and [the octoaxesplus hardware side
+        // will rework the sensor signal chain to match octoaxes].
+        // ⚠️ Precondition: the hardware rework is complete — measured 2026-07-15 on an un-reworked
+        // board: with polarity 0, STOPL is constantly active over the full revolution and reads
+        // inactive only in the sensor window (~5°) -> homing falsely completes instantly + STOP_LEFT
+        // blocks all negative motion (three bugs, see ce359fd). Flashing an un-reworked board revives
+        // all three bugs verbatim; diagnosis then: disable the axis, hand-turn the wheel + monitor
+        // STOPL via S:DUMPREGS (see SESSION 2026-07-15).
         .leftSwitchPolarity = 0,
         .rightSwitchPolarity = 0,
         .leftIsInactive = 0,
@@ -505,10 +521,10 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 0,  // 2026-05-21 matches legacy Squid sRampInit (rstBits USE_ASTART_AND_VSTART), disabling jerk-start to eliminate short-distance ramp overshoot
+        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-07-17 0→22.5 aligned with octoaxes (user confirmed both machines share the same filter wheel hardware; measured value from octoaxes 5-26 W speed optimization round 2, jerk-start 22.5 rev/s² ≈ 288K µstep/s² chip register @ms=64), pending on-machine regression
         .dfinalMM = 0,                                   // same as astart
         .homing_timeout_ms = 80000,
-        .homing_direct = 1,
+        .homing_direct = -1,   // 2026-07-17 filter wheel mapping = search direction inverted (-1 -> search +, historical behavior); boot default matches the protocol value each host writes when sending NEGATIVE for sign=1
         .driverType = DRIVER_AUTO,
         .currentRange = 2,
         .enableEncoder = false,
@@ -641,10 +657,10 @@ namespace AxisConfigs {
         .enableStallSensitivity = false,
         .stallSensitivity = 6,
         .useSShapedRamp = true,
-        .astartMM = 0,  // 2026-05-21 matches legacy Squid sRampInit (rstBits USE_ASTART_AND_VSTART), disabling jerk-start to eliminate short-distance ramp overshoot
+        .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-07-17 0→22.5 aligned with octoaxes (user confirmed both machines share the same filter wheel hardware; measured value from octoaxes 5-26 W speed optimization round 2, jerk-start 22.5 rev/s² ≈ 288K µstep/s² chip register @ms=64), pending on-machine regression
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
-        .homing_direct = 1,
+        .homing_direct = -1,   // 2026-07-17 filter wheel mapping = search direction inverted (-1 -> search +, historical behavior); boot default matches the protocol value each host writes when sending NEGATIVE for sign=1
         .driverType = DRIVER_AUTO,
         .currentRange = 0,
         .enableEncoder = false,

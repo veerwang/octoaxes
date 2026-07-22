@@ -53,6 +53,8 @@ void trigger_init()
     for (int i = 0; i < NUM_EXT_TRIGGERS; i++) {
         pinMode(ext_trigger_out_pins[i], OUTPUT);
         digitalWrite(ext_trigger_out_pins[i], LOW);
+    }
+    for (int i = 0; i < NUM_EXT_TRIGGER_IN; i++) {
         pinMode(ext_trigger_in_pins[i], INPUT_PULLUP);
     }
 
@@ -90,7 +92,7 @@ bool ext_trigger_pulse_out(uint8_t channel, uint32_t pulse_width_us)
 
 bool ext_trigger_read_in(uint8_t channel)
 {
-    if (channel >= NUM_EXT_TRIGGERS) return true;  // out-of-range defaults to the deactivated state
+    if (channel >= NUM_EXT_TRIGGER_IN) return true;  // out-of-range defaults to the deactivated state
     return digitalRead(ext_trigger_in_pins[channel]) == HIGH;
 }
 
@@ -138,8 +140,14 @@ void ISR_strobeTimer()
     unsigned long now = micros();
 
     for (int i = 0; i < NUM_TRIGGER_CHANNELS; i++) {
-        // only process triggered channels that have strobe control enabled
-        if (!control_strobe[i] || trigger_output_level[i] == HIGH)
+        // only process channels that have strobe control enabled.
+        // 2026-07-20 fix: removed the `trigger_output_level[i] == HIGH` guard — in NORMAL mode
+        // the trigger pulse returns to HIGH after only 50µs while strobe_delay (rolling shutter
+        // cameras) is millisecond-scale, so the guard meant the strobe turn-on never ran
+        // (illumination permanently off in hardware-trigger mode). The strobe lifecycle is fully
+        // described by control_strobe/strobe_on, independent of the trigger pin level (aligned
+        // with the legacy Squid ISR).
+        if (!control_strobe[i])
             continue;
 
         unsigned long elapsed = now - timestamp_trigger_rising_edge[i];

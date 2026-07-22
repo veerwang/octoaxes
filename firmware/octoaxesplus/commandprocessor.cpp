@@ -376,7 +376,7 @@ void CommandProcessor::handleSetLimSwitchPolarity(const byte *data) {
     return;
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (!axis) return;
   uint8_t polarity = data[3];
   axis->getMutableConfig().leftSwitchPolarity = polarity;
@@ -392,7 +392,7 @@ void CommandProcessor::handleConfigureStepperDriver(const byte *data) {
   // data[2]: protocol axis; data[3]: microstepping; data[4..5]: RMS current (mA); data[6]: hold current (0-255)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (!axis) return;
 
   // microstepping special handling: 0->1, 1-128->as-is, >128->256
@@ -412,7 +412,7 @@ void CommandProcessor::handleSetMaxVelocityAcceleration(const byte *data) {
   // data[2]: protocol axis; data[3:4]: velocity*100 (mm/s); data[5:6]: acceleration*10 (mm/s2)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (!axis) return;
   float vel_mm = float((uint16_t(data[3]) << 8) | data[4]) / 100.0f;
   float acc_mm = float((uint16_t(data[5]) << 8) | data[6]) / 10.0f;
@@ -423,7 +423,7 @@ void CommandProcessor::handleSetLeadScrewPitch(const byte *data) {
   // data[2]: protocol axis; data[3..4]: pitch*1000 (uint16, mm)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (!axis) return;
 
   float pitchMM = float((uint16_t(data[3]) << 8) | uint16_t(data[4])) / 1000.0f;
@@ -451,7 +451,7 @@ void CommandProcessor::handleConfigureStagePID(const byte *data) {
   // data[2]: protocol axis; data[3]: flip_direction; data[4:5]: transitions_per_rev (big-endian)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (!axis) return;
   bool flip_direction = data[3];
   uint16_t transitions_per_rev = (uint16_t(data[4]) << 8) | uint16_t(data[5]);
@@ -462,7 +462,7 @@ void CommandProcessor::handleEnableStagePID(const byte *data) {
   // data[2]: protocol axis
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (axis) axis->enableStagePID();
 }
 
@@ -470,7 +470,7 @@ void CommandProcessor::handleDisableStagePID(const byte *data) {
   // data[2]: protocol axis
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (axis) axis->disableStagePID();
 }
 
@@ -478,7 +478,7 @@ void CommandProcessor::handleSetHomeSafetyMargin(const byte *data) {
   // data[2]: protocol axis; data[3..4]: margin*1000 (uint16, mm)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (!axis) return;
 
   float marginMM = float((uint16_t(data[3]) << 8) | uint16_t(data[4])) / 1000.0f;
@@ -489,7 +489,7 @@ void CommandProcessor::handleSetPIDArguments(const byte *data) {
   // data[2]: protocol axis; data[3:4]: P (big-endian uint16); data[5]: I (uint8); data[6]: D (uint8)
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (!axis) return;
   uint16_t p = (uint16_t(data[3]) << 8) | uint16_t(data[4]);
   uint8_t  i = data[5];
@@ -540,7 +540,7 @@ void CommandProcessor::handleSetAxisDisableEnable(const byte *data) {
   // data[2]: protocol axis; data[3]: 0=disable, 1=enable
   const char *name = protocolAxisToName(data[2]);
   if (!name) return;
-  Axis *axis = axisManager.findAxisByName(name);
+  Axis *axis = findAxisByNameWithFallback(name);  // 2026-07-20 centralized W->W1 fallback (audit S-2: axis code 5="W" resolves to W1 on octoaxesplus)
   if (!axis) return;
   if (data[3] == 0) axis->disableAxis();
   else              axis->enableAxis();

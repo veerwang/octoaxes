@@ -165,7 +165,14 @@ void FilterWheel::performHomingSequence() {
         // hardware direction inversion is handled via _config.invert_direction (set true for mirror-assembled hardware).
         DEBUG_PRINT(_axisName);
         DEBUG_PRINTLN(":Fast search...");
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        // 2026-07-17 direction configurable (via homing_direct, reverse mapping): search direction = -homing_direct.
+        // This is the legacy Squid W-segment byte semantics — the host sends HOME_NEGATIVE(1) for
+        // sign=1 -> homing_direct=-1, yet the legacy Squid firmware searches toward + (stage_commands.cpp:621-636,
+        // opposite to X/Y/Z). The reverse mapping faithfully encodes that convention; the equivalent
+        // invariant: search direction = host movement_sign. The config.h boot default homing_direct=-1
+        // matches the protocol-written value semantics. Fallback: 0 is treated as -1 (i.e. search +, historical behavior).
+        const int8_t fwDir = (_config.homing_direct > 0) ? -1 : 1;
+        int32_t speedInternal = fwDir * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         if (_config.invert_direction) speedInternal = -speedInternal;
         motor_setVelocityInternal(_icID, speedInternal);
         setState(STATE_HOMING_SEARCH);
@@ -232,33 +239,36 @@ void FilterWheel::performLeavingHome() {
       // 2026-05-25 reverted commit 2b5dce4: restored hardcoded + directional search (consistent with the legacy Squid W section).
       // leave direction = -search direction (original logic choosing one of two based on homingSwitch).
       // hardware inversion is handled uniformly by _config.invert_direction.
+      // 2026-07-17 direction configurable: search direction = -homing_direct (mapping semantics: see performHomingSequence comment).
+      const int8_t fwDir = (_config.homing_direct > 0) ? -1 : 1;
       if (_slowApproach) {
         // stop first to ensure a consistent slow-approach start point
         motor_setVelocityInternal(_icID, 0);
         delay(100);
         DEBUG_PRINTLN(":Left sensor, slow approach...");
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM / 5.0);
+        int32_t speedInternal = fwDir * motor_velocityMMToInternal(_icID, _config.homingVelocityMM / 5.0);
         if (_config.invert_direction) speedInternal = -speedInternal;
         motor_setVelocityInternal(_icID, speedInternal);
       } else {
         // fast search for the sensing zone
         DEBUG_PRINTLN(":Left sensor, fast search...");
-        int32_t speedInternal = motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
+        int32_t speedInternal = fwDir * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
         if (_config.invert_direction) speedInternal = -speedInternal;
         motor_setVelocityInternal(_icID, speedInternal);
       }
       setState(STATE_HOMING_SEARCH);
     } else {
-      // still in the sensing zone, keep moving out (original legacy Squid logic: choose one of two based on homingSwitch)
+      // still in the sensing zone, keep moving out.
+      // 2026-07-17 direction configurable: leaving direction = -fwDir (reverse of the search
+      // direction). Replaces the original "choose one of two by homingSwitch" form — bitwise
+      // equivalent for LEFT_SW (the only value filter wheels actually use in both projects:
+      // leaving = negative); the RGHT_SW branch was never used by a filter wheel (under the old
+      // form leaving would equal the search direction, which was dubious anyway).
       float leaveSpeed = _slowApproach
         ? _config.homingVelocityMM / 5.0   // move out slowly to reduce overshoot
         : _config.homingVelocityMM;          // move out at full speed
-      int32_t speedInternal;
-      if (_config.homingSwitch == RGHT_SW) {
-        speedInternal = motor_velocityMMToInternal(_icID, leaveSpeed);
-      } else {
-        speedInternal = -1 * motor_velocityMMToInternal(_icID, leaveSpeed);
-      }
+      const int8_t fwDir = (_config.homing_direct > 0) ? -1 : 1;
+      int32_t speedInternal = -fwDir * motor_velocityMMToInternal(_icID, leaveSpeed);
       if (_config.invert_direction) speedInternal = -speedInternal;
       motor_setVelocityInternal(_icID, speedInternal);
     }

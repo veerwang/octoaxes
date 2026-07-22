@@ -178,7 +178,7 @@ namespace AxisConstDefinition {
 		// lowered to 80 mm/s2 to leave margin. Used together with EXPAND1_AXIS.currentRange=1 (2A) + motorCurrentMA=1800.
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;
 
-		const float HOMING_VELOCITY_X_MM = 10;
+		const float HOMING_VELOCITY_X_MM = 30;  // 2026-07-20 10→30 aligned with Y (user decision): 10 was an untuned leftover, 2.4× slower than legacy Squid's actual homing speed (0.8×max_vel30=24); X/Y are the same platform motor, so take Y's field-tuned value. Legacy Squid has no channel to send the homing speed, so this default is the speed it gets
 		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 measured: 256 microsteps + 30 mm/s is quietest
 		const float HOMING_VELOCITY_Z_MM = 1;   // safe boot default = 1mm/s (old Z historical value, drop-in equivalent; legacy Squid has no channel to send the homing speed, so this default is all it can use). For the new Z, the octoaxes GUI sends S:SET_HOMING_VEL per variant at startup to raise it to 2mm/s (avoiding long-travel homing timeouts)
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
@@ -439,7 +439,7 @@ namespace AxisConfigs {
         .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 path C v2: ASTART=22.5 rev/s2, equivalent to the historically best chip register value 288,000 ustep/s2 in the microstep=8 era (history: 180 rev/s2 * 1600 ustep/rev = 288K; now needs 22.5 * 12800 = 288K). Avoids overshoot at short distances, still gains jerk-start acceleration at long distances.
         .dfinalMM = 0,                                   // same as astart
         .homing_timeout_ms = 80000,
-        .homing_direct = 1,
+        .homing_direct = -1,   // 2026-07-17 filter wheel mapping = search direction inverted (-1 -> search +, historical behavior); boot default matches the protocol value each host writes when sending NEGATIVE for sign=1
         .driverType = DRIVER_AUTO,
         .currentRange = 2,
         .enableEncoder = false,
@@ -560,11 +560,11 @@ namespace AxisConfigs {
         .astartMM = 22.5f * AxisConstDefinition::SCREW_PITCH_FILTERWHEEL_MM,  // 2026-05-26 path C v2: W2 same as W (22.5 rev/s2 ~= 288K ustep/s2 chip register, see the W_AXIS comment)
         .dfinalMM = 0,
         .homing_timeout_ms = 80000,
-        .homing_direct = 1,
+        .homing_direct = -1,   // 2026-07-17 filter wheel mapping = search direction inverted (-1 -> search +, historical behavior); boot default matches the protocol value each host writes when sending NEGATIVE for sign=1
         .driverType = DRIVER_AUTO,
         .currentRange = 2,   // 2026-07-09 0->2 to align with W_AXIS (same filter wheel type; TMC2660 ignores this field and uses R_sense, aligned only for consistency)
         .enableEncoder = false,
-        .encoderLinesPerRev = 0,
+        .encoderLinesPerRev = 4000,   // 2026-07-17 0→4000 aligned with W_AXIS (same filter wheel encoder model; like W, enabled at runtime via cmd25, off at boot)
         .invertEncoderDir = false,
         .invert_direction = false   // 2026-05-26 W2 same as W, reverted to byte-level drop-in (see the comment above W_AXIS)
     };

@@ -51,11 +51,13 @@
 const TMC_IC_Config tmc_ic_configs[TMC4361A_IC_COUNT] = {
     // Note: the order must match the axisManager.addAxis() call order!
 #ifdef USE_HC154_CS
-    // squid++ XYZW1W2 + E1 six axes: addAxis order Y(0), X(1), Z(2), W1(3), W2(4), E1(5)
+    // squid++ XYZW1W2 + E1 six axes: addAxis order X(0), Y(1), Z(2), W1(3), W2(4), E1(5)
     // single clock set (EXPAND_CLK removed), everything uses CLOCK_STANDARD
     // 2026-06-02 E1 objective turret enabled: the icID=5 slot connects to HC154_AXIS_R (ch3); icID 6-7 are still placeholders
-    { .csPin = (uint8_t)Pins::HC154_AXIS_Y,  .clockSource = CLOCK_STANDARD },  // icID=0
-    { .csPin = (uint8_t)Pins::HC154_AXIS_X,  .clockSource = CLOCK_STANDARD },  // icID=1
+    // 2026-07-20 X/Y icID unified to X=0/Y=1; this board's wiring is crossed (physical X motor
+    // on ch9/labeled Y), so the axisName↔CS cross-compensation matches the octoaxesplus.ino instantiation
+    { .csPin = (uint8_t)Pins::HC154_AXIS_Y,  .clockSource = CLOCK_STANDARD },  // icID=0 (axisName="X", ch9=physical X)
+    { .csPin = (uint8_t)Pins::HC154_AXIS_X,  .clockSource = CLOCK_STANDARD },  // icID=1 (axisName="Y", ch10=physical Y)
     { .csPin = (uint8_t)Pins::HC154_AXIS_Z1, .clockSource = CLOCK_STANDARD },  // icID=2 (axisName="Z")
     { .csPin = (uint8_t)Pins::HC154_AXIS_W1, .clockSource = CLOCK_STANDARD },  // icID=3 (ch6, uses the original Z2 CS)
     { .csPin = (uint8_t)Pins::HC154_AXIS_W2, .clockSource = CLOCK_STANDARD },  // icID=4 (ch4, uses the original T CS)

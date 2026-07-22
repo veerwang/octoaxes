@@ -25,6 +25,54 @@
 - [x] **验证**：九轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八轮）/ py_compile + profile 加载/verify_profiles OK（四/八/九轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
 - [ ] （可选）开 PR 合回 main。
 
+### 2026-07-20 biforst 适配 + X/Y 统一 + 相机硬件触发打通 + 审计 F-1/F-2 收口
+
+> 10 提交（5fab89a..c16181c）已同步 github/main=f402ce5；biforst 仓库 d11d1ce6。详见 SESSION.md 最新会话。
+
+- [x] **biforst 上位机适配 octoaxesplus 40 字节协议**（biforst `d11d1ce6`）— 根因：固件周期广播 0xFD 40 字节包且从不回显 cmd_id（sendResponse 死代码）；帧分隔/包转换/ack 仿真（25ms 守卫+IN_PROGRESS 解锁）；7 项功能测试+28 项回归+真板端到端全过。附带修 GUI 启动崩溃（illumination_channel_config.yaml 缺失）。
+- [x] **X/Y icID 统一 X=0/Y=1** `b949cb9` + **axisName↔CS 接线补偿** `698f111`（实测 GUI X 动物理 Y，octoaxes 5-08 同款病）— 两工程 icID 约定归一，X/Y 配置错位连带修正。
+- [x] **审计 F-2 根治** `867870c` — 删旧 Squid 遗留 kDigitalOutputPins（squid++ 上 4 脚全另有归属，开机误触发相机）。
+- [x] **相机硬件触发引脚实测定案** `c8843f1` — 逐引脚脉冲+数帧：相机1=pin 6、相机2=pin 4（xlsx 勘察列正确、原理图信号名不可信）；用户实测 hardware trigger 可用。
+- [x] **频闪门卫 bug（两固件）** `c9a55cd` — 硬件触发模式矩阵灯恒灭根因（ISR 电平门卫 vs 50µs 脉冲）。**待烧录验证**。
+- [x] **审计 F-1 关闭为 wontfix-by-design** `83bbc72`+`c16181c` — 修复后用户拍板回退：短曝光照明窗口必须 µs 级精度，ISR 阻塞是刻意设计（已存长期记忆，勿再按 bug 修）。
+- [x] **审计 S-2 根治** `e5ea05e`（上午）— 命令处理 10 处 W→W1 兜底集中治理，实机验证。
+- [x] 滤光轮配置两工程对齐 `5fab89a` + octoaxes X homing 10→30 `7181cfb`（上午，用户拍板）。
+- [x] **同步 github/main** — cherry-pick 10 提交（documents 冲突按镜像策略丢弃），排除 documents 后代码零差异，push 至 `f402ce5`。
+- [ ] **octoaxesplus 重烧 c9a55cd+c16181c 最终状态**（板上现为 ~c8843f1）→ 验证硬件触发下矩阵灯随帧频闪
+- [ ] **相机 2 触发（pin 4）复验**（相机 2 接上后同款脉冲数帧法）
+- [ ] 摇杆按钮恒为按下（byte34 bit0=1，疑悬空/粘连）——接手控盒前查
+- [ ] （可选）固件广播回显 cmd_id（方案 B）——消除 biforst 每命令 25ms 守卫延迟
+
+### 2026-07-15～17 滤光轮上机会话：W2 三连修 + 编码器反馈 + 单滤光轮收口 + homing 方向可配置
+
+> octoaxesplus 硬件上机（后转 octoaxes）。6 提交 ce359fd..baf0816，详见 SESSION.md 最新会话。
+
+- [x] **octoaxesplus W2 固件三连修** `ce359fd`（上机实测全通过）— ①传感器极性 0→1（STOPL 整圈恒 active 根因）②LEAVING_HOME 超时 5s→15s（离家最坏走近整圈 6.7s，实测 5.2s 假超时）③滤光轮关芯片硬停（窗口内拦负向穿窗）。修后：homing 最远起点 7.2s 精确设零、整圈双向 16/16、回零残差 0。
+- [x] **W2/W1/W 纯编码器反馈统一** `19573c7`/`dba7e80` — cmd25 只使能编码器不开 PID；`_configure_encoders` 补 W1/W2 协议映射（6-08 审计兜底缺失）；W2 实测 flip=False/tpr=4000 正确（ratio=+0.9994）；新脚本 `w2_encoder_check.py`。
+- [x] **octoaxes 收口单滤光轮** `dba7e80` — 删 constants W2 条目（GUI 数据驱动 5 轴），固件 W2 轴保留死轴容错；verify_profiles 期望集更新，两 profile 通过。
+- [x] **octoaxes 固件同步** `a9544ee` — LEAVING_HOME 假超时同款修复 + EXPAND4 编码器字段对齐 W（惰性就绪）。
+- [x] **滤光轮 homing 方向可配置** `baf0816` — AxisConfig 新增 `fwHomingDirection`（默认+1 逐位等价/-1 整体镜像）；刻意独立于 homing_direct（避开 data[3] 运行时覆盖的 Turret 反面教材）；两固件 filterwheel.cpp 保持逐字节一致。
+- [x] **新 octoaxesplus 板 bring-up 排查**（两则均硬件问题，用户确认）— ①烧得进但串口全静默 = POWER_GOOD 卡死（IC6 LTC2903 原理图 bug 前科，正解 PCB 飞线）；②Z 方向反 = 物理层（换旧 Z 恢复）。
+- [ ] **octoaxes 重烧固件**（a9544ee+baf0816，默认值零行为变化）→ GUI 验收：5 轴列表 + W homing/编码器显示
+- [x] **octoaxesplus 重烧**（07-20 已多轮重烧至 ~c8843f1）→ `w2_post_flash_verify2.py` 回归**仍待跑**（并入 07-20 块的重烧待办一起做）
+- [ ] octoaxesplus W1 接驱动板后：编码器 flip 复核 + homing 实测
+- [ ] 新 octoaxesplus 板 POWER_GOOD 硬件处理（查 24V/PG/飞线）；（可选）固件 PG 超时降级为警告+继续（学 beginAll 28e8eee 保串口诊断）
+- [x] ~~（可选）滤光轮性能参数统一~~ → 07-20 `5fab89a` 已全面对齐（用户确认硬件相同）
+- [x] push develop → github/main（07-20 已同步至 f402ce5）
+
+### 2026-07-10 A5 物镜 GUI 闭环版完成（两 profile 物镜转换器均 PID 闭环，已同步 github/main）
+
+> new-W-axis 融合最后一块：A5 上位机物镜 GUI。落到本项目 objective 类型轴（octoaxes=Turret / octoaxesplus=R）。
+> 用户明确：**物镜转换器一定带编码器 → 走编码器 + PID 闭环**（非开环）。按 A 方案一次性内聚移植（对应 Mega A5 全 8 提交）。详见 SESSION.md 2026-07-10 + `documents/new-W-axis_merge_plan.md`。
+
+- [x] **A5 基础** `508ff6d` — octoaxes Turret constants 启用 encoder(tpr=4000/flip=True)+PID(1536/2/16)+auto_disable；define.py `objective_slot_angle(microsteps, ms)`（含齿轮比 2.75）。
+- [x] **A5 widgets** `cdf53ad` — ControlPanel 物镜标定 UI：4 工位角度框(默认0/90/180/270)+每行 Read/Go To、Vel/Acc、独立「Go to Slot 0」按钮；AxisStatusDisplay objective 位置显示「Slot N / 角度°」；3 信号。
+- [x] **A5 main_window** `4a4f920` — 换位改绝对定位到工位标定角度(跨槽逐格拆步)；工位标定读/写+持久化 objective_calib.json；弹片自定位 cmd32 时序(起步使能/到位延迟去使能)；`_configure_encoders` 加 Turret+PID 三步下发(SET_PID_ARGUMENTS→CONFIGURE_STAGE_PID→ENABLE_STAGE_PID)；`_render_objective_position` 统一 3 处位置显示；`_set_axis_enable` 补 Turret/W1/W2；`wait_until_idle` 加 axis 参数；homing 拆纯 homing+独立移工位0；删旧开环 move_objective + define 遗留常量。
+- [x] **octoaxesplus R 轴同款闭环** `2cacb77` — constants Turret 补 has_encoder/tpr=4000/flip=True/PID=1536·2·16/current=1800/hold=0.5/vel=0.5/acc=80/auto_disable，对齐固件 config.h OBJECTIVES 逐位等价（方案A）。两 profile 物镜转换器统一。
+- [x] **验证（headless，无硬件）** — py_compile + verify_profiles 两 profile 通过；全 GUI 实例化选中 Turret：位置显示「Slot 1 / Wheel 90.0°」、on_objective_read_current 读当前 90° 写入 slot0、标定 JSON 往返、goto 守卫安全；`_configure_encoders` 目标轴=['Turret']。
+- [x] **同步 github/main** — cherry-pick 8+1 提交（含 SESSION.md）→ push，本地 github-main = 远程 github/main = `07ebc9b`，排除 documents/ 后代码零差异。
+- [ ] **⚠️ 上机验证（阻塞收尾，软件已到位）**：① 烧固件 A1a/b/c（两 firmware 未烧，顺带把 W 速度 2.0→4.2 构建重烧）② 装 Turret(octoaxes)/R(octoaxesplus) 编码器 ③ 实测全链路 homing→工位标定(Read)→PID 闭环换位(Next/Previous/Go To Slot) ④ `tpr=4000/flip=True/PID=1536·2·16` 均照抄 Mega W 起点，**必须 tune_w_pid.py 重整定**；flip 与 movement_sign 联合定编码器极性须实测（octoaxes sign=-1 / octoaxesplus sign=1）。
+
 ### 2026-06-09 Z 变体切换软件化（限位极性走 cmd 20 下发）
 
 > 痛点：切换新旧 Z 需同步改两处（固件 `config.h #define Z_VARIANT_NEW` + 软件 `constants.py Z_AXIS_VARIANT`），易漏改。
@@ -106,8 +154,9 @@
 - [x] **ENC-3 修复：`invertEncoderDir` 纳入 Z 变体宏**（2026-06-08）— config.h 加 `#define Z_INVERT_ENCODER`（new/old 均 true 保留现行为）+ `Z_AXIS.invertEncoderDir = Z_INVERT_ENCODER`，恢复"一个变体开关描述新旧 Z 全部差异"不变量；注释就地标注"runtime GUI flip 覆盖 boot 值，两处须同步"（ENC-2）。new+old 变体均编译 SUCCESS。**仅 octoaxesplus**（octoaxes 主线尚无 Z_VARIANT 宏结构）。
 - [x] **ENC-2 修复：编码器方向单一权威源 + 脱钩 tripwire**（2026-06-08）— 查明 boot `Z_INVERT_ENCODER` 当前**不生效**（`Z_AXIS.enableEncoder=false` 把 begin() 编码器初始化 gate 掉），方向唯一由 runtime `CONFIGURE_STAGE_PID`(constants.py `encoder_flip_direction`) 决定。改动：① constants.py 加"运行时权威源"注释块 + 交叉引用 config.h；② config.h 注释更正"boot 值当前 inert，仅 enableEncoder=true 才生效"；③ axis.cpp `configureStagePID` 加 runtime flip vs boot `invertEncoderDir` 不一致 DEBUG 告警 + 同步字段使其反映真实方向。firmware SUCCESS，双 profile 不受影响。
 - [ ] **ENC-1（高度关注）开闭环 PID 前实测编码器方向收敛** — 竖直 Z 方向错=正反馈飞车，须限程内手扶断电旁验证（开环 ratio+0.997 符号对≠闭环稳）。
-- [ ] **（建议）协议轴 W→W1/W2 兜底集中治理** — 固件统一 `findAxisByNameWithFallback`，上位机 `_AXIS_PROTOCOL`/`EXPECTED_AXES` 从 AXIS_CONFIG 生成（修 S-1/S-2/S-3/F-7）。
-- [ ] **（建议）固件 F-1/F-2 严重项 + F-3~F-5 中项**，上位机 S-4 W1/W2 电流参数补全。详见报告优先级表。
+- [x] **协议轴 W→W1/W2 兜底集中治理**（2026-07-20 `e5ea05e` 固件 10 处 findAxisByNameWithFallback，实机验证；S-2 根治）。
+- [x] **F-2 根治**（2026-07-20 `867870c` 删 kDigitalOutputPins 误初始化）；**F-1 关闭为 wontfix-by-design**（2026-07-20 `c16181c` 用户拍板：µs 级照明窗口精度硬需求，ISR 阻塞刻意设计，勿再按 bug 修）。
+- [ ] （建议）固件 F-3~F-5 中项，上位机 S-4 W1/W2 电流参数补全。详见报告优先级表。
 
 ### 2026-06-03 新 Z 轴适配 MOONS' LE143S-W0601 + 新旧 Z 变体开关（newz 分支）
 
