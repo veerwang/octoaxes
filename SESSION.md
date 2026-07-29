@@ -6,9 +6,9 @@
 
 ## 最新会话
 
-**日期**: 2026-07-29（第十二轮；十/十一轮为 07-22，一至九轮为 07-09～07-10）
+**日期**: 2026-07-29（第十二/十三轮；十/十一轮为 07-22，一至九轮为 07-09～07-10）
 **分支**: chore/translate-comments-to-english
-**位置**: **注释英文化分支十二轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
+**位置**: **注释英文化分支十三轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
 
 ### 一句话
 
@@ -174,6 +174,17 @@ main 新增 1 提交（07-29 develop 会话）：
 - 另译自动合并带回中文：illumination.cpp×2 新函数头注释块、trigger.cpp×2 短曝光路径锁存注释 + illumination_is_on 保留注释。
 - SESSION/TODO 并集：首尾相接删 4 标记行即成。
 - 验证：全仓无冲突标记、merge-touched 8 文件零中文；**两 firmware pio run SUCCESS**（.o 时间戳确认真实重编）；**8 文件剥离注释后与 main 逐行一致**。merge `d9718e3`。
+
+### 第十三轮同步（merge main 的 2 提交 = 频闪重入守卫 + RESET 清理 + 死变量删除）
+
+main 新增 2 提交（07-29 develop 会话续，上轮 review 遗留 ①②③ 修复）：
+- `3dbca49` 频闪重入守卫补全（cmd 30 守卫扩为 (LEVEL 且引脚 LOW) || control_strobe || strobe_on，堵 NORMAL 模式长曝光灯泄漏）+ 新增 `trigger_reset_state()`（RESET/INITIALIZE 改调它：临界区内快照/清标志/引脚恢复 HIGH/模式回 NORMAL，临界区外按锁存源补关在亮灯）
+- `6fddf55` 删除死变量 `strobe_output_level[]`（两固件）
+
+处理：
+- 冲突 6 文件：commandprocessor.cpp×2（重入守卫块 + handleReset 改调 trigger_reset_state）+ trigger.cpp×2（新函数整体落在 ISR 区块头注释处）+ trigger.h×2（声明块）→ 取 main 新代码、注释译英；SESSION/TODO 本轮自动合并无冲突。
+- 死变量删除在两固件自动合并（无注释行，无中文带入）。
+- 验证：全仓无冲突标记、merge-touched 6 文件零中文；**两 firmware pio run SUCCESS**（.o 时间戳确认真实重编）；**6 文件剥离注释后与 main 逐行一致**。merge `bfce985`。
 
 ### 下次
 
