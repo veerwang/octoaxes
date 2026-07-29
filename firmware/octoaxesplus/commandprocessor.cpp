@@ -504,9 +504,13 @@ void CommandProcessor::handleSendHardwareTrigger(const byte *data) {
 
   noInterrupts();
 
-  // Level trigger 模式下，通道已在触发中则丢弃新命令，防止覆盖进行中的时序
-  if (trigger_mode != TRIGGER_MODE_NORMAL &&
-      trigger_output_level[camera_channel] == LOW) {
+  // 通道在途则丢弃新命令，防止覆盖进行中的时序：
+  // LEVEL 模式看引脚电平（脉冲期间恒 LOW）；频闪标志两模式都要看——
+  // NORMAL 模式引脚 50µs 即恢复 HIGH，只看电平覆盖不到频闪窗口，
+  // bit7=0 的新命令会清掉 control_strobe，长曝光已点亮的灯从此无人关。
+  if ((trigger_mode != TRIGGER_MODE_NORMAL &&
+       trigger_output_level[camera_channel] == LOW) ||
+      control_strobe[camera_channel] || strobe_on[camera_channel]) {
     interrupts();
     return;
   }
@@ -586,13 +590,13 @@ void CommandProcessor::handleInitialize(const byte *data) {
   // DAC + trigger 重置
   set_DAC8050x_config();
   set_DAC8050x_default_gain();
-  trigger_mode = TRIGGER_MODE_NORMAL;
+  trigger_reset_state();
   DEBUG_PRINTLN("INITIALIZE: chip SW_RESET + reconfig + state machine reset done");
 }
 
 void CommandProcessor::handleReset(const byte *data) {
   // 停止所有轴运动，复位触发状态
-  trigger_mode = TRIGGER_MODE_NORMAL;
+  trigger_reset_state();
   uint8_t count = axisManager.getAxisCount();
   for (uint8_t i = 0; i < count; i++) {
     Axis *axis = axisManager.getAxis(i);

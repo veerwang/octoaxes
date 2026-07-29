@@ -85,6 +85,38 @@ void trigger_update()
 }
 
 // =============================================================================
+// 状态复位（RESET / INITIALIZE 命令）
+// =============================================================================
+
+void trigger_reset_state()
+{
+    bool lamp_on[NUM_TRIGGER_CHANNELS];
+    int  lamp_source[NUM_TRIGGER_CHANNELS];
+
+    noInterrupts();
+    for (int i = 0; i < NUM_TRIGGER_CHANNELS; i++) {
+        lamp_on[i]     = strobe_on[i];
+        lamp_source[i] = strobe_active_source[i];
+        control_strobe[i] = false;
+        strobe_on[i] = false;
+        digitalWrite(camera_trigger_pins[i], HIGH);
+        trigger_output_level[i] = HIGH;
+    }
+    trigger_mode = TRIGGER_MODE_NORMAL;
+    interrupts();
+
+    // 标志已清、ISR 不会再碰这些通道；在临界区外补关频闪点亮中的灯
+    //（clear_matrix/FastLED 毫秒级，不宜在关中断下执行）
+    for (int i = 0; i < NUM_TRIGGER_CHANNELS; i++) {
+        if (lamp_on[i]) {
+            turn_off_illumination_source(lamp_source[i]);
+            if (illumination_source == lamp_source[i])
+                illumination_is_on = false;
+        }
+    }
+}
+
+// =============================================================================
 // 频闪定时器 ISR（100μs 间隔）
 // =============================================================================
 
