@@ -61,6 +61,12 @@ void turn_on_LED_matrix_pattern(int pattern, uint8_t r, uint8_t g, uint8_t b);
 void turn_on_illumination();
 void turn_off_illumination();
 
+// 按指定光源码开/关灯，不碰全局 illumination_is_on。
+// 供频闪 ISR 使用：起点锁存光源、终点按锁存值关同一源，防止硬件触发采集中
+// 上位机切换 illumination_source 导致关错源、旧源（激光）滞留常亮。
+void turn_on_illumination_source(int source);
+void turn_off_illumination_source(int source);
+
 // 设置光源码和 DAC 强度（可能立即更新输出）
 void set_illumination(int source, uint16_t intensity);
 

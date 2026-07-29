@@ -62,6 +62,7 @@ extern bool          trigger_output_level[NUM_TRIGGER_CHANNELS];
 extern bool          control_strobe[NUM_TRIGGER_CHANNELS];
 extern bool          strobe_output_level[NUM_TRIGGER_CHANNELS];
 extern bool          strobe_on[NUM_TRIGGER_CHANNELS];
+extern int           strobe_active_source[NUM_TRIGGER_CHANNELS];
 extern unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
 extern uint32_t      illumination_on_time_us[NUM_TRIGGER_CHANNELS];
 extern unsigned long timestamp_trigger_rising_edge[NUM_TRIGGER_CHANNELS];
