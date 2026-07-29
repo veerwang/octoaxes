@@ -7,12 +7,12 @@
 // =============================================================================
 
 bool          trigger_output_level[NUM_TRIGGER_CHANNELS];
-bool          control_strobe[NUM_TRIGGER_CHANNELS];
-bool          strobe_on[NUM_TRIGGER_CHANNELS];
-int           strobe_active_source[NUM_TRIGGER_CHANNELS];
-unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
-uint32_t      illumination_on_time_us[NUM_TRIGGER_CHANNELS];
-unsigned long timestamp_trigger_rising_edge[NUM_TRIGGER_CHANNELS];
+volatile bool          control_strobe[NUM_TRIGGER_CHANNELS];
+volatile bool          strobe_on[NUM_TRIGGER_CHANNELS];
+volatile int           strobe_active_source[NUM_TRIGGER_CHANNELS];
+volatile unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
+volatile uint32_t      illumination_on_time_us[NUM_TRIGGER_CHANNELS];
+volatile unsigned long timestamp_trigger_rising_edge[NUM_TRIGGER_CHANNELS];
 volatile uint8_t trigger_mode = TRIGGER_MODE_NORMAL;
 
 // Joystick 状态
