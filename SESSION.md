@@ -7,8 +7,8 @@
 ## 最新会话
 
 **日期**: 2026-07-29
-**分支**: develop
-**位置**: **hardware trigger 逻辑审查 + 与旧 Squid fork 比对 + 移植频闪源锁存修复（两固件同步）**
+**分支**: develop（**已同步 github/main = 04a30cb**，cherry-pick 链哈希不同内容同）
+**位置**: **hardware trigger 审查 + 与旧 Squid fork 比对 + 频闪源锁存移植 + review 遗留修复收口（两固件同步，4 提交）**
 
 ### 一句话
 
@@ -17,51 +17,49 @@
 （cmd 30/31/33 语义、NORMAL 50µs 负脉冲、LEVEL 脉宽=delay+on_time、100µs ISR 频闪，
 07-20 删门卫后 ISR 才与其对齐），但该 fork 的 ISR 多一个本仓库缺的实战竞态修复——
 **频闪源锁存**（其注释记载真实事故：硬件触发采集中上位机切通道 640nm→405nm，
-ISR 关灯按新 illumination_source 关，旧 640nm 激光滞留常亮）。按用户拍板原样移植，两固件同步。
+ISR 关灯按新 illumination_source 关，旧 640nm 激光滞留常亮）。移植后逐条修掉 review
+发现的遗留（重入灯泄漏 / RESET 清态 / 死变量 / volatile 契约），当天全部收口，
+4 提交全同步 github/main。**全部待烧录**。
 
-### 改动（两固件各 4 文件，编译通过，未烧录）
+### 4 个提交（均两固件同步、三 env 编译 SUCCESS、两固件 diff 逐行一致）
 
-- **illumination.h/cpp**：`turn_on/off_illumination()` 主体拆成参数化
-  `turn_on/off_illumination_source(int source)`（不碰全局 `illumination_is_on`），
-  原函数变薄包装（设标志 + 传当前 source），既有调用方行为逐位不变。
-- **trigger.h/cpp**：新增 `strobe_active_source[4]`（init 清零）；ISR 两路径（短曝光
-  阻塞式/长曝光两步式）开灯前锁存 `illumination_source`、关灯按锁存值关**同一源**；
-  `illumination_is_on` 仅在光源未被切换时清除（上位机已切新源并显式开灯则保留）。
-- 验证：octoaxes teensy41 + octoaxesplus teensy41/teensy41_nointerlock 三 env SUCCESS，
-  确认 trigger.cpp.o/illumination.cpp.o 真实重编；两固件 diff 逐行一致。
+| commit | 内容 |
+|---|---|
+| `3ee3bbc` | **频闪源锁存移植**：illumination 拆出参数化 `turn_on/off_illumination_source(int)`（不碰 `illumination_is_on`，原函数变薄包装行为不变）；ISR 新增 `strobe_active_source[4]`，频闪起点锁存 `illumination_source`、关灯按锁存值关**同一源**，`illumination_is_on` 仅在光源未被切换时清除 |
+| `f3bf94b` | **review 遗留 1/2 修复**：① cmd 30 防重入守卫扩为 `(LEVEL 且引脚 LOW) \|\| control_strobe \|\| strobe_on`——堵死 NORMAL 模式频闪进行中 bit7=0 新命令清 `control_strobe` 致长曝光灯无人关的泄漏；② 新增 `trigger_reset_state()`（临界区内快照锁存源+清标志+4 引脚恢复 HIGH+模式回 NORMAL，临界区外按锁存源补关灯——FastLED 毫秒级不宜关中断下执行），RESET/INITIALIZE 改调它取代裸 `trigger_mode=NORMAL` |
+| `3131440` | **删死变量 `strobe_output_level[]`**：全仓确认仅剩定义/extern/init 写入无任何读取（旧 Squid 同名变量的角色本仓由 `strobe_on[]` 承担，移植改名后旧名残留） |
+| `88c5f80` | **ISR 共享变量补 volatile**：`illumination_source`/`illumination_is_on`（上游同款标注）+ trigger 六数组（control_strobe/strobe_on/strobe_active_source/strobe_delay_us/illumination_on_time_us/timestamp_trigger_rising_edge）；`trigger_output_level` 仅主循环使用**刻意不标**（注释说明）。此前正确性靠 noInterrupts 内存屏障兜着，契约未落到类型上 |
 
-### review 发现（按严重度；1/2 已于当天续修，见下）
+### 比对结论备查（octoaxes vs 旧 Squid fork）
 
-1. **NORMAL 模式 cmd 30 重入灯泄漏**：防重入守卫只在 LEVEL 模式生效；NORMAL 长曝光
-   开灯后同通道再来 bit7=0 的 cmd 30 → `control_strobe` 被清 → 无人关灯（灯亮到显式
-   关灯/看门狗）。两固件+旧 Squid 同款继承。
-2. **RESET/INITIALIZE 不清频闪状态**：只重置 trigger_mode，不清 strobe 数组/不恢复
-   在途 LOW 引脚/不关灯。
-3. `strobe_output_level[]` 是死变量（init 后无人读写，实际角色由 `strobe_on[]` 承担）。
-4. octoaxes 板触发线 pin 29-32 未实测（07-20 教训：原理图信号名不可信；plus 板实测
-   定案 6/4 仅针对 plus）。
-5. octoaxes 比上游安全的点：cmd 30/31 有通道号越界检查（旧 Squid `&0x0f` 直接索引
-   size-4 数组会越界写）。
+- **等价**：cmd 30 处理（noInterrupts 临界区/通道取位/LEVEL 丢弃守卫）、主循环脉冲恢复
+  （NORMAL 50µs / LEVEL delay+on_time）、100µs IntervalTimer ISR（≤30ms 阻塞精确路径 /
+  >30ms 异步两步）、cmd 31/33、RESET 语义。
+- **上游领先（已移植）**：频闪源锁存。**本仓领先**：cmd 30/31 通道号越界检查（旧 Squid
+  `&0x0f` 直接索引 size-4 数组会越界写相邻全局）。
+- 两固件 trigger.cpp 差异仅 plus 的 ext-trigger IN/OUT 附加段 + 注释，核心逐字节一致。
 
-### 续：review 遗留 1/2 修复（当天下午，用户拍板，两固件各 3 文件）
+### 自 review 结论（4 提交终审通过，观察点备查）
 
-- **修复 1（灯泄漏）**：`handleSendHardwareTrigger` 防重入守卫扩为
-  `(LEVEL 且引脚 LOW) || control_strobe || strobe_on`——频闪进行中丢弃新 cmd 30
-  （与 LEVEL 模式既有"丢弃"语义一致），堵死 bit7=0 清 `control_strobe` 的泄漏路径。
-- **修复 2（reset 清态）**：trigger.h/cpp 新增 `trigger_reset_state()`：noInterrupts
-  临界区内快照 strobe_on/锁存源 + 清频闪标志 + 4 引脚恢复 HIGH + 模式回 NORMAL；
-  临界区外按锁存源补关频闪点亮中的灯（clear_matrix/FastLED 毫秒级，不宜关中断下执行），
-  `illumination_is_on` 仅在光源未被切换时清除。RESET/INITIALIZE 两处改调它。
-- 验证：三 env 编译 SUCCESS、.o 真实重编、两固件 trigger.h/trigger.cpp/
-  commandprocessor.cpp 改动 diff 逐行一致。**待烧录**。
+- **drop-in 行为偏差（可接受）**：旧 Squid NORMAL 模式重触发会"重启"频闪时序，现在丢弃。
+  正常采集流程（等帧回来再触发）不受影响；若误设超大 strobe_delay（cmd 31 32 位）通道会
+  被守卫锁到窗口结束，出口 = RESET/INITIALIZE（f3bf94b 恰好提供，两修复互补成闭环）。
+- INITIALIZE 中 `trigger_reset_state()` 在 beginAll（数秒）之后执行，期间 ISR 仍按旧标志
+  跑——既有行为非回归，结束态干净。
+- handleSendHardwareTrigger 守卫后的 `strobe_on[ch]=false` 现恒为无操作，belt-and-braces 保留。
+- 频闪跨通道串扰（多通道同时 strobe 共享单一照明源）为既有设计（旧 Squid 同款），未动。
 
 ### 下次继续
 
-1. 本日两批修复（源锁存 `3ee3bbc` + 遗留 1/2）随两板重烧一起上板（并入 07-22 遗留的
-   重烧计划）：硬件触发+频闪联动下逐通道切光源，前一通道激光应随窗口正常熄灭；
-   RESET 后无残留亮灯/引脚 LOW
-2. review 遗留 3/4（死变量清理、octoaxes 触发线实测）择机处理
-3. 其余悬挂项见 07-22/07-20 会话
+1. **本日 4 提交随两板重烧一起上板**（并入 07-22 遗留的重烧计划，不用单独烧）。验证点：
+   ① 硬件触发+频闪下逐通道切光源，前一通道激光随窗口熄灭（源锁存）
+   ② RESET 后无残留亮灯、触发引脚全 HIGH（reset 清态）
+   ③ 频闪进行中重发 cmd 30 被丢弃、完成后恢复正常（守卫新语义）
+   ④ 常规单通道采集回归无异常（重构等价性实证）
+2. review 遗留 ④：octoaxes 板触发线 pin 29-32 实测（07-20 教训：原理图信号名不可信；
+   plus 板定案 6/4 仅针对 plus 板）——脉冲+数帧法，随上板一起
+3. 其余悬挂项见 07-22/07-20 会话（两板重烧、摇杆 byte[8] 极性拍板、相机 2 复验、
+   新板 POWER_GOOD、W 机械紧固）
 
 ---
 
