@@ -16,7 +16,8 @@
 
 - [x] **频闪源锁存移植** `3ee3bbc`（两固件 8 文件，已同步 github/main=90336f6）— illumination 拆出 `turn_on/off_illumination_source(int)`（不碰 `illumination_is_on`，原函数变薄包装行为不变）；ISR 新增 `strobe_active_source[4]`：频闪起点锁存 `illumination_source`、关灯按锁存值关同一源，`illumination_is_on` 仅在光源未被切换时清除。三 env（octoaxes teensy41 + octoaxesplus teensy41/nointerlock）编译 SUCCESS、确认真实重编。**待烧录**。
 - [x] **review 遗留 ①② 修复**（两固件 6 文件，未提交）— ① cmd 30 防重入守卫扩为 `(LEVEL 且引脚 LOW) || control_strobe || strobe_on`：频闪进行中丢弃新命令，堵死 NORMAL 模式 bit7=0 清 control_strobe 致长曝光灯无人关的泄漏；② 新增 `trigger_reset_state()`（触发引脚恢复 HIGH + 清频闪标志 + 按锁存源补关频闪点亮中的灯 + 模式回 NORMAL；关灯放临界区外，避免 FastLED 毫秒级阻塞关中断窗口），RESET/INITIALIZE 改调它取代裸 `trigger_mode=NORMAL`。三 env 编译 SUCCESS、真实重编、两固件 diff 逐行一致。**待烧录**。
-- [ ] review 遗留（未修）：③ `strobe_output_level[]` 是死变量（init 后无人读写，实际角色由 `strobe_on[]` 承担）④ octoaxes 板触发线 pin 29-32 未实测（07-20 教训：原理图信号名不可信）
+- [x] **review 遗留 ③ 清理**（两固件 trigger.h/cpp 各删 3 行，未提交）— 删死变量 `strobe_output_level[]`（全仓确认仅剩定义/extern/init 写入，无任何读取；实际角色由 `strobe_on[]` 承担）。三 env 编译 SUCCESS。
+- [ ] review 遗留（未修）：④ octoaxes 板触发线 pin 29-32 未实测（07-20 教训：原理图信号名不可信）
 
 ### 2026-07-22 移植 Mega joystick 焦点轮修正 + AF 对焦激光开机确定性关闭
 
