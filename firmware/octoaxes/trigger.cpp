@@ -10,6 +10,7 @@ bool          trigger_output_level[NUM_TRIGGER_CHANNELS];
 bool          control_strobe[NUM_TRIGGER_CHANNELS];
 bool          strobe_output_level[NUM_TRIGGER_CHANNELS];
 bool          strobe_on[NUM_TRIGGER_CHANNELS];
+int           strobe_active_source[NUM_TRIGGER_CHANNELS];
 unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
 uint32_t      illumination_on_time_us[NUM_TRIGGER_CHANNELS];
 unsigned long timestamp_trigger_rising_edge[NUM_TRIGGER_CHANNELS];
@@ -40,6 +41,7 @@ void trigger_init()
         control_strobe[i] = false;
         strobe_output_level[i] = LOW;
         strobe_on[i] = false;
+        strobe_active_source[i] = 0;
         strobe_delay_us[i] = 0;
         illumination_on_time_us[i] = 0;
         timestamp_trigger_rising_edge[i] = 0;
@@ -107,24 +109,40 @@ void ISR_strobeTimer()
             // short exposure (<= 30ms): synchronous mode
             // wait strobe_delay then turn on the light, keep it on for illumination_on_time, then turn off
             if (!strobe_on[i] && elapsed >= strobe_delay_us[i]) {
-                turn_on_illumination();
+                // Latch the source for this strobe: on/off must act on the same
+                // source. Without the latch, a host switching illumination_source
+                // inside the strobe window (multi-channel acquisition changes the
+                // source per channel) would make the off land on the new source,
+                // leaving the old one (e.g. a laser) stuck on.
+                strobe_active_source[i] = illumination_source;
+                illumination_is_on = true;
+                turn_on_illumination_source(strobe_active_source[i]);
                 strobe_on[i] = true;
                 // short exposure uses delayMicroseconds for precise control
                 delayMicroseconds(illumination_on_time_us[i]);
-                turn_off_illumination();
+                turn_off_illumination_source(strobe_active_source[i]);
+                // if the host already switched the source and explicitly turned it
+                // on, preserve its illumination_is_on state
+                if (illumination_source == strobe_active_source[i])
+                    illumination_is_on = false;
                 strobe_on[i] = false;
                 control_strobe[i] = false;  // one strobe done, clear the flag
             }
         } else {
             // long exposure (> 30ms): asynchronous mode, split into two steps
             if (!strobe_on[i] && elapsed >= strobe_delay_us[i]) {
-                // step 1: turn on the light
-                turn_on_illumination();
+                // step 1: turn on the light (latch the source, same rationale as
+                // the short-exposure path)
+                strobe_active_source[i] = illumination_source;
+                illumination_is_on = true;
+                turn_on_illumination_source(strobe_active_source[i]);
                 strobe_on[i] = true;
             } else if (strobe_on[i] &&
                        elapsed >= strobe_delay_us[i] + illumination_on_time_us[i]) {
-                // step 2: turn off the light
-                turn_off_illumination();
+                // step 2: turn off the light using the latched source
+                turn_off_illumination_source(strobe_active_source[i]);
+                if (illumination_source == strobe_active_source[i])
+                    illumination_is_on = false;
                 strobe_on[i] = false;
                 control_strobe[i] = false;  // one strobe done, clear the flag
             }

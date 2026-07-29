@@ -412,16 +412,18 @@ int port_index_to_dac_channel(int port_index)
 // Legacy illumination API
 // =============================================================================
 
-void turn_on_illumination()
+// Turn on the given illumination source without touching the global
+// illumination_is_on. Used by the strobe ISR together with the latched source
+// code: on/off must act on the same source (see trigger.cpp
+// strobe_active_source); symmetric with turn_off_illumination_source.
+void turn_on_illumination_source(int source)
 {
-    illumination_is_on = true;
-
     // sync the multi-port state (backward compatible)
-    int port_index = illumination_source_to_port_index(illumination_source);
+    int port_index = illumination_source_to_port_index(source);
     if (port_index >= 0)
         illumination_port_is_on[port_index] = true;
 
-    switch (illumination_source)
+    switch (source)
     {
         case IlluminationConfig::LED_ARRAY_FULL:
         case IlluminationConfig::LED_ARRAY_LEFT_HALF:
@@ -432,7 +434,7 @@ void turn_on_illumination()
         case IlluminationConfig::LED_ARRAY_RIGHT_DOT:
         case IlluminationConfig::LED_ARRAY_TOP_HALF:
         case IlluminationConfig::LED_ARRAY_BOTTOM_HALF:
-            turn_on_LED_matrix_pattern(illumination_source,
+            turn_on_LED_matrix_pattern(source,
                                         led_matrix_r, led_matrix_g, led_matrix_b);
             break;
         case IlluminationConfig::LED_EXTERNAL_FET:
@@ -473,14 +475,22 @@ void turn_on_illumination()
     }
 }
 
-void turn_off_illumination()
+void turn_on_illumination()
+{
+    illumination_is_on = true;
+    turn_on_illumination_source(illumination_source);
+}
+
+// Turn off the given illumination source without touching the global
+// illumination_is_on (symmetric with turn_on_illumination_source).
+void turn_off_illumination_source(int source)
 {
     // sync the multi-port state (backward compatible)
-    int port_index = illumination_source_to_port_index(illumination_source);
+    int port_index = illumination_source_to_port_index(source);
     if (port_index >= 0)
         illumination_port_is_on[port_index] = false;
 
-    switch (illumination_source)
+    switch (source)
     {
         case IlluminationConfig::LED_ARRAY_FULL:
         case IlluminationConfig::LED_ARRAY_LEFT_HALF:
@@ -505,6 +515,11 @@ void turn_off_illumination()
         case IlluminationConfig::D8: digitalWrite(Pins::ILLUMINATION_D8, LOW); break;
         default: break;
     }
+}
+
+void turn_off_illumination()
+{
+    turn_off_illumination_source(illumination_source);
     illumination_is_on = false;
 }
 

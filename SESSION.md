@@ -173,6 +173,54 @@ main 新增 4 提交（07-22 develop 会话）：
 
 ## 上次会话
 
+**日期**: 2026-07-29
+**分支**: develop
+**位置**: **hardware trigger 逻辑审查 + 与旧 Squid fork 比对 + 移植频闪源锁存修复（两固件同步）**
+
+### 一句话
+
+应用户要求 review firmware/octoaxes 的 hardware trigger 逻辑，并与 lihongquan Squid fork
+（`~/github.com/veerwang/lihongquan/Squid/firmware/controller`）逐块比对：**主链路等价**
+（cmd 30/31/33 语义、NORMAL 50µs 负脉冲、LEVEL 脉宽=delay+on_time、100µs ISR 频闪，
+07-20 删门卫后 ISR 才与其对齐），但该 fork 的 ISR 多一个本仓库缺的实战竞态修复——
+**频闪源锁存**（其注释记载真实事故：硬件触发采集中上位机切通道 640nm→405nm，
+ISR 关灯按新 illumination_source 关，旧 640nm 激光滞留常亮）。按用户拍板原样移植，两固件同步。
+
+### 改动（两固件各 4 文件，编译通过，未烧录）
+
+- **illumination.h/cpp**：`turn_on/off_illumination()` 主体拆成参数化
+  `turn_on/off_illumination_source(int source)`（不碰全局 `illumination_is_on`），
+  原函数变薄包装（设标志 + 传当前 source），既有调用方行为逐位不变。
+- **trigger.h/cpp**：新增 `strobe_active_source[4]`（init 清零）；ISR 两路径（短曝光
+  阻塞式/长曝光两步式）开灯前锁存 `illumination_source`、关灯按锁存值关**同一源**；
+  `illumination_is_on` 仅在光源未被切换时清除（上位机已切新源并显式开灯则保留）。
+- 验证：octoaxes teensy41 + octoaxesplus teensy41/teensy41_nointerlock 三 env SUCCESS，
+  确认 trigger.cpp.o/illumination.cpp.o 真实重编；两固件 diff 逐行一致。
+
+### review 遗留（发现未修，按严重度）
+
+1. **NORMAL 模式 cmd 30 重入灯泄漏**：防重入守卫只在 LEVEL 模式生效；NORMAL 长曝光
+   开灯后同通道再来 bit7=0 的 cmd 30 → `control_strobe` 被清 → 无人关灯（灯亮到显式
+   关灯/看门狗）。两固件+旧 Squid 同款继承。修法方向：守卫看 `control_strobe||strobe_on`。
+2. **RESET/INITIALIZE 不清频闪状态**：只重置 trigger_mode，不清 strobe 数组/不恢复
+   在途 LOW 引脚/不关灯（源锁存移植后关错源风险已消，剩余风险收窄）。
+3. `strobe_output_level[]` 是死变量（init 后无人读写，实际角色由 `strobe_on[]` 承担）。
+4. octoaxes 板触发线 pin 29-32 未实测（07-20 教训：原理图信号名不可信；plus 板实测
+   定案 6/4 仅针对 plus）。
+5. octoaxes 比上游安全的点：cmd 30/31 有通道号越界检查（旧 Squid `&0x0f` 直接索引
+   size-4 数组会越界写）。
+
+### 下次继续
+
+1. 本修复随两板重烧一起上板（并入 07-22 遗留的重烧计划，不用单独烧）：硬件触发+频闪
+   联动下逐通道切光源，前一通道激光应随窗口正常熄灭
+2. review 遗留 1/2 是否修，用户拍板
+3. 其余悬挂项见 07-22/07-20 会话
+
+---
+
+## 会话 2026-07-22
+
 **日期**: 2026-07-22
 **分支**: develop（已同步 github/main）
 **位置**: **移植 Mega joystick 焦点轮修正（focusPosition 过期致 Z 突跳）到两固件 + AF 对焦激光 pin 5 开机确定性关闭（octoaxesplus）**

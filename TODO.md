@@ -27,6 +27,15 @@
 - [x] **验证**：十一轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八/十/十一轮）/ py_compile + profile 加载/verify_profiles OK（四/八/九/十轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
 - [ ] （可选）开 PR 合回 main。
 
+### 2026-07-29 hardware trigger 审查 + 移植旧 Squid 频闪源锁存修复（两固件同步）
+
+> 与 lihongquan Squid fork（`~/github.com/veerwang/lihongquan/Squid/firmware/controller`）比对 trigger 逻辑：
+> 主链路等价（cmd 30/31/33、50µs 负脉冲、LEVEL 脉宽、100µs ISR 频闪），但该 fork 的 ISR 多一个本仓库缺的
+> 实战竞态修复——频闪源锁存（其注释记载真实事故：硬件触发采集中切通道 640nm→405nm，关灯关到新源，旧激光常亮）。
+
+- [x] **频闪源锁存移植**（两固件 8 文件，未提交）— illumination 拆出 `turn_on/off_illumination_source(int)`（不碰 `illumination_is_on`，原函数变薄包装行为不变）；ISR 新增 `strobe_active_source[4]`：频闪起点锁存 `illumination_source`、关灯按锁存值关同一源，`illumination_is_on` 仅在光源未被切换时清除。三 env（octoaxes teensy41 + octoaxesplus teensy41/nointerlock）编译 SUCCESS、确认真实重编。**待烧录**。
+- [ ] review 遗留（未修，见 07-29 会话）：① NORMAL 模式 cmd 30 重入 bit7=0 可致长曝光灯泄漏（两固件+旧 Squid 同款继承）② RESET/INITIALIZE 不清频闪状态 ③ `strobe_output_level[]` 是死变量 ④ octoaxes 板触发线 pin 29-32 未实测（07-20 教训：原理图信号名不可信）
+
 ### 2026-07-22 移植 Mega joystick 焦点轮修正 + AF 对焦激光开机确定性关闭
 
 > joystick 修正移植 Mega `94e8a12` → `3e4abb9`（两固件）；AF 激光 `fab4f27`（仅 octoaxesplus）。详见 SESSION.md 最新会话。

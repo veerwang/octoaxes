@@ -71,6 +71,14 @@ void turn_on_LED_matrix_pattern(int pattern, uint8_t r, uint8_t g, uint8_t b);
 void turn_on_illumination();
 void turn_off_illumination();
 
+// Turn the given illumination source on/off without touching the global
+// illumination_is_on. For the strobe ISR: latch the source at strobe start and
+// turn off the same latched source at the end, so that a host switching
+// illumination_source during a hardware-triggered acquisition cannot make the
+// off land on the new source and leave the old one (e.g. a laser) stuck on.
+void turn_on_illumination_source(int source);
+void turn_off_illumination_source(int source);
+
 // set the light-source code and DAC intensity (may update the output immediately)
 void set_illumination(int source, uint16_t intensity);
 
