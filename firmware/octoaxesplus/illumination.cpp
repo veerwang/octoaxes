@@ -7,13 +7,13 @@
 // 状态变量定义
 // =============================================================================
 
-int      illumination_source           = 0;
+volatile int  illumination_source      = 0;
 uint16_t illumination_intensity        = 0;
 float    illumination_intensity_factor = IlluminationConfig::DEFAULT_INTENSITY_FACTOR;
 uint8_t  led_matrix_r = 0;
 uint8_t  led_matrix_g = 0;
 uint8_t  led_matrix_b = 0;
-bool     illumination_is_on = false;
+volatile bool illumination_is_on = false;
 bool     illumination_port_is_on[IlluminationConfig::NUM_PORTS]     = {false};
 uint16_t illumination_port_intensity[IlluminationConfig::NUM_PORTS] = {0};
 

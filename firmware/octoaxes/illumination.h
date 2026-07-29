@@ -7,13 +7,15 @@
 // =============================================================================
 // 照明状态变量（extern 声明，定义在 illumination.cpp）
 // =============================================================================
-extern int      illumination_source;
+// volatile：ISR_strobeTimer 与主循环命令回调共同读写
+extern volatile int  illumination_source;
 extern uint16_t illumination_intensity;
 extern float    illumination_intensity_factor;
 extern uint8_t  led_matrix_r;
 extern uint8_t  led_matrix_g;
 extern uint8_t  led_matrix_b;
-extern bool     illumination_is_on;
+// volatile：频闪结束在 ISR 内清除，主循环 set_illumination 等读取
+extern volatile bool illumination_is_on;
 extern bool     illumination_port_is_on[IlluminationConfig::NUM_PORTS];
 extern uint16_t illumination_port_intensity[IlluminationConfig::NUM_PORTS];
 

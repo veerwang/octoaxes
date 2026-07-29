@@ -59,12 +59,14 @@ const int cam_tri_ready_pins[NUM_CAM_TRI_READY] = {
 // =============================================================================
 
 extern bool          trigger_output_level[NUM_TRIGGER_CHANNELS];
-extern bool          control_strobe[NUM_TRIGGER_CHANNELS];
-extern bool          strobe_on[NUM_TRIGGER_CHANNELS];
-extern int           strobe_active_source[NUM_TRIGGER_CHANNELS];
-extern unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
-extern uint32_t      illumination_on_time_us[NUM_TRIGGER_CHANNELS];
-extern unsigned long timestamp_trigger_rising_edge[NUM_TRIGGER_CHANNELS];
+// volatile（下至 timestamp_trigger_rising_edge）：ISR_strobeTimer 与主循环共同读写；
+// trigger_output_level 仅主循环（handler/trigger_update）使用，不标
+extern volatile bool          control_strobe[NUM_TRIGGER_CHANNELS];
+extern volatile bool          strobe_on[NUM_TRIGGER_CHANNELS];
+extern volatile int           strobe_active_source[NUM_TRIGGER_CHANNELS];
+extern volatile unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
+extern volatile uint32_t      illumination_on_time_us[NUM_TRIGGER_CHANNELS];
+extern volatile unsigned long timestamp_trigger_rising_edge[NUM_TRIGGER_CHANNELS];
 extern volatile uint8_t trigger_mode;
 
 // Joystick 状态
