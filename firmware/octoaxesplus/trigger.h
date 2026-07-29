@@ -82,6 +82,10 @@ void trigger_init();
 // 主循环调用：管理触发脉冲恢复（HIGH 电平）
 void trigger_update();
 
+// 复位触发/频闪状态：触发引脚恢复 HIGH、清频闪标志、补关频闪点亮中的灯、
+// 模式回 NORMAL。供 RESET / INITIALIZE 命令使用。
+void trigger_reset_state();
+
 // 定时器中断回调：管理频闪照明时序
 void ISR_strobeTimer();
 
