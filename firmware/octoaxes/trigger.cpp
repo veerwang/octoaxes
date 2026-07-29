@@ -8,7 +8,6 @@
 
 bool          trigger_output_level[NUM_TRIGGER_CHANNELS];
 bool          control_strobe[NUM_TRIGGER_CHANNELS];
-bool          strobe_output_level[NUM_TRIGGER_CHANNELS];
 bool          strobe_on[NUM_TRIGGER_CHANNELS];
 int           strobe_active_source[NUM_TRIGGER_CHANNELS];
 unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
@@ -39,7 +38,6 @@ void trigger_init()
     for (int i = 0; i < NUM_TRIGGER_CHANNELS; i++) {
         trigger_output_level[i] = HIGH;
         control_strobe[i] = false;
-        strobe_output_level[i] = LOW;
         strobe_on[i] = false;
         strobe_active_source[i] = 0;
         strobe_delay_us[i] = 0;
@@ -80,6 +78,39 @@ void trigger_update()
                     trigger_output_level[i] = HIGH;
                 }
             }
+        }
+    }
+}
+
+// =============================================================================
+// state reset (RESET / INITIALIZE commands)
+// =============================================================================
+
+void trigger_reset_state()
+{
+    bool lamp_on[NUM_TRIGGER_CHANNELS];
+    int  lamp_source[NUM_TRIGGER_CHANNELS];
+
+    noInterrupts();
+    for (int i = 0; i < NUM_TRIGGER_CHANNELS; i++) {
+        lamp_on[i]     = strobe_on[i];
+        lamp_source[i] = strobe_active_source[i];
+        control_strobe[i] = false;
+        strobe_on[i] = false;
+        digitalWrite(camera_trigger_pins[i], HIGH);
+        trigger_output_level[i] = HIGH;
+    }
+    trigger_mode = TRIGGER_MODE_NORMAL;
+    interrupts();
+
+    // Flags are cleared and the ISR will no longer touch these channels; turn off
+    // any light lit mid-strobe outside the critical section
+    // (clear_matrix/FastLED take milliseconds, unfit to run with interrupts off).
+    for (int i = 0; i < NUM_TRIGGER_CHANNELS; i++) {
+        if (lamp_on[i]) {
+            turn_off_illumination_source(lamp_source[i]);
+            if (illumination_source == lamp_source[i])
+                illumination_is_on = false;
         }
     }
 }

@@ -61,7 +61,6 @@ const int cam_tri_ready_pins[NUM_CAM_TRI_READY] = {
 
 extern bool          trigger_output_level[NUM_TRIGGER_CHANNELS];
 extern bool          control_strobe[NUM_TRIGGER_CHANNELS];
-extern bool          strobe_output_level[NUM_TRIGGER_CHANNELS];
 extern bool          strobe_on[NUM_TRIGGER_CHANNELS];
 extern int           strobe_active_source[NUM_TRIGGER_CHANNELS];
 extern unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
@@ -82,6 +81,11 @@ void trigger_init();
 
 // Called from the main loop: manage trigger-pulse recovery (HIGH level)
 void trigger_update();
+
+// Reset the trigger/strobe state: restore the trigger pins to HIGH, clear the
+// strobe flags, turn off any light lit mid-strobe, and return the mode to
+// NORMAL. Used by the RESET / INITIALIZE commands.
+void trigger_reset_state();
 
 // Timer interrupt callback: manage strobe-illumination timing
 void ISR_strobeTimer();

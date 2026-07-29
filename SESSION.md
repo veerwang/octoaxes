@@ -208,24 +208,37 @@ ISR 关灯按新 illumination_source 关，旧 640nm 激光滞留常亮）。按
 - 验证：octoaxes teensy41 + octoaxesplus teensy41/teensy41_nointerlock 三 env SUCCESS，
   确认 trigger.cpp.o/illumination.cpp.o 真实重编；两固件 diff 逐行一致。
 
-### review 遗留（发现未修，按严重度）
+### review 发现（按严重度；1/2 已于当天续修，见下）
 
 1. **NORMAL 模式 cmd 30 重入灯泄漏**：防重入守卫只在 LEVEL 模式生效；NORMAL 长曝光
    开灯后同通道再来 bit7=0 的 cmd 30 → `control_strobe` 被清 → 无人关灯（灯亮到显式
-   关灯/看门狗）。两固件+旧 Squid 同款继承。修法方向：守卫看 `control_strobe||strobe_on`。
+   关灯/看门狗）。两固件+旧 Squid 同款继承。
 2. **RESET/INITIALIZE 不清频闪状态**：只重置 trigger_mode，不清 strobe 数组/不恢复
-   在途 LOW 引脚/不关灯（源锁存移植后关错源风险已消，剩余风险收窄）。
+   在途 LOW 引脚/不关灯。
 3. `strobe_output_level[]` 是死变量（init 后无人读写，实际角色由 `strobe_on[]` 承担）。
 4. octoaxes 板触发线 pin 29-32 未实测（07-20 教训：原理图信号名不可信；plus 板实测
    定案 6/4 仅针对 plus）。
 5. octoaxes 比上游安全的点：cmd 30/31 有通道号越界检查（旧 Squid `&0x0f` 直接索引
    size-4 数组会越界写）。
 
+### 续：review 遗留 1/2 修复（当天下午，用户拍板，两固件各 3 文件）
+
+- **修复 1（灯泄漏）**：`handleSendHardwareTrigger` 防重入守卫扩为
+  `(LEVEL 且引脚 LOW) || control_strobe || strobe_on`——频闪进行中丢弃新 cmd 30
+  （与 LEVEL 模式既有"丢弃"语义一致），堵死 bit7=0 清 `control_strobe` 的泄漏路径。
+- **修复 2（reset 清态）**：trigger.h/cpp 新增 `trigger_reset_state()`：noInterrupts
+  临界区内快照 strobe_on/锁存源 + 清频闪标志 + 4 引脚恢复 HIGH + 模式回 NORMAL；
+  临界区外按锁存源补关频闪点亮中的灯（clear_matrix/FastLED 毫秒级，不宜关中断下执行），
+  `illumination_is_on` 仅在光源未被切换时清除。RESET/INITIALIZE 两处改调它。
+- 验证：三 env 编译 SUCCESS、.o 真实重编、两固件 trigger.h/trigger.cpp/
+  commandprocessor.cpp 改动 diff 逐行一致。**待烧录**。
+
 ### 下次继续
 
-1. 本修复随两板重烧一起上板（并入 07-22 遗留的重烧计划，不用单独烧）：硬件触发+频闪
-   联动下逐通道切光源，前一通道激光应随窗口正常熄灭
-2. review 遗留 1/2 是否修，用户拍板
+1. 本日两批修复（源锁存 `3ee3bbc` + 遗留 1/2）随两板重烧一起上板（并入 07-22 遗留的
+   重烧计划）：硬件触发+频闪联动下逐通道切光源，前一通道激光应随窗口正常熄灭；
+   RESET 后无残留亮灯/引脚 LOW
+2. review 遗留 3/4（死变量清理、octoaxes 触发线实测）择机处理
 3. 其余悬挂项见 07-22/07-20 会话
 
 ---

@@ -478,9 +478,15 @@ void CommandProcessor::handleSendHardwareTrigger(const byte *data) {
 
   noInterrupts();
 
-  // in Level trigger mode, if the channel is already triggering, drop the new command to avoid overwriting the in-progress timing
-  if (trigger_mode != TRIGGER_MODE_NORMAL &&
-      trigger_output_level[camera_channel] == LOW) {
+  // Drop the new command if the channel is mid-flight, to avoid overwriting the
+  // in-progress timing: LEVEL mode checks the pin level (held LOW for the whole
+  // pulse); the strobe flags must be checked in both modes -- in NORMAL mode the
+  // pin returns to HIGH after only 50µs, so the level alone misses the strobe
+  // window, and a new command with bit7=0 would clear control_strobe, leaving a
+  // long-exposure light already on with nobody to turn it off.
+  if ((trigger_mode != TRIGGER_MODE_NORMAL &&
+       trigger_output_level[camera_channel] == LOW) ||
+      control_strobe[camera_channel] || strobe_on[camera_channel]) {
     interrupts();
     return;
   }
@@ -571,13 +577,13 @@ void CommandProcessor::handleInitialize(const byte *data) {
   // DAC + trigger reset
   set_DAC8050x_config();
   set_DAC8050x_default_gain();
-  trigger_mode = TRIGGER_MODE_NORMAL;
+  trigger_reset_state();
   DEBUG_PRINTLN("INITIALIZE: chip SW_RESET + reconfig + state machine reset done");
 }
 
 void CommandProcessor::handleReset(const byte *data) {
   // stop all axis motion, reset the trigger state
-  trigger_mode = TRIGGER_MODE_NORMAL;
+  trigger_reset_state();
   uint8_t count = axisManager.getAxisCount();
   for (uint8_t i = 0; i < count; i++) {
     Axis *axis = axisManager.getAxis(i);
