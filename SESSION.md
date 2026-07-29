@@ -6,9 +6,9 @@
 
 ## 最新会话
 
-**日期**: 2026-07-22（第十/十一轮；一至九轮为 07-09～07-10）
+**日期**: 2026-07-29（第十二轮；十/十一轮为 07-22，一至九轮为 07-09～07-10）
 **分支**: chore/translate-comments-to-english
-**位置**: **注释英文化分支十一轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
+**位置**: **注释英文化分支十二轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
 
 ### 一句话
 
@@ -163,6 +163,17 @@ main 新增 4 提交（07-22 develop 会话）：
 - 冲突 6 文件：joystick.cpp×2（外部运动守卫块）+ config.h（AF_LASER=5 取代 CAM_TRI_READY2）+ illumination.cpp（AF 激光 OUTPUT+LOW + 看门狗补关）+ trigger.cpp/.h（READY 表缩 1 路）→ 取 main 新代码、注释译英。
 - SESSION/TODO 并集：首尾相接删 4 标记行即成。
 - 验证：全仓无冲突标记；**两 firmware clean pio run SUCCESS**；**全部冲突文件剥离注释后与 main 逐行一致**。merge `29cb491`。
+
+### 第十二轮同步（merge main 的 1 提交 = 频闪源锁存移植）
+
+main 新增 1 提交（07-29 develop 会话）：
+- `90336f6` 移植旧 Squid 频闪源锁存——防硬件触发采集中切通道致旧激光常亮（两固件）：illumination 拆出参数化 `turn_on/off_illumination_source(int)`（不碰 illumination_is_on，原函数变薄包装）；trigger ISR 新增 `strobe_active_source[4]`，频闪起点锁存光源、关灯按锁存值关同一源。
+
+处理：
+- 冲突 8 文件：illumination.cpp/.h×2（新函数拆分处 + 声明块）+ trigger.cpp×2（长曝光两步式开/关灯块）+ SESSION/TODO → 固件取 main 新代码、注释译英；trigger.h×2 自动合并（extern 行无注释，无中文带入）。
+- 另译自动合并带回中文：illumination.cpp×2 新函数头注释块、trigger.cpp×2 短曝光路径锁存注释 + illumination_is_on 保留注释。
+- SESSION/TODO 并集：首尾相接删 4 标记行即成。
+- 验证：全仓无冲突标记、merge-touched 8 文件零中文；**两 firmware pio run SUCCESS**（.o 时间戳确认真实重编）；**8 文件剥离注释后与 main 逐行一致**。merge `d9718e3`。
 
 ### 下次
 
