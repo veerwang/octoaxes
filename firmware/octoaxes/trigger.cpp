@@ -10,6 +10,7 @@ bool          trigger_output_level[NUM_TRIGGER_CHANNELS];
 bool          control_strobe[NUM_TRIGGER_CHANNELS];
 bool          strobe_output_level[NUM_TRIGGER_CHANNELS];
 bool          strobe_on[NUM_TRIGGER_CHANNELS];
+int           strobe_active_source[NUM_TRIGGER_CHANNELS];
 unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
 uint32_t      illumination_on_time_us[NUM_TRIGGER_CHANNELS];
 unsigned long timestamp_trigger_rising_edge[NUM_TRIGGER_CHANNELS];
@@ -40,6 +41,7 @@ void trigger_init()
         control_strobe[i] = false;
         strobe_output_level[i] = LOW;
         strobe_on[i] = false;
+        strobe_active_source[i] = 0;
         strobe_delay_us[i] = 0;
         illumination_on_time_us[i] = 0;
         timestamp_trigger_rising_edge[i] = 0;
@@ -105,24 +107,36 @@ void ISR_strobeTimer()
             // 短曝光（≤ 30ms）：同步模式
             // 等待 strobe_delay 后开灯，持续 illumination_on_time 后关灯
             if (!strobe_on[i] && elapsed >= strobe_delay_us[i]) {
-                turn_on_illumination();
+                // 锁存本次频闪的光源：开/关必须作用于同一源。不锁存的话，
+                // 上位机在频闪窗口内切换 illumination_source（多通道采集逐通道
+                // 换光源）会让关灯落到新源上，旧源（如激光）滞留常亮。
+                strobe_active_source[i] = illumination_source;
+                illumination_is_on = true;
+                turn_on_illumination_source(strobe_active_source[i]);
                 strobe_on[i] = true;
                 // 短曝光直接用 delayMicroseconds 精确控制
                 delayMicroseconds(illumination_on_time_us[i]);
-                turn_off_illumination();
+                turn_off_illumination_source(strobe_active_source[i]);
+                // 光源已被上位机切换并显式开灯时，保留其 illumination_is_on 状态
+                if (illumination_source == strobe_active_source[i])
+                    illumination_is_on = false;
                 strobe_on[i] = false;
                 control_strobe[i] = false;  // 完成一次频闪，清除标志
             }
         } else {
             // 长曝光（> 30ms）：异步模式，两步分离
             if (!strobe_on[i] && elapsed >= strobe_delay_us[i]) {
-                // 步骤 1：开灯
-                turn_on_illumination();
+                // 步骤 1：开灯（锁存光源，理由同短曝光路径）
+                strobe_active_source[i] = illumination_source;
+                illumination_is_on = true;
+                turn_on_illumination_source(strobe_active_source[i]);
                 strobe_on[i] = true;
             } else if (strobe_on[i] &&
                        elapsed >= strobe_delay_us[i] + illumination_on_time_us[i]) {
-                // 步骤 2：关灯
-                turn_off_illumination();
+                // 步骤 2：按锁存值关灯
+                turn_off_illumination_source(strobe_active_source[i]);
+                if (illumination_source == strobe_active_source[i])
+                    illumination_is_on = false;
                 strobe_on[i] = false;
                 control_strobe[i] = false;  // 完成一次频闪，清除标志
             }

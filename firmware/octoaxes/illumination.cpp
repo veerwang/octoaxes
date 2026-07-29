@@ -335,16 +335,17 @@ int port_index_to_dac_channel(int port_index)
 // 旧版照明 API
 // =============================================================================
 
-void turn_on_illumination()
+// 按指定光源码开灯，不碰全局 illumination_is_on。
+// 频闪 ISR 用它配合锁存的光源码：开/关必须作用于同一源（见 trigger.cpp
+// strobe_active_source），与 turn_off_illumination_source 对称。
+void turn_on_illumination_source(int source)
 {
-    illumination_is_on = true;
-
     // 同步多端口状态（向后兼容）
-    int port_index = illumination_source_to_port_index(illumination_source);
+    int port_index = illumination_source_to_port_index(source);
     if (port_index >= 0)
         illumination_port_is_on[port_index] = true;
 
-    switch (illumination_source)
+    switch (source)
     {
         case IlluminationConfig::LED_ARRAY_FULL:
         case IlluminationConfig::LED_ARRAY_LEFT_HALF:
@@ -355,7 +356,7 @@ void turn_on_illumination()
         case IlluminationConfig::LED_ARRAY_RIGHT_DOT:
         case IlluminationConfig::LED_ARRAY_TOP_HALF:
         case IlluminationConfig::LED_ARRAY_BOTTOM_HALF:
-            turn_on_LED_matrix_pattern(illumination_source,
+            turn_on_LED_matrix_pattern(source,
                                         led_matrix_r, led_matrix_g, led_matrix_b);
             break;
         case IlluminationConfig::LED_EXTERNAL_FET:
@@ -384,14 +385,21 @@ void turn_on_illumination()
     }
 }
 
-void turn_off_illumination()
+void turn_on_illumination()
+{
+    illumination_is_on = true;
+    turn_on_illumination_source(illumination_source);
+}
+
+// 按指定光源码关灯，不碰全局 illumination_is_on（与 turn_on_illumination_source 对称）。
+void turn_off_illumination_source(int source)
 {
     // 同步多端口状态（向后兼容）
-    int port_index = illumination_source_to_port_index(illumination_source);
+    int port_index = illumination_source_to_port_index(source);
     if (port_index >= 0)
         illumination_port_is_on[port_index] = false;
 
-    switch (illumination_source)
+    switch (source)
     {
         case IlluminationConfig::LED_ARRAY_FULL:
         case IlluminationConfig::LED_ARRAY_LEFT_HALF:
@@ -413,6 +421,11 @@ void turn_off_illumination()
         case IlluminationConfig::D5: digitalWrite(Pins::ILLUMINATION_D5, LOW); break;
         default: break;
     }
+}
+
+void turn_off_illumination()
+{
+    turn_off_illumination_source(illumination_source);
     illumination_is_on = false;
 }
 
