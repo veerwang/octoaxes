@@ -8,7 +8,6 @@
 
 bool          trigger_output_level[NUM_TRIGGER_CHANNELS];
 bool          control_strobe[NUM_TRIGGER_CHANNELS];
-bool          strobe_output_level[NUM_TRIGGER_CHANNELS];
 bool          strobe_on[NUM_TRIGGER_CHANNELS];
 int           strobe_active_source[NUM_TRIGGER_CHANNELS];
 unsigned long strobe_delay_us[NUM_TRIGGER_CHANNELS];
@@ -39,7 +38,6 @@ void trigger_init()
     for (int i = 0; i < NUM_TRIGGER_CHANNELS; i++) {
         trigger_output_level[i] = HIGH;
         control_strobe[i] = false;
-        strobe_output_level[i] = LOW;
         strobe_on[i] = false;
         strobe_active_source[i] = 0;
         strobe_delay_us[i] = 0;
