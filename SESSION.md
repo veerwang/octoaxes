@@ -6,9 +6,9 @@
 
 ## 最新会话
 
-**日期**: 2026-07-29（第十二/十三轮；十/十一轮为 07-22，一至九轮为 07-09～07-10）
+**日期**: 2026-07-30（第十四轮；十二/十三轮为 07-29，十/十一轮为 07-22，一至九轮为 07-09～07-10）
 **分支**: chore/translate-comments-to-english
-**位置**: **注释英文化分支十三轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
+**位置**: **注释英文化分支十四轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
 
 ### 一句话
 
@@ -185,6 +185,18 @@ main 新增 2 提交（07-29 develop 会话续，上轮 review 遗留 ①②③ 
 - 冲突 6 文件：commandprocessor.cpp×2（重入守卫块 + handleReset 改调 trigger_reset_state）+ trigger.cpp×2（新函数整体落在 ISR 区块头注释处）+ trigger.h×2（声明块）→ 取 main 新代码、注释译英；SESSION/TODO 本轮自动合并无冲突。
 - 死变量删除在两固件自动合并（无注释行，无中文带入）。
 - 验证：全仓无冲突标记、merge-touched 6 文件零中文；**两 firmware pio run SUCCESS**（.o 时间戳确认真实重编）；**6 文件剥离注释后与 main 逐行一致**。merge `bfce985`。
+
+### 第十四轮同步（merge main 的 2 提交 = ISR 共享变量补 volatile + 会话文档）
+
+main 新增 2 提交（07-29 develop 会话收尾）：
+- `04a30cb` ISR 共享变量补 volatile（illumination_source/illumination_is_on + trigger 六数组；trigger_output_level 仅主循环使用刻意不标，注释说明）
+- `1dce4c4` docs：记录 2026-07-29 会话（SESSION/TODO）
+
+处理：
+- **本轮全自动合并、零冲突**（8 固件文件 + SESSION/TODO）。自动合并带入 8 行中文注释
+  （illumination.h×2 两处 volatile 说明 + trigger.h×2 两行 volatile 范围说明）→ 译英后 amend 进 merge 提交。
+- 验证：全仓无冲突标记、merge-touched 8 文件零中文；**三 env pio run SUCCESS**（octoaxes teensy41 +
+  octoaxesplus teensy41/nointerlock，.o 时间戳确认真实重编）；**8 文件剥离注释后与 main 逐行一致**。merge `86b5534`（amended）。
 
 ### 下次
 
