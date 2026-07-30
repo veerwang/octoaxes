@@ -7,13 +7,15 @@
 // =============================================================================
 // Illumination state variables (extern declarations, defined in illumination.cpp)
 // =============================================================================
-extern int      illumination_source;
+// volatile: shared read/write between ISR_strobeTimer and main-loop command callbacks
+extern volatile int  illumination_source;
 extern uint16_t illumination_intensity;
 extern float    illumination_intensity_factor;
 extern uint8_t  led_matrix_r;
 extern uint8_t  led_matrix_g;
 extern uint8_t  led_matrix_b;
-extern bool     illumination_is_on;
+// volatile: cleared inside the ISR when a strobe window ends, read by main-loop set_illumination etc.
+extern volatile bool illumination_is_on;
 extern bool     illumination_port_is_on[IlluminationConfig::NUM_PORTS];
 extern uint16_t illumination_port_intensity[IlluminationConfig::NUM_PORTS];
 
