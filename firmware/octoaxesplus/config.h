@@ -273,7 +273,7 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_FILTERWHEEL_mm = 200 * SCREW_PITCH_FILTERWHEEL_MM;   // 2026-07-17 400→200 aligned with octoaxes (user confirmed both machines share the same filter wheel hardware; value octoaxes settled on 07-09 after measured W Test step loss on repeated next/previous), pending on-machine regression
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;   // 2026-06-02 aligned with octoaxes E1 (prevents step loss on the gear-reduced objective)
 
-		const float HOMING_VELOCITY_X_MM = 10;
+		const float HOMING_VELOCITY_X_MM = 30;  // 2026-08-11 10→30 aligned with Y (consistent with the octoaxes 07-20 alignment): 10 was an untuned legacy value, X/Y share the same platform motors, so adopt Y's measured tuned value
 		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 measured: 256 microsteps + 30 mm/s is quietest
 		const float HOMING_VELOCITY_Z_MM = 1;   // safe boot default = 1mm/s (old Z historical value, drop-in equivalent; legacy Squid has no channel to send the homing speed, so this default is all it can use). For the new Z, the GUI sends S:SET_HOMING_VEL per variant at startup to raise it to 2mm/s (avoiding long-travel homing timeouts). Only Z_AXIS actually uses it (EXPAND3 borrows it but is not instantiated)
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
