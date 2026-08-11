@@ -6,9 +6,9 @@
 
 ## 最新会话
 
-**日期**: 2026-07-30（第十四轮；十二/十三轮为 07-29，十/十一轮为 07-22，一至九轮为 07-09～07-10）
+**日期**: 2026-08-11（第十五轮；十四轮为 07-30，十二/十三轮为 07-29，十/十一轮为 07-22，一至九轮为 07-09～07-10）
 **分支**: chore/translate-comments-to-english
-**位置**: **注释英文化分支十四轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
+**位置**: **注释英文化分支十五轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
 
 ### 一句话
 
@@ -197,6 +197,17 @@ main 新增 2 提交（07-29 develop 会话收尾）：
   （illumination.h×2 两处 volatile 说明 + trigger.h×2 两行 volatile 范围说明）→ 译英后 amend 进 merge 提交。
 - 验证：全仓无冲突标记、merge-touched 8 文件零中文；**三 env pio run SUCCESS**（octoaxes teensy41 +
   octoaxesplus teensy41/nointerlock，.o 时间戳确认真实重编）；**8 文件剥离注释后与 main 逐行一致**。merge `86b5534`（amended）。
+
+### 第十五轮同步（merge main 的 2 提交 = octoaxesplus X homing 速度 10→30 对齐 Y）
+
+main 新增 2 提交（08-11）：
+- `e0333f5` octoaxesplus X homing 速度 10→30 对齐 Y（与 octoaxes 07-20 对齐保持一致；X/Y 同款平台电机，10 是未调优遗留值，取 Y 实测调优值；仅 octoaxesplus config.h 一行）
+- `a9160e7` merge develop into github-main（带回 3 个 documents 新文件）
+
+处理：
+- 冲突 1 处 `octoaxesplus/config.h`：X homing 速度取 main 新代码 30 + 注释译英（Y/Z 保持本分支英文注释版本）。
+- 合并带回 3 个 documents 新文件（octoaxesplus_axis_definitions.md / octoaxesplus_protocol_v2_40byte.md / z_aging_test_20260610.md）按分支约定再次删除。
+- 验证：全仓无冲突标记、config.h 剥离注释后与 main 逐行一致；**octoaxesplus pio run SUCCESS**（仅此固件有改动，octoaxes 未跑）。merge `a72f286`。
 
 ### 下次
 
