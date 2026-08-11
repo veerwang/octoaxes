@@ -270,7 +270,7 @@ namespace AxisConstDefinition {
 		const float MAX_ACCELERATION_FILTERWHEEL_mm = 200 * SCREW_PITCH_FILTERWHEEL_MM;   // 2026-07-17 400→200 对齐 octoaxes（用户确认两机滤光轮硬件相同；octoaxes 07-09 实测 W Test 反复 next/previous 丢步后降定的值），待上机回归
 		const float MAX_ACCELERATION_OBJECTIVES_mm = 80 * SCREW_PITCH_OBJECTIVES_MM;   // 2026-06-02 对齐 octoaxes E1（齿轮减速物镜防丢步）
 
-		const float HOMING_VELOCITY_X_MM = 10;
+		const float HOMING_VELOCITY_X_MM = 30;  // 2026-08-11 10→30 对齐 Y（与 octoaxes 07-20 对齐保持一致）：10 是未调优遗留值，X/Y 同款平台电机，取 Y 的实测调优值
 		const float HOMING_VELOCITY_Y_MM = 30;  // 2026-05-12 实测确定：256 微步 + 30 mm/s 最安静
 		const float HOMING_VELOCITY_Z_MM = 1;   // 开机安全默认=1mm/s（旧 Z 历史值，drop-in 等价；旧 Squid 无 homing 速度下发通道，只能用此默认）。新 Z 由 GUI 启动按变体下发 S:SET_HOMING_VEL 提到 2mm/s（避免长行程回零超时）。仅 Z_AXIS 实际使用（EXPAND3 借用但未实例化）
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
