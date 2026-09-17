@@ -9,7 +9,7 @@
 #   GUI 启动 _configure_actuators() 把所选变体的 pitch/电流/hold 下发给固件覆盖默认。
 # 固件侧 currentRange=1 对新旧 Z 驱动板都安全（旧 Z=TMC2660 忽略，新 Z=TMC2240 用它），
 # 一个固件通吃；DRIVER_AUTO 上电自动识别在位的驱动板。
-#   "old" = 旧 Z（丝杠导程 0.3mm / TMC2660 板 / 0.47A）
+#   "old" = 旧 Z（丝杠导程 0.3mm / TMC2660 板 / 500mA 按 RMS 解读 → 0.70A峰/0.49A RMS）
 #   "new" = MOONS' LE143S-W0601-100-AR1-S-150（导程 1mm / TMC2240 ICS 板 / 1.5A 峰值）
 # 注意：此开关仅 octoaxes GUI 有效。旧 Squid software 会下发它自己写死的旧 Z 参数，
 #       配新 Z 硬件会有 3.33× 位置错位（旧 Squid 不可改）。
