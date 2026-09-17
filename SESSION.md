@@ -6,6 +6,46 @@
 
 ## 最新会话
 
+**日期**: 2026-09-17
+**分支**: develop（已同步 github/main = 12385d5）
+**位置**: config.h 电流注释全面修正 —— 清掉 2026-05-11 TMC2660 RMS 解读修复后遗留的旧峰值口径注释（2 提交，纯注释零行为变化）
+
+### 背景
+
+在 mega 仓库（OctoaxesMega）会话中核对 Z 轴电流口径时跨仓对比本仓库，发现本仓 config.h
+的电流注释还是 2026-05-11 之前「按峰值解读」旧公式算出的数（mega 已于 2026-06-17 修正
+它自己的同款注释，本仓漏了）。**两仓换算代码已核实逐字节一致**（TMC2660 按 RMS /
+TMC2240 按峰值+整数截断），错的只是注释。
+
+### 修正内容（2 提交）
+
+- `09972f9`：octoaxes config.h Z 行 `CS=21, 实际 0.47A` → 实为 TMC2660 按RMS CS=30 →
+  0.70A峰/0.49A RMS；TMC2240 按峰值 0.5A峰。software/octoaxes/constants.py old-Z 注释
+  同源 `0.47A` 一并修正
+- `dd13203`：剩余同类全清 ——
+  - 两固件段头「峰值电流，非 RMS」（只对 TMC2240 成立）→ 两路径口径说明
+  - X/Y `CS=9, 实际 0.97A`（octoaxes + octoaxesplus）→ TMC2660 按RMS CS=31(顶满)
+    1.41A峰/1.0A RMS；TMC2240 按峰值 1.0A峰
+  - octoaxesplus Z `CS=21/0.47A` → 同 09972f9 口径
+  - octoaxes objectives 块：TMC2240 `IRUN=28→1.81A` 是四舍五入误算，实为**截断**
+    IRUN=27→1.75A峰（mega 2026-07-27 弹片卡滞根因的同款陷阱）；TMC2660 `CS≈16→1.7A`
+    实为 clamp 31→仅 1.41A峰；「两路径接近」改为不等价警告（2660 板物镜扭矩可能不足）
+
+### 验证 + 同步
+
+- 两固件 `pio run -e teensy41` SUCCESS；纯注释，无行为变化
+- 均已推 gitee(origin/develop) + merge github-main → github/main（`21e7fc8..12385d5`）
+
+### 备忘（本次确认的口径事实）
+
+- 上位机 `_configure_actuators` 启动即下发各轴电流（cmd 21），改 constants.py 重启 GUI
+  生效；但 `currentRange` 不过协议，超档位命令值会被 clamp
+- 同一命令值 500：TMC2240 实得 0.5A峰/0.35A RMS，TMC2660 实得 0.70A峰/0.49A RMS（差 √2 倍）
+
+---
+
+## 上次会话
+
 **日期**: 2026-07-29
 **分支**: develop（**已同步 github/main = 04a30cb**，cherry-pick 链哈希不同内容同）
 **位置**: **hardware trigger 审查 + 与旧 Squid fork 比对 + 频闪源锁存移植 + review 遗留修复收口（两固件同步，4 提交）**
