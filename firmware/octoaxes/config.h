@@ -194,7 +194,7 @@ namespace AxisConstDefinition {
 		// 由 GUI 启动 CONFIGURE_STEPPER_DRIVER 下发覆盖（见 software Z_AXIS_VARIANT="new" → 1500mA）。
 		// 这样一个固件同时支持新旧 Z 板：开机瞬间(GUI 配置前)新电机仅 500mA=弱但安全，避免旧电机被过流。
 		// 驱动板自动识别 (DRIVER_AUTO)：旧 Z=TMC2660 走 R_sense；新 Z=TMC2240 走 ICS+currentRange。
-		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // 保守默认 R=0.43Ω → CS=21, 实际 0.47A（新 Z 由 GUI 升到 1500mA）
+		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // 保守默认。TMC2660(旧Z) 按RMS解读: R=0.43Ω → CS=30 → 0.70A峰/0.49A RMS；TMC2240(新Z) 按峰值: 0.5A峰/0.35A RMS（新 Z 由 GUI 升到 1500mA）
 		const float FILTERWHEEL_MOTOR_PEAK_CURRENT_mA = 3100; // R=0.10Ω → CS=31(满), 实际 3.1A
 		// 2026-05-29 objectives 分支：1A 弱电流配齿轮减速物镜丢步。提到 1800mA。
 		// 物镜驱动板 R_sense=0.22Ω（仅 TMC2660 路径生效；TMC2240 用集成电流传感 ICS 忽略此电阻）。
