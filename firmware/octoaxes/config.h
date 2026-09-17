@@ -184,12 +184,14 @@ namespace AxisConstDefinition {
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
 
-		// 电机电流设置 (mA) — 峰值电流，非 RMS
-		// TMC2660 公式: I_peak = (CS+1)/32 × V_FS/R_sense, I_rms = I_peak/√2
+		// 电机电流设置 (mA) — ⚠️ 命令值解读口径随驱动芯片不同（DRIVER_AUTO 自动检测选路径）：
+		//   - TMC2240 路径 calculateCurrentScale_TMC2240：按【峰值】解读（currentRange 定 I_FS，整数截断）
+		//   - TMC2660 路径 calculateCurrentScale：按【RMS】解读（2026-05-11 对齐旧 Squid），I_peak = I_RMS×√2
+		// TMC2660 公式: I_peak = (CS+1)/32 × V_FS/R_sense (V_FS=0.310V)
 		// CS 范围 0~31，超出会被 clamp，实际峰值受 R_sense 限制
 		// 芯片绝对上限: 4A 峰值 (2.8A RMS)
-		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
-		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
+		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // TMC2660 按RMS: R=0.22Ω → CS=31(顶满) → 1.41A峰/1.0A RMS；TMC2240 按峰值: 1.0A峰/0.71A RMS
+		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // TMC2660 按RMS: R=0.22Ω → CS=31(顶满) → 1.41A峰/1.0A RMS；TMC2240 按峰值: 1.0A峰/0.71A RMS
 		// 2026-06-03 newz 分支：Z 默认取保守旧值（500mA），新 Z (LE143S-W0601 额定 1.5A) 的电流
 		// 由 GUI 启动 CONFIGURE_STEPPER_DRIVER 下发覆盖（见 software Z_AXIS_VARIANT="new" → 1500mA）。
 		// 这样一个固件同时支持新旧 Z 板：开机瞬间(GUI 配置前)新电机仅 500mA=弱但安全，避免旧电机被过流。
@@ -199,9 +201,9 @@ namespace AxisConstDefinition {
 		// 2026-05-29 objectives 分支：1A 弱电流配齿轮减速物镜丢步。提到 1800mA。
 		// 物镜驱动板 R_sense=0.22Ω（仅 TMC2660 路径生效；TMC2240 用集成电流传感 ICS 忽略此电阻）。
 		// EXPAND1_AXIS.driverType=DRIVER_AUTO 上电自动识别芯片后选路径：
-		//   - TMC2240 (ICS):  currentRange=1 → I_FS=2A, IRUN=(1800/1000)/2×32-1=28 → 1.81A 峰值
-		//   - TMC2660 (R_S):  r_sense=0.22Ω, 1800mA → CS≈16 → ~1.7A 峰值
-		// 两路径电流接近 (~1.7-1.8A)，齿轮减速物镜扭矩够用。换 R_sense≠0.22Ω 驱动板需重算 CS。
+		//   - TMC2240 (ICS):  currentRange=1 → I_FS=2A, IRUN=trunc(1800/1000/2×32-1)=27 → 1.75A峰/1.24A RMS（整数截断非四舍五入）
+		//   - TMC2660 (R_S):  按RMS解读, r_sense=0.22Ω → CS 算得 57 被 clamp 到 31(顶满) → 仅 1.41A峰/1.0A RMS
+		// ⚠️ 两路径不等价：TMC2660 R0.22 天花板 1.41A峰 < TMC2240 的 1.75A峰，接 TMC2660 板物镜扭矩可能不足。换 R_sense 需重算 CS。
 		const float OBJECTIVES_MOTOR_PEAK_CURRENT_mA = 1800;
 
 		const float X_MOTOR_I_HOLD = 0.25;

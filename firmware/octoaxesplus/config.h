@@ -276,13 +276,15 @@ namespace AxisConstDefinition {
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
 
-		// 电机电流设置 (mA) — 峰值电流，非 RMS
-		// TMC2660 公式: I_peak = (CS+1)/32 × V_FS/R_sense, I_rms = I_peak/√2
+		// 电机电流设置 (mA) — ⚠️ 命令值解读口径随驱动芯片不同（DRIVER_AUTO 自动检测选路径）：
+		//   - TMC2240 路径 calculateCurrentScale_TMC2240：按【峰值】解读（currentRange 定 I_FS，整数截断）
+		//   - TMC2660 路径 calculateCurrentScale：按【RMS】解读（2026-05-11 对齐旧 Squid），I_peak = I_RMS×√2
+		// TMC2660 公式: I_peak = (CS+1)/32 × V_FS/R_sense (V_FS=0.310V)
 		// CS 范围 0~31，超出会被 clamp，实际峰值受 R_sense 限制
 		// 芯片绝对上限: 4A 峰值 (2.8A RMS)
-		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
-		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22Ω → CS=9, 实际 0.97A
-		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // R=0.43Ω → CS=21, 实际 0.47A
+		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // TMC2660 按RMS: R=0.22Ω → CS=31(顶满) → 1.41A峰/1.0A RMS；TMC2240 按峰值: 1.0A峰/0.71A RMS
+		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // TMC2660 按RMS: R=0.22Ω → CS=31(顶满) → 1.41A峰/1.0A RMS；TMC2240 按峰值: 1.0A峰/0.71A RMS
+		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // TMC2660 按RMS: R=0.43Ω → CS=30 → 0.70A峰/0.49A RMS；TMC2240 按峰值(currentRange=1): 0.5A峰/0.35A RMS
 		const float FILTERWHEEL_MOTOR_PEAK_CURRENT_mA = 3100; // R=0.10Ω → CS=31(满), 实际 3.1A
 		const float OBJECTIVES_MOTOR_PEAK_CURRENT_mA = 1800;  // 2026-06-02 对齐 octoaxes E1：TMC2240 I_FS=2A 配齿轮减速物镜防丢步
 
