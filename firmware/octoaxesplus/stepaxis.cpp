@@ -164,10 +164,32 @@ void StepAxis::performHomingSequence() {
         delay(100);                          // wait for a full stop
 
         int32_t latchedPosition = motor_readLatchPosition(_icID);
+        int32_t currentPos = motor_getPositionMicrosteps(_icID);
+        int32_t margin = motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
+
+        // Latch trustworthiness check (root cause of the probabilistic failure pinned down by the
+        // 2026-10-08 Y-axis in-place homing field test):
+        // when the start point sits right at the edge of the switch sensing zone, the chip never sees
+        // a clean "untriggered -> triggered" edge and X_LATCH keeps the previous run's stale value;
+        // blindly trusting a stale latch puts the computed safe position deep inside the limit
+        // (tens of thousands of µsteps further toward the limit -> blocked by the hard stop ->
+        // 5s safe-pos timeout -> zeroing at the wrong position).
+        // After a full stop, |latch - xact| should differ only by the post-trigger deceleration
+        // coasting distance; if it exceeds the retract margin, judge the latch stale and fall back to
+        // the current XACTUAL as the edge reference (the in-place scenario automatically degrades to
+        // the correct behavior).
+        if (labs(latchedPosition - currentPos) > margin) {
+          SerialUSB.print(_axisName);
+          SerialUSB.print(":HOMING stale-latch! latch=");
+          SerialUSB.print(latchedPosition);
+          SerialUSB.print(" xact=");
+          SerialUSB.print(currentPos);
+          SerialUSB.println(" -> using xact as edge");
+          latchedPosition = currentPos;
+        }
 
         // compute the safe position (away from the limit switch)
         int32_t safePosition = latchedPosition;
-        int32_t margin = motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
         // retract direction = opposite of the search direction (homing_direct), always leaving the limit just hit.
         // more robust than "homingSwitch +/- margin": when homingSwitch and the search direction do not follow the usual convention
         // (e.g. new Z: LEFT_SW but homing_direct=+1 toward physical left, the left limit is at the firmware positive-direction end),
@@ -240,7 +262,8 @@ void StepAxis::performLeavingHome() {
       // Merged from new-W-axis f254a63: use homingVelocityMM (slow) instead of maxVelocityMM, so that
       // regardless of whether the start point is inside/outside the zone, the final approach speed to the
       // home switch is always the same -> consistent latch edge -> the physical position after each homing
-      // is basically identical. The reverse move out of the zone still uses maxVelocity for a fast retreat;
+      // is basically identical (the switch has a speed-dependent trigger delay; a fast approach shifts the
+      // latch). The reverse move out of the zone (else branch) still uses maxVelocity for a fast retreat;
       // it doesn't latch so it doesn't affect repeatability.
       int32_t speedInternal = _config.homing_direct * motor_velocityMMToInternal(_icID, _config.homingVelocityMM);
       motor_setVelocityInternal(_icID, speedInternal);

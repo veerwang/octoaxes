@@ -184,24 +184,26 @@ namespace AxisConstDefinition {
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
 
-		// motor current setting (mA) -- peak current, not RMS
-		// TMC2660 formula: I_peak = (CS+1)/32 * V_FS/R_sense, I_rms = I_peak/sqrt(2)
+		// motor current setting (mA) -- WARNING: interpretation of the commanded value differs per driver chip (DRIVER_AUTO detection selects the path):
+		//   - TMC2240 path calculateCurrentScale_TMC2240: interpreted as [peak] (currentRange sets I_FS, integer truncation)
+		//   - TMC2660 path calculateCurrentScale: interpreted as [RMS] (2026-05-11 aligned with legacy Squid), I_peak = I_RMS*sqrt(2)
+		// TMC2660 formula: I_peak = (CS+1)/32 * V_FS/R_sense (V_FS=0.310V)
 		// CS range 0~31, out-of-range is clamped, the actual peak is limited by R_sense
 		// chip absolute max: 4A peak (2.8A RMS)
-		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22ohm -> CS=9, actual 0.97A
-		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22ohm -> CS=9, actual 0.97A
+		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // TMC2660 as RMS: R=0.22ohm -> CS=31 (maxed) -> 1.41A peak / 1.0A RMS; TMC2240 as peak: 1.0A peak / 0.71A RMS
+		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // TMC2660 as RMS: R=0.22ohm -> CS=31 (maxed) -> 1.41A peak / 1.0A RMS; TMC2240 as peak: 1.0A peak / 0.71A RMS
 		// 2026-06-03 newz branch: Z defaults to the conservative old value (500mA); the current of the new Z (LE143S-W0601, rated 1.5A)
 		// is overridden by CONFIGURE_STEPPER_DRIVER sent at GUI startup (see software Z_AXIS_VARIANT="new" -> 1500mA).
 		// This lets one firmware support both old and new Z boards: at the boot instant (before GUI config) the new motor gets only 500mA = weak but safe, avoiding overcurrent on the old motor.
 		// driver auto-detect (DRIVER_AUTO): old Z=TMC2660 uses R_sense; new Z=TMC2240 uses ICS+currentRange.
-		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // conservative default R=0.43ohm -> CS=21, actual 0.47A (the new Z is raised to 1500mA by the GUI)
+		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // conservative default. TMC2660 (old Z) as RMS: R=0.43ohm -> CS=30 -> 0.70A peak / 0.49A RMS; TMC2240 (new Z) as peak: 0.5A peak / 0.35A RMS (the new Z is raised to 1500mA by the GUI)
 		const float FILTERWHEEL_MOTOR_PEAK_CURRENT_mA = 3100; // R=0.10ohm -> CS=31 (max), actual 3.1A
 		// 2026-05-29 objectives branch: the weak 1A current loses steps with the gear-reduced objective. Raised to 1800mA.
 		// objective driver board R_sense=0.22ohm (only effective on the TMC2660 path; TMC2240 uses the integrated current sense ICS and ignores this resistor).
 		// EXPAND1_AXIS.driverType=DRIVER_AUTO auto-detects the chip on power-up, then selects the path:
-		// - TMC2240 (ICS):  currentRange=1 -> I_FS=2A, IRUN=(1800/1000)/2*32-1=28 -> 1.81A peak
-		// - TMC2660 (R_S):  r_sense=0.22ohm, 1800mA -> CS~=16 -> ~1.7A peak
-		// the two paths give similar current (~1.7-1.8A), enough torque for the gear-reduced objective. A driver board with R_sense != 0.22ohm requires recomputing CS.
+		// - TMC2240 (ICS):  currentRange=1 -> I_FS=2A, IRUN=trunc(1800/1000/2*32-1)=27 -> 1.75A peak / 1.24A RMS (integer truncation, not rounding)
+		// - TMC2660 (R_S):  interpreted as RMS, r_sense=0.22ohm -> computed CS=57 clamped to 31 (maxed) -> only 1.41A peak / 1.0A RMS
+		// WARNING: the two paths are NOT equivalent: TMC2660 R0.22 ceiling 1.41A peak < TMC2240's 1.75A peak; with a TMC2660 board the objective torque may be insufficient. A different R_sense requires recomputing CS.
 		const float OBJECTIVES_MOTOR_PEAK_CURRENT_mA = 1800;
 
 		const float X_MOTOR_I_HOLD = 0.25;
@@ -216,8 +218,13 @@ namespace AxisConstDefinition {
 		const float FILTERWHEEL_SAFEMARGIN = 0.2;
 		const float OBJECTIVES_SAFEMARGIN = 0.004;
 
-		const float X_SAFEPOSITION = 0.6;
-		const float Y_SAFEPOSITION = 0.6;
+		// X/Y 0.6→1.5 (field-tested 2026-10-08): a 0.6mm retract margin is not enough to clear the home
+		// switch sensing zone; homing ends still inside/at the edge of the zone (diagnostic DONE line
+		// limit=0x1) -> the next in-place homing sees no new trigger edge and probabilistically fails on a
+		// stale latch (Y reproduced first, X showed the same symptom later).
+		// 1.5mm guarantees the end position truly leaves the switch (acceptance: limit=0x0 at homing DONE).
+		const float X_SAFEPOSITION = 1.5;
+		const float Y_SAFEPOSITION = 1.5;
 		const float Z_SAFEPOSITION = 0.7;
 		const float FILTERWHEEL_SAFEPOSITION = 0;
 		const float OBJECTIVES_SAFEPOSITION = 0;

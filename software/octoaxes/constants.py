@@ -9,7 +9,7 @@
 # at startup the GUI's _configure_actuators() sends the selected variant's pitch/current/hold to the firmware to override the defaults.
 # on the firmware side currentRange=1 is safe for both Z driver boards (old Z=TMC2660 ignores it, new Z=TMC2240 uses it),
 # so one firmware fits both; DRIVER_AUTO auto-detects the installed driver board at power-on.
-# "old" = old Z (screw pitch 0.3mm / TMC2660 board / 0.47A)
+# "old" = old Z (screw pitch 0.3mm / TMC2660 board / 500mA interpreted as RMS -> 0.70A peak / 0.49A RMS)
 # "new" = MOONS' LE143S-W0601-100-AR1-S-150 (pitch 1mm / TMC2240 ICS board / 1.5A peak)
 # note: this switch is only effective in the octoaxes GUI. Legacy Squid software sends its own hardcoded old-Z parameters,
 # which with new-Z hardware gives a 3.33x position error (legacy Squid cannot be changed).

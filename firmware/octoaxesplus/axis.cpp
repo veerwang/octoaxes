@@ -184,7 +184,8 @@ void Axis::setMotionParameters(float maxVelocityMM, float maxAccelerationMM) {
   // Merged from new-W-axis cf93900 (2026-06-16): write the current max vel/acc back into _config
   // so it becomes this session's "config default". Otherwise, after the host's
   // SET_MAX_VELOCITY_ACCELERATION changes the chip VMAX, any later
-  // setMotionParameters(_config.maxVelocityMM) would push VMAX back to the old default
+  // setMotionParameters(_config.maxVelocityMM) (handleReset / restoreNormalMicrosteps /
+  // switchToHomingMicrosteps / configureDriver) would push VMAX back to the old default
   // -> symptom: after the host sets a speed, the first move is correct but the second reverts.
   // When this function is called with _config values it's a self-assignment (no side effect);
   // only a host speed change actually updates it.
@@ -465,7 +466,7 @@ void Axis::startMovement() {
   // 0.10 mm/s over 0.68mm needs 6.8s > 5s). XTARGET has already been written by
   // motor_moveToMicrosteps here, so take |XTARGET-XACTUAL| as the distance. Timeout = base
   // (covers ramp/settle) + travel time x2 (safety factor), with a 60s cap so a real stall
-  // doesn't wait too long. velMM uses _config.maxVelocityMM.
+  // doesn't wait too long. velMM uses _config.maxVelocityMM (already updated when the host sets a speed).
   int32_t distSteps = motor_getTargetMicrosteps(_icID) - motor_getPositionMicrosteps(_icID);
   if (distSteps < 0) distSteps = -distSteps;
   float distMM = motor_microstepsToMM(_icID, distSteps);
@@ -707,7 +708,9 @@ void Axis::smoothStop() {
 void Axis::disableAxis() {
   // Objectives "auto-disable at rest, spring self-centering" (merged from A1b): cut the motor current
   // (TOFF, the A2 shadow-register path) so the spring detent mechanically centers the turret. ★ Do not
-  // touch PID. Other axes (_autoDisableAtRest=false) behave exactly as before.
+  // touch PID: with the driver powered off the closed loop has no current and cannot push against the
+  // detent at all; leaving PID alone also keeps homing's PID handling identical to the baseline. Other
+  // axes (_autoDisableAtRest=false) behave exactly as before.
   motor_enableDriver(_icID, false);
   _isEnabled = false; // update the enable state
 }
@@ -726,7 +729,8 @@ void Axis::enableAxis() {
 // Objectives "auto-disable at rest" safety net (merged from A1b): at the start of
 // move/moveRelative/homing, if the motor is still in the rest disabled state, enable it as a fallback.
 // In the normal flow the GUI has already sent cmd32 to enable first (the GUI is the sole authority on
-// enabled state); this only guards against a miss. Only takes effect on _autoDisableAtRest axes.
+// enabled state); this only guards against a miss. enableAxis includes the sync, so the fallback enable
+// is complete as well. Only takes effect on _autoDisableAtRest axes.
 void Axis::wakeForMotion() {
   if (_autoDisableAtRest && _currentState == STATE_IDLE && !_isEnabled) {
     enableAxis();
@@ -816,10 +820,12 @@ bool Axis::startHoming() {
   // again below for the open-loop velocity search). Merged from A1b.
   wakeForMotion();
 
-  // homing uses an open-loop velocity search: first disable the chip PID closed loop to avoid
-  // REGULATION_MODUS fighting the velocity command. Only clear the chip registers, leaving the
-  // _pidState.enabled software flag -> auto-restored at the end of performHomingSequence when homing
-  // completes. Merged from new-W-axis A1b (bd3f47f).
+  // homing uses an open-loop velocity search: first disable the chip PID closed loop, avoiding both
+  // REGULATION_MODUS fighting the motor_setVelocityInternal velocity command and setCurrentPosition(0)
+  // kicking the PID when the search triggers.
+  // Only clear the chip registers, leaving the _pidState.enabled software flag untouched -> on homing
+  // completion, the `if (_pidState.enabled) motor_enablePID()` at the end of performHomingSequence
+  // restores it automatically. Merged from new-W-axis A1b (bd3f47f).
   if (_pidState.enabled) {
     motor_disablePID(_icID);
     DEBUG_PRINT(_axisName);
@@ -851,19 +857,40 @@ void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
   int32_t lowerMicrosteps = motor_mmToMicrosteps(_icID, lowerLimitMM);
   int32_t upperMicrosteps = motor_mmToMicrosteps(_icID, upperLimitMM);
 
-  motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
-
   // sync the direction-gate shadow (both sides)
   _softLimits.leftEnabled = true;
   _softLimits.leftValue = lowerMicrosteps;
   _softLimits.rightEnabled = true;
   _softLimits.rightValue = upperMicrosteps;
 
+  // While homing is in progress, only store the values without touching the chip (race root cause
+  // field-tested on the Y axis 2026-10-08): a SET_LIM sent after the GUI's wait_until_idle
+  // false-completion would re-arm the virtual limits that HOMING_INIT just disabled -> the search is
+  // blocked by VSTOPL as soon as it crosses the soft lower limit -> 40s homing-timeout.
+  // Same defense as "reject move commands during homing"; setting _softLimitsEnabled guarantees the
+  // post-homing restore path calls enableSoftLimits(true), which then writes the new values in one batch.
+  if (isHomingInProgress()) {
+    _softLimitsEnabled = true;
+    _softLimitsPendingApply = true;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred (homing in progress)");
+    return;
+  }
+
+  motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
+
   enableSoftLimits(true);
 }
 
 // Enable/disable soft limits (using the new API)
 void Axis::enableSoftLimits(bool enable) {
+  if (enable && _softLimitsPendingApply) {
+    // SET_LIM values deferred during homing are written into the chip here (post-homing restore path)
+    motor_setSoftLimits(_icID, _softLimits.leftValue, _softLimits.rightValue);
+    _softLimitsPendingApply = false;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred values applied");
+  }
   motor_enableSoftLimits(_icID, enable, enable);
   _softLimitsEnabled = enable;
   if (!enable) {
@@ -875,6 +902,28 @@ void Axis::enableSoftLimits(bool enable) {
 
 // Set one-sided soft limit (direction: +1=upper/right, -1=lower/left)
 void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
+  // record in the shadow first (whether or not application is deferred)
+  if (direction > 0) {
+    _softLimits.rightEnabled = true;
+    _softLimits.rightValue = valueMicrosteps;
+  } else {
+    _softLimits.leftEnabled = true;
+    _softLimits.leftValue = valueMicrosteps;
+  }
+
+  // While homing is in progress, only store the shadow and defer application -- the GUI's binary
+  // SET_LIM actually goes through THIS function (handleSetLim -> setOneSoftLimit), not setSoftLimits!
+  // The first-version defense only guarded the latter; this gap let VSTOP still get re-armed under
+  // the race (confirmed in the second 10-08 field test).
+  // The post-homing restore path enableSoftLimits(true) writes the shadow values in one batch.
+  if (isHomingInProgress()) {
+    _softLimitsEnabled = true;
+    _softLimitsPendingApply = true;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred (homing in progress)");
+    return;
+  }
+
   // first set XTARGET to the current position to prevent the motor from auto-resuming motion after the limit is loosened
   int32_t xactual = tmc4361A_readRegister(_icID, TMC4361A_XACTUAL);
   tmc4361A_writeRegister(_icID, TMC4361A_XTARGET, xactual);
@@ -884,14 +933,10 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_RIGHT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
-    _softLimits.rightEnabled = true;
-    _softLimits.rightValue = valueMicrosteps;
   } else {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_LEFT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
-    _softLimits.leftEnabled = true;
-    _softLimits.leftValue = valueMicrosteps;
   }
   tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
   _softLimitsEnabled = true;
@@ -970,13 +1015,19 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
 
   // differentiate parameters by axis name
   if (strcmp(_axisName, "W") == 0 || strcmp(_axisName, "W2") == 0) {
-    // 2026-05-26 speed optimization (synced with octoaxes): target_tolerance / pid_tolerance 2->20.
+    // 2026-05-26 speed optimization: target_tolerance / pid_tolerance 2->20 lets the chip declare the
+    // move complete earlier during end-of-move settling, and also suppresses PID hunting (position
+    // precision ±1.8°; visually imperceptible on the 45°/slot filter turret).
+    // 2026-05-27: tried tightening pid_tolerance=5 but it was never flashed/field-tested; the final
+    // field-verified configuration is ms=8 + P=8192 + tol=20.
     target_tolerance = 20;
     pid_tolerance = 20;
     pid_iclip = 4096;
   } else if (strcmp(_axisName, "Turret") == 0) {
-    // Objective turret (merged from new-W-axis A1c/4844a5a): tolerance=10 tightens the stop-position
-    // precision (±0.10° turret, ÷2.75 gear ratio). After tightening, back off if PID jitters/whines. The W filter wheel stays at 20.
+    // Objective turret (merged from new-W-axis A1c/4844a5a): tolerance=10 tightens the stop-position precision.
+    // Conversion: 10 microsteps = 0.28° at the motor = ±0.10° at the objective turret (÷2.75 gear ratio,
+    // 12800 µstep/motor rev). 20 = ±0.20° at the turret. After tightening, back off if PID jitters/whines.
+    // (The W filter wheel stays at 20, unchanged.)
     target_tolerance = 10;
     pid_tolerance = 10;
     pid_iclip = 4096;

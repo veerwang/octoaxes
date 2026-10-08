@@ -31,6 +31,28 @@
 - [x] **验证**：十五轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八/十/十一/十二/十三/十四/十五轮）/ py_compile + profile 加载/verify_profiles OK（四/八/九/十轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
 - [ ] （可选）开 PR 合回 main。
 
+### 2026-10-08 ✅ X/Y 概率性 homing 失败：双根因定位 + 修复（初步测试通过）
+
+> 临时诊断打印（已撤）捕获两种独立故障模式，各自修复（详见 SESSION.md）：
+>
+> **模式 #1 陈旧 latch**：homing 结束点离开关仅 0.6mm（实测不清 Y 感应区甚至坐在区内），
+> 下轮原地 homing 芯片无新触发边沿 → X_LATCH 保持上轮旧值 → 安全位算到限位深处 →
+> 硬停拦住 → 5s safe-pos 超时 → 错误位置归零。修复：① SEARCH-hit 停稳后
+> |latch−xact|>退出余量判陈旧、退用 XACTUAL（保留 stale-latch 告警行）；
+> ② X/Y_SAFEPOSITION 0.6→1.5mm（归零点真正清出感应区，DONE limit=0x0 实证）。
+>
+> **模式 #2 GUI 假完成竞态**：HOME 经 FIFO 延迟 50ms+ 期间广播仍报 IDLE →
+> wait_until_idle 瞬间假完成 → set_limits 落进 homing 进行中 → 重新武装
+> HOMING_INIT 刚禁用的虚拟限位 → 搜索越过软下限被 VSTOPL 拦死（status bit9）。
+> 修复：① GUI 先等广播明确报 MOVING 再等完成（删除会骗过守卫的手工状态预置）；
+> ② 固件 setOneSoftLimit/setSoftLimits homing 中只存 shadow 延迟生效
+> （"SET_LIM deferred" 行），恢复路径统一补写。注意二进制 SET_LIM 走
+> setOneSoftLimit——首版防御只挡 setSoftLimits 曾漏网（二轮日志实证教训）。
+
+- [x] 双根因修复 + 用户初步测试通过（快速连点 homing + 原地 homing 不再复现）
+- [ ] 持续观察：若再现，看固件日志有无 stale-latch!/SET_LIM deferred 行 + GUI 有无
+  "no motion observed" 行，三者都无却卡 0x...204 → 新模式，再加诊断
+
 ### 2026-07-29 hardware trigger 审查 + 移植旧 Squid 频闪源锁存修复（两固件同步）
 
 > 与 lihongquan Squid fork（`~/github.com/veerwang/lihongquan/Squid/firmware/controller`）比对 trigger 逻辑：

@@ -126,7 +126,9 @@ protected:
   // axes with _autoDisableAtRest=true (only Objectives/Turret, set in begin()) cut the motor current
   // on disableAxis so the spring detent mechanically centers the turret; on enableAxis they first call
   // syncXActualToEncoder to sync position before powering on (prevents a jump). The [timing] of the
-  // disable is driven by the GUI; other axes = false, behavior completely unchanged.
+  // disable is driven by the GUI (delayed cmd32 after arrival), the GUI is the sole authority on enabled
+  // state; the firmware only guarantees the enable/disable action itself is atomic and complete. Other
+  // axes = false, behavior completely unchanged.
   bool _autoDisableAtRest = false;
 
   // Soft-limit state tracking (for automatic restore after homing)
@@ -144,6 +146,14 @@ protected:
   };
   SoftLimitShadow _softLimits = {false, false, INT32_MIN, INT32_MAX};
 
+  // Deferred-apply flag for SET_LIM received during homing (race defense, field-tested 2026-10-08):
+  // if a SET_LIM sent after the GUI's wait_until_idle false-completion were written to the chip and
+  // enabled immediately, it would re-arm the virtual limits that HOMING_INIT just disabled, and the
+  // search would be blocked by VSTOPL as soon as it crosses the soft lower limit.
+  // While set, values are only stored in the _softLimits shadow; the post-homing restore path
+  // enableSoftLimits(true) writes them into the chip in one batch.
+  bool _softLimitsPendingApply = false;
+
   // Flag for delayed re-enable after virtual-limit recovery
   // motor_moveToMicrosteps() disables limits during VSTOP recovery,
   // so they can only be re-enabled after the motor leaves the boundary (VSTOP flags cleared in STATUS)
@@ -160,11 +170,12 @@ protected:
   AxisConfig _config;
 
   // Timeout settings
-  // 2026-07-15 5000→15000: if a filter wheel homing run starts far from the sensor window,
-  // the LEAVING_HOME stage at homing speed (0.15 rev/s) may need almost a full revolution
-  // ≈6.7s in the worst case, so 5s always falsely times out (W2 measured 5.2s ERROR).
-  // For linear axes/objectives this only relaxes the error-detection ceiling; normal-path
-  // behavior is unchanged.
+  // 2026-07-17 5000→15000 (synced from the octoaxesplus 2026-07-15 field-tested fix): if a filter
+  // wheel homing run starts far from the sensor window, the LEAVING_HOME stage at homing speed
+  // (0.15 rev/s) may need almost a full revolution ≈6.7s in the worst case, so 5s always falsely
+  // times out (octoaxesplus W2 measured 5.2s ERROR). octoaxes has the same latent boundary case,
+  // just not exposed when starting near the sensor. For linear axes/objectives this only relaxes
+  // the error-detection ceiling; normal-path behavior is unchanged.
   static const unsigned long LEAVING_HOME_TIMEOUT_MS = 15000;
   static const unsigned long MOVEMENT_TIMEOUT_MS = 5000;
 

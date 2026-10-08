@@ -279,13 +279,15 @@ namespace AxisConstDefinition {
 		const float HOMING_VELOCITY_FILTERWHEEL_MM = 0.15 * SCREW_PITCH_FILTERWHEEL_MM;
 		const float HOMING_VELOCITY_OBJECTIVES_MM = 0.25 * SCREW_PITCH_OBJECTIVES_MM;
 
-		// motor current setting (mA) -- peak current, not RMS
-		// TMC2660 formula: I_peak = (CS+1)/32 * V_FS/R_sense, I_rms = I_peak/sqrt(2)
+		// motor current setting (mA) -- WARNING: interpretation of the commanded value differs per driver chip (DRIVER_AUTO detection selects the path):
+		//   - TMC2240 path calculateCurrentScale_TMC2240: interpreted as [peak] (currentRange sets I_FS, integer truncation)
+		//   - TMC2660 path calculateCurrentScale: interpreted as [RMS] (2026-05-11 aligned with legacy Squid), I_peak = I_RMS*sqrt(2)
+		// TMC2660 formula: I_peak = (CS+1)/32 * V_FS/R_sense (V_FS=0.310V)
 		// CS range 0~31, out-of-range is clamped, the actual peak is limited by R_sense
 		// chip absolute max: 4A peak (2.8A RMS)
-		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22ohm -> CS=9, actual 0.97A
-		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // R=0.22ohm -> CS=9, actual 0.97A
-		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // R=0.43ohm -> CS=21, actual 0.47A
+		const float X_MOTOR_PEAK_CURRENT_mA = 1000;       // TMC2660 as RMS: R=0.22ohm -> CS=31 (maxed) -> 1.41A peak / 1.0A RMS; TMC2240 as peak: 1.0A peak / 0.71A RMS
+		const float Y_MOTOR_PEAK_CURRENT_mA = 1000;       // TMC2660 as RMS: R=0.22ohm -> CS=31 (maxed) -> 1.41A peak / 1.0A RMS; TMC2240 as peak: 1.0A peak / 0.71A RMS
+		const float Z_MOTOR_PEAK_CURRENT_mA = 500;        // TMC2660 as RMS: R=0.43ohm -> CS=30 -> 0.70A peak / 0.49A RMS; TMC2240 as peak (currentRange=1): 0.5A peak / 0.35A RMS
 		const float FILTERWHEEL_MOTOR_PEAK_CURRENT_mA = 3100; // R=0.10ohm -> CS=31 (max), actual 3.1A
 		const float OBJECTIVES_MOTOR_PEAK_CURRENT_mA = 1800;  // 2026-06-02 aligned with octoaxes E1: TMC2240 I_FS=2A to prevent step loss on the gear-reduced objective
 
@@ -301,8 +303,13 @@ namespace AxisConstDefinition {
 		const float FILTERWHEEL_SAFEMARGIN = 0.2;
 		const float OBJECTIVES_SAFEMARGIN = 0.004;
 
-		const float X_SAFEPOSITION = 0.6;
-		const float Y_SAFEPOSITION = 0.6;
+		// X/Y 0.6→1.5 (synced from the 2026-10-08 octoaxes-board field test): a 0.6mm retract margin is
+		// not enough to clear the home switch sensing zone -> in-place homing probabilistically fails on a
+		// stale latch (reproduced on both X/Y of the octoaxes board; this board uses the same switch, so it
+		// is enlarged in sync on that assumption -- a larger retract distance has no side effects).
+		// Acceptance: limit=0x0 at DONE.
+		const float X_SAFEPOSITION = 1.5;
+		const float Y_SAFEPOSITION = 1.5;
 		const float Z_SAFEPOSITION = 0.7;
 		const float FILTERWHEEL_SAFEPOSITION = 0;
 		const float OBJECTIVES_SAFEPOSITION = 0;

@@ -692,6 +692,21 @@ class TeensyControlGUI(QMainWindow):
         self.log(f"Axis {axis} wait-until-idle timed out after {timeout} s.")
         return False
 
+    def _wait_until_active(self, axis: str, timeout: float) -> bool:
+        """等待广播明确报 MOVING（固件确实开始执行），超时返回 False。
+
+        只认 "MOVING"（广播 10ms 周期、固件 busy 时的唯一状态值），不认
+        「≠ IDLE」——后者会被本地手工预置的状态值瞬间假通过（10-08 实测教训）。
+        用于关闭「命令还在 FIFO 里、广播仍报 IDLE」的假完成窗口。"""
+        start = time.time()
+        while time.time() - start < timeout:
+            status = self.axis_manager.get_axis_status(axis)
+            if status and status.get("state") == "MOVING":
+                return True
+            QApplication.processEvents()
+            time.sleep(0.02)
+        return False
+
     def send_homing(self):
         """发送 Homing 命令到当前轴"""
         axis = self.get_current_axis()
@@ -723,10 +738,26 @@ class TeensyControlGUI(QMainWindow):
             self._objective_set_enable(axis, True)
         self._home_or_zero(protocol_axis, home_dir)
 
-        # update the status
-        self.axis_manager.axis_status[axis]["state"] = "HOMING_INIT"
+        # Note: NEVER manually preset axis_status["state"] here (the old code set "HOMING_INIT") --
+        # presetting a non-IDLE value makes _wait_until_active below pass instantly and falsely
+        # (second 10-08 field test: the first-version guard was completely defeated by this), and
+        # the 10ms broadcast would overwrite it almost immediately anyway, so there is no benefit.
 
-        # wait for the axis to return to IDLE (success or timeout)
+        # First confirm the firmware has really entered homing (broadcast reports MOVING) before
+        # waiting for completion.
+        # The HOME command can be delayed 50ms+ through the SerialThread FIFO, during which the
+        # broadcast still reports IDLE; calling wait_until_idle directly would falsely complete
+        # instantly -> the subsequent set_limits lands while homing is in progress and re-arms the
+        # soft limits, blocking the search (Y-axis race, field-tested 2026-10-08).
+        # Homing actually takes hundreds of ms, so a 2s observation window is plenty.
+        if not self._wait_until_active(axis, 2.0):
+            self.log(f"Axis {axis} homing: no motion observed within 2s, "
+                     f"skip post-homing steps (command lost?)")
+            return
+
+        # Wait for the axis to return to IDLE (success or timeout).
+        # Note: firmware STATE_ERROR also appears as non-moving (IDLE) in the broadcast, so success
+        # vs ERROR cannot be distinguished here; rely on firmware-side logs for homing failures.
         if not self.wait_until_idle(15):
             self.log(f"Axis {axis} homing timeout")
             return

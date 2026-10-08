@@ -146,6 +146,14 @@ protected:
   };
   SoftLimitShadow _softLimits = {false, false, INT32_MIN, INT32_MAX};
 
+  // Deferred-apply flag for SET_LIM received during homing (race defense, field-tested 2026-10-08):
+  // if a SET_LIM sent after the GUI's wait_until_idle false-completion were written to the chip and
+  // enabled immediately, it would re-arm the virtual limits that HOMING_INIT just disabled, and the
+  // search would be blocked by VSTOPL as soon as it crosses the soft lower limit.
+  // While set, values are only stored in the _softLimits shadow; the post-homing restore path
+  // enableSoftLimits(true) writes them into the chip in one batch.
+  bool _softLimitsPendingApply = false;
+
   // Flag for delayed re-enable after virtual-limit recovery
   // motor_moveToMicrosteps() disables limits during VSTOP recovery,
   // so they can only be re-enabled after the motor leaves the boundary (VSTOP flags cleared in STATUS)

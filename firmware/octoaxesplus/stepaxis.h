@@ -24,7 +24,7 @@ public:
 private:
   float _backlashMM;
   bool _backlashCompensationEnabled;
-  
+
   // Stepper-axis-specific methods
   void applyBacklashCompensation(int32_t direction);
 

@@ -856,19 +856,40 @@ void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
   int32_t lowerMicrosteps = motor_mmToMicrosteps(_icID, lowerLimitMM);
   int32_t upperMicrosteps = motor_mmToMicrosteps(_icID, upperLimitMM);
 
-  motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
-
   // sync the direction-gate shadow (both sides)
   _softLimits.leftEnabled = true;
   _softLimits.leftValue = lowerMicrosteps;
   _softLimits.rightEnabled = true;
   _softLimits.rightValue = upperMicrosteps;
 
+  // While homing is in progress, only store the values without touching the chip (race root cause
+  // field-tested on the Y axis 2026-10-08): a SET_LIM sent after the GUI's wait_until_idle
+  // false-completion would re-arm the virtual limits that HOMING_INIT just disabled -> the search is
+  // blocked by VSTOPL as soon as it crosses the soft lower limit -> 40s homing-timeout.
+  // Same defense as "reject move commands during homing"; setting _softLimitsEnabled guarantees the
+  // post-homing restore path calls enableSoftLimits(true), which then writes the new values in one batch.
+  if (isHomingInProgress()) {
+    _softLimitsEnabled = true;
+    _softLimitsPendingApply = true;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred (homing in progress)");
+    return;
+  }
+
+  motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
+
   enableSoftLimits(true);
 }
 
 // Enable/disable soft limits (using the new API)
 void Axis::enableSoftLimits(bool enable) {
+  if (enable && _softLimitsPendingApply) {
+    // SET_LIM values deferred during homing are written into the chip here (post-homing restore path)
+    motor_setSoftLimits(_icID, _softLimits.leftValue, _softLimits.rightValue);
+    _softLimitsPendingApply = false;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred values applied");
+  }
   motor_enableSoftLimits(_icID, enable, enable);
   _softLimitsEnabled = enable;
   if (!enable) {
@@ -880,6 +901,28 @@ void Axis::enableSoftLimits(bool enable) {
 
 // Set one-sided soft limit (direction: +1=upper/right, -1=lower/left)
 void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
+  // record in the shadow first (whether or not application is deferred)
+  if (direction > 0) {
+    _softLimits.rightEnabled = true;
+    _softLimits.rightValue = valueMicrosteps;
+  } else {
+    _softLimits.leftEnabled = true;
+    _softLimits.leftValue = valueMicrosteps;
+  }
+
+  // While homing is in progress, only store the shadow and defer application -- the GUI's binary
+  // SET_LIM actually goes through THIS function (handleSetLim -> setOneSoftLimit), not setSoftLimits!
+  // The first-version defense only guarded the latter; this gap let VSTOP still get re-armed under
+  // the race (confirmed in the second 10-08 field test).
+  // The post-homing restore path enableSoftLimits(true) writes the shadow values in one batch.
+  if (isHomingInProgress()) {
+    _softLimitsEnabled = true;
+    _softLimitsPendingApply = true;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred (homing in progress)");
+    return;
+  }
+
   // first set XTARGET to the current position to prevent the motor from auto-resuming motion after the limit is loosened
   int32_t xactual = tmc4361A_readRegister(_icID, TMC4361A_XACTUAL);
   tmc4361A_writeRegister(_icID, TMC4361A_XTARGET, xactual);
@@ -889,14 +932,10 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_RIGHT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
-    _softLimits.rightEnabled = true;
-    _softLimits.rightValue = valueMicrosteps;
   } else {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_LEFT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
-    _softLimits.leftEnabled = true;
-    _softLimits.leftValue = valueMicrosteps;
   }
   tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
   _softLimitsEnabled = true;
