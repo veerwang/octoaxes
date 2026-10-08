@@ -164,10 +164,27 @@ void StepAxis::performHomingSequence() {
         delay(100);                          // 等待完全停止
 
         int32_t latchedPosition = motor_readLatchPosition(_icID);
+        int32_t currentPos = motor_getPositionMicrosteps(_icID);
+        int32_t margin = motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
+
+        // latch 可信性校验（2026-10-08 Y 轴原地 homing 实测定位的概率性失败根因）：
+        // 起点贴在开关感应区边缘时，芯片看不到干净的「未触发→触发」边沿，
+        // X_LATCH 保持上一轮旧值；盲信陈旧 latch 会把安全位算到限位深处
+        // （朝限位再走数万 µsteps → 硬停拦住 → 5s safe-pos 超时 → 错误位置归零）。
+        // 停稳后 |latch − xact| 本应只差触发后的减速滑行距离，超过退出余量即判
+        // 陈旧，退用当前 XACTUAL 作边沿参考（原地场景自动退化为正确行为）。
+        if (labs(latchedPosition - currentPos) > margin) {
+          SerialUSB.print(_axisName);
+          SerialUSB.print(":HOMING stale-latch! latch=");
+          SerialUSB.print(latchedPosition);
+          SerialUSB.print(" xact=");
+          SerialUSB.print(currentPos);
+          SerialUSB.println(" -> using xact as edge");
+          latchedPosition = currentPos;
+        }
 
         // 计算安全位置（离开限位开关）
         int32_t safePosition = latchedPosition;
-        int32_t margin = motor_mmToMicrosteps(_icID, _config.homeSafetyPositionMM);
         // 退回方向 = 搜索方向(homing_direct)的反方向，永远离开刚撞到的限位。
         // 比"按 homingSwitch ±margin"鲁棒：当 homingSwitch 与搜索方向不符合常规约定
         // （如新 Z：LEFT_SW 但 homing_direct=+1 朝物理左，左限位在 firmware 正方向端）

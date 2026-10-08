@@ -24,7 +24,7 @@ public:
 private:
   float _backlashMM;
   bool _backlashCompensationEnabled;
-  
+
   // 步进轴特有方法
   void applyBacklashCompensation(int32_t direction);
 
