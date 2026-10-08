@@ -6,9 +6,9 @@
 
 ## 最新会话
 
-**日期**: 2026-08-11（第十五轮；十四轮为 07-30，十二/十三轮为 07-29，十/十一轮为 07-22，一至九轮为 07-09～07-10）
+**日期**: 2026-10-08（第十六轮；十五轮为 08-11，十四轮为 07-30，十二/十三轮为 07-29，十/十一轮为 07-22，一至九轮为 07-09～07-10）
 **分支**: chore/translate-comments-to-english
-**位置**: **注释英文化分支十五轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
+**位置**: **注释英文化分支十六轮同步 main** —— 持续把 main 的新提交合并进来，合并带入的中文代码注释一并中译英
 
 ### 一句话
 
@@ -208,6 +208,19 @@ main 新增 2 提交（08-11）：
 - 冲突 1 处 `octoaxesplus/config.h`：X homing 速度取 main 新代码 30 + 注释译英（Y/Z 保持本分支英文注释版本）。
 - 合并带回 3 个 documents 新文件（octoaxesplus_axis_definitions.md / octoaxesplus_protocol_v2_40byte.md / z_aging_test_20260610.md）按分支约定再次删除。
 - 验证：全仓无冲突标记、config.h 剥离注释后与 main 逐行一致；**octoaxesplus pio run SUCCESS**（仅此固件有改动，octoaxes 未跑）。merge `a72f286`。
+
+### 第十六轮同步（merge main 的 4 实质提交 = 电流注释修正 + X/Y homing 双根因修复）
+
+main 新增 4 实质提交（09-17 + 10-08，另 4 个 develop→github-main merge 提交）：
+- `09972f9` + `dd13203` config.h 电流注释全面修正（TMC2660 按 RMS / TMC2240 按峰值+截断两路径口径说明，X/Y/Z/objectives 全部数值重算；纯注释零行为变化）
+- `6b1a40f` X/Y 概率性 homing 失败双根因修复（两固件同步）：①陈旧 latch 校验（stepaxis.cpp SEARCH-hit 停稳后 |latch−xact|>margin 判陈旧退用 XACTUAL + X/Y_SAFEPOSITION 0.6→1.5mm）②GUI 假完成竞态（main_window.py `_wait_until_active` 先等广播报 MOVING + 固件 setSoftLimits/setOneSoftLimit homing 中只存 shadow 延迟生效 `_softLimitsPendingApply`，enableSoftLimits(true) 恢复路径统一补写）
+- `61f53e9` docs
+
+处理：
+- 冲突 14 文件：firmware config.h/axis.cpp/axis.h/stepaxis.cpp/stepaxis.h ×2 + main_window.py + octoaxes/constants.py 取 main 新代码逻辑、注释译英；SESSION/TODO 并集恰好首尾相接删 4 标记行即成。octoaxesplus/axis.cpp 最多（10 处冲突，多为 main 扩写的注释块）。
+- 另译自动合并带回中文：stepaxis.cpp×2 陈旧 latch 校验块 + config.h×2 SAFEPOSITION 0.6→1.5 注释块 + axis.cpp×2 setSoftLimits 延迟生效块/enableSoftLimits 补写行。
+- 按约定保留中文：main_window.py `_wait_until_active` docstring + W Test log 字符串；`documents/squid++（双相机）配置.md` 文件名引用。本轮无 documents 新文件带回。
+- 验证：全仓无冲突标记、merge-touched 12 代码文件 `//`/`#` 注释零中文、剥离注释与 main 逐行一致（仅差本分支既有译文：DEBUG_PRINTLN 调试串 + 行尾注释）；**两 firmware pio run SUCCESS（.o 确认真实重编）+ py_compile OK + 双 profile 加载正常**（plus 6 轴 / octoaxes 5 轴）。merge `cd77f69`。
 
 ### 下次
 

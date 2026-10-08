@@ -8,9 +8,9 @@
 
 <!-- 当前正在处理的任务，建议同时只有 1-2 个 -->
 
-### 2026-07-09 注释英文化分支十五轮同步 main（chore/translate-comments-to-english）
+### 2026-07-09 注释英文化分支十六轮同步 main（chore/translate-comments-to-english）
 
-> 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。已分十轮同步 main 的新提交，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 最新会话。
+> 分支已把全工程**代码注释**中译英（490f975 + fbe66e7，仅注释；规划文档 SESSION/TODO/CLAUDE 保持中文）。已分十六轮同步 main 的新提交，合并冲突取 main 新代码逻辑 + 注释译英。详见 SESSION.md 最新会话。
 
 - [x] **第一轮 merge `691e732`**（TMC2240 enable 改 shadow-register 规避不可靠 Cover 读）— 冲突 1 处 MotorControl.cpp 取 main 新代码+注释译英；另译 MotorControl.h（ChopconfDump）+ serial.cpp×2（S:DUMP_TOFF 注释 + 调试串 `(非 TMC2240，跳过)`→`(not TMC2240, skipped)`）。merge `8ab7961`。
 - [x] **删除合并带回的 `documents/new-W-axis_merge_plan.md`**（本分支约定已删 documents/，规划文档不翻译；用户拍板）。commit `3e2cebe`。
@@ -28,7 +28,8 @@
 - [x] **第十三轮 merge main 2 提交 = 频闪重入守卫 + RESET 清理 + 死变量删除（2026-07-29）**（`3dbca49` cmd 30 重入守卫扩 control_strobe||strobe_on + 新增 `trigger_reset_state()` RESET/INITIALIZE 清频闪状态补关在亮灯 / `6fddf55` 删死变量 `strobe_output_level[]`）— 冲突 6 文件（commandprocessor.cpp×2 / trigger.cpp×2 / trigger.h×2）取 main 新代码+注释译英；SESSION/TODO 本轮自动合并。**两 firmware pio run SUCCESS（.o 确认真实重编）+ 6 文件剥离注释与 main 逐行一致**。merge `bfce985`。
 - [x] **第十四轮 merge main 2 提交 = ISR 共享变量补 volatile（2026-07-30）**（`04a30cb` illumination_source/illumination_is_on + trigger 六数组补 volatile，trigger_output_level 刻意不标 / `1dce4c4` docs）— **本轮全自动合并零冲突**；自动合并带入 8 行中文注释（illumination.h×2 + trigger.h×2 的 volatile 说明）译英后 amend 进 merge。**三 env pio run SUCCESS（.o 确认真实重编）+ 8 文件剥离注释与 main 逐行一致**。merge `86b5534`。
 - [x] **第十五轮 merge main 2 提交 = octoaxesplus X homing 速度 10→30 对齐 Y（2026-08-11）**（`e0333f5` X homing 10→30 对齐 Y 与 octoaxes 一致 / `a9160e7` merge develop 带回 3 documents）— 冲突 1 文件（octoaxesplus config.h：X homing 取 main 新代码 30 + 注释译英，Y/Z 保持本分支英文注释）；合并带回 3 个 documents 新文件（octoaxesplus_axis_definitions / octoaxesplus_protocol_v2_40byte / z_aging_test_20260610）按约定删除。**octoaxesplus pio run SUCCESS + config.h 剥离注释与 main 逐行一致**。merge `a72f286`。
-- [x] **验证**：十五轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八/十/十一/十二/十三/十四/十五轮）/ py_compile + profile 加载/verify_profiles OK（四/八/九/十轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
+- [x] **第十六轮 merge main 4 实质提交 = 电流注释修正 + X/Y homing 双根因修复（2026-10-08）**（`09972f9`+`dd13203` config.h 电流注释全面修正两路径口径 / `6b1a40f` X/Y 概率性 homing 失败双根因修复：陈旧 latch 校验 + SAFEPOSITION 0.6→1.5 + GUI `_wait_until_active` 守卫 + 固件 SET_LIM homing 中延迟生效 `_softLimitsPendingApply` / `61f53e9` docs）— 冲突 14 文件（config.h/axis.cpp/.h/stepaxis.cpp/.h×2 + main_window.py + constants.py）取 main 新代码+注释译英；SESSION/TODO 并集删 4 标记行。另译自动合并带回中文（陈旧 latch 块×2 / SAFEPOSITION 注释×2 / SET_LIM 延迟生效块×2）；docstring+log 串按约定留中文。**两 firmware pio run SUCCESS（.o 确认真实重编）+ py_compile OK + 双 profile 加载正常 + 剥离注释与 main 逐行一致**。merge `cd77f69`。
+- [x] **验证**：十六轮均无冲突标记残留、merge-touched 文件注释零中文、固件 pio run SUCCESS（一/二/三/五/六/七/八/十/十一/十二/十三/十四/十五/十六轮）/ py_compile + profile 加载/verify_profiles OK（四/八/九/十/十六轮）。已 push `origin/chore/translate-comments-to-english`（与 main 完全同步）。
 - [ ] （可选）开 PR 合回 main。
 
 ### 2026-10-08 ✅ X/Y 概率性 homing 失败：双根因定位 + 修复（初步测试通过）
