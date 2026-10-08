@@ -122,7 +122,8 @@ protected:
   // 物镜「到位去使能、弹片自定位」（融合 new-W-axis A1b/52419b0）：_autoDisableAtRest=true
   // 的轴（仅 Objectives/Turret，begin() 里置位）在 disableAxis 时断电机电流让弹片凹坑把
   // 转盘机械归中；enableAxis 时先 syncXActualToEncoder 同步位置再通电（防跳枪）。
-  // 去使能的【时序】由 GUI 主导；其它轴 =false，行为完全不变。
+  // 去使能的【时序】由 GUI 主导（到位后延迟发 cmd32），GUI 为使能态唯一权威；固件只保证
+  // enable/disable 动作本身原子完整。其它轴 =false，行为完全不变。
   bool _autoDisableAtRest = false;
 
   // 软限位状态追踪（homing 后自动恢复用）
@@ -140,6 +141,13 @@ protected:
   };
   SoftLimitShadow _softLimits = {false, false, INT32_MIN, INT32_MAX};
 
+  // homing 期间收到的 SET_LIM 延迟生效标志（2026-10-08 实测竞态防御）：
+  // GUI wait_until_idle 假完成后下发的 SET_LIM 若立即写芯片+使能，会把
+  // HOMING_INIT 刚禁用的虚拟限位重新武装，搜索越过软下限即被 VSTOPL 拦死。
+  // 置位后值只存 _softLimits shadow，homing 结束恢复路径 enableSoftLimits(true)
+  // 时统一补写进芯片。
+  bool _softLimitsPendingApply = false;
+
   // 虚拟限位 recovery 后延迟恢复标志
   // motor_moveToMicrosteps() 在 VSTOP 恢复时禁用限位，
   // 需等电机离开边界后（STATUS 中 VSTOP flags 清除）才能重新使能
@@ -156,9 +164,10 @@ protected:
   AxisConfig _config;
 
   // 超时设置
-  // 2026-07-15 5000→15000：滤光轮 homing 起点若远离传感器窗口，LEAVING_HOME 阶段
-  // 以 homing 速度(0.15 圈/s)最坏需走近一整圈 ≈6.7s，5s 必假超时（W2 实测 5.2s 报 ERROR）。
-  // 对直线轴/物镜只是放宽错误检测上限，正常路径行为不变。
+  // 2026-07-17 5000→15000（同步 octoaxesplus 2026-07-15 实测修复）：滤光轮 homing
+  // 起点若远离传感器窗口，LEAVING_HOME 阶段以 homing 速度(0.15 圈/s)最坏需走近一整圈
+  // ≈6.7s，5s 必假超时（octoaxesplus W2 实测 5.2s 报 ERROR）。octoaxes 同款潜伏边界，
+  // 起点近传感器时未暴露。对直线轴/物镜只是放宽错误检测上限，正常路径行为不变。
   static const unsigned long LEAVING_HOME_TIMEOUT_MS = 15000;
   static const unsigned long MOVEMENT_TIMEOUT_MS = 5000;
 

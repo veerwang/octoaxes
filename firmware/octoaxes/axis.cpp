@@ -845,19 +845,39 @@ void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
   int32_t lowerMicrosteps = motor_mmToMicrosteps(_icID, lowerLimitMM);
   int32_t upperMicrosteps = motor_mmToMicrosteps(_icID, upperLimitMM);
 
-  motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
-
   // 同步方向闸门 shadow（双侧）
   _softLimits.leftEnabled = true;
   _softLimits.leftValue = lowerMicrosteps;
   _softLimits.rightEnabled = true;
   _softLimits.rightValue = upperMicrosteps;
 
+  // homing 进行中只存值不碰芯片（2026-10-08 Y 轴实测竞态根因）：GUI
+  // wait_until_idle 假完成后下发的 SET_LIM 会把 HOMING_INIT 刚禁用的虚拟
+  // 限位重新武装 → 搜索越过软下限立即被 VSTOPL 拦死 → 40s homing-timeout。
+  // 与「homing 期间 reject move 命令」同款防御；_softLimitsEnabled 置位保证
+  // homing 结束恢复路径调 enableSoftLimits(true)，届时统一补写新值。
+  if (isHomingInProgress()) {
+    _softLimitsEnabled = true;
+    _softLimitsPendingApply = true;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred (homing in progress)");
+    return;
+  }
+
+  motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
+
   enableSoftLimits(true);
 }
 
 // 启用/禁用软限位 (使用新 API)
 void Axis::enableSoftLimits(bool enable) {
+  if (enable && _softLimitsPendingApply) {
+    // homing 期间延迟的 SET_LIM 值在此（homing 结束恢复路径）补写进芯片
+    motor_setSoftLimits(_icID, _softLimits.leftValue, _softLimits.rightValue);
+    _softLimitsPendingApply = false;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred values applied");
+  }
   motor_enableSoftLimits(_icID, enable, enable);
   _softLimitsEnabled = enable;
   if (!enable) {
@@ -869,6 +889,27 @@ void Axis::enableSoftLimits(bool enable) {
 
 // 设置单侧软限位 (direction: +1=上限/右, -1=下限/左)
 void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
+  // shadow 先记录（无论是否延迟生效）
+  if (direction > 0) {
+    _softLimits.rightEnabled = true;
+    _softLimits.rightValue = valueMicrosteps;
+  } else {
+    _softLimits.leftEnabled = true;
+    _softLimits.leftValue = valueMicrosteps;
+  }
+
+  // homing 进行中只存 shadow 延迟生效——GUI 的二进制 SET_LIM 实际走的是
+  // 本函数（handleSetLim→setOneSoftLimit），不是 setSoftLimits！首版防御
+  // 只挡了后者，这里漏网导致竞态下 VSTOP 仍被重新武装（10-08 二轮实测）。
+  // homing 结束恢复路径 enableSoftLimits(true) 统一补写 shadow 值。
+  if (isHomingInProgress()) {
+    _softLimitsEnabled = true;
+    _softLimitsPendingApply = true;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred (homing in progress)");
+    return;
+  }
+
   // 先将 XTARGET 设为当前位置，防止放宽限位后电机自动恢复运动
   int32_t xactual = tmc4361A_readRegister(_icID, TMC4361A_XACTUAL);
   tmc4361A_writeRegister(_icID, TMC4361A_XTARGET, xactual);
@@ -878,14 +919,10 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_RIGHT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
-    _softLimits.rightEnabled = true;
-    _softLimits.rightValue = valueMicrosteps;
   } else {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_LEFT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
-    _softLimits.leftEnabled = true;
-    _softLimits.leftValue = valueMicrosteps;
   }
   tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
   _softLimitsEnabled = true;

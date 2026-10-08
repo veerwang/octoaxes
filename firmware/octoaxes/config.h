@@ -218,8 +218,12 @@ namespace AxisConstDefinition {
 		const float FILTERWHEEL_SAFEMARGIN = 0.2;
 		const float OBJECTIVES_SAFEMARGIN = 0.004;
 
-		const float X_SAFEPOSITION = 0.6;
-		const float Y_SAFEPOSITION = 0.6;
+		// X/Y 0.6→1.5（2026-10-08 实测）：0.6mm 退出余量不够清出 home 开关感应区，
+		// homing 结束仍停在感应区内/边缘（诊断 DONE 行 limit=0x1）→ 下一轮原地
+		// homing 无新触发边沿、踩中陈旧 latch 概率性失败（Y 先复现，X 随后同症）。
+		// 1.5mm 保证结束位置真正离开开关（验证标准：homing DONE 时 limit=0x0）。
+		const float X_SAFEPOSITION = 1.5;
+		const float Y_SAFEPOSITION = 1.5;
 		const float Z_SAFEPOSITION = 0.7;
 		const float FILTERWHEEL_SAFEPOSITION = 0;
 		const float OBJECTIVES_SAFEPOSITION = 0;

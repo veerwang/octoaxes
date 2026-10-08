@@ -141,6 +141,13 @@ protected:
   };
   SoftLimitShadow _softLimits = {false, false, INT32_MIN, INT32_MAX};
 
+  // homing 期间收到的 SET_LIM 延迟生效标志（2026-10-08 实测竞态防御）：
+  // GUI wait_until_idle 假完成后下发的 SET_LIM 若立即写芯片+使能，会把
+  // HOMING_INIT 刚禁用的虚拟限位重新武装，搜索越过软下限即被 VSTOPL 拦死。
+  // 置位后值只存 _softLimits shadow，homing 结束恢复路径 enableSoftLimits(true)
+  // 时统一补写进芯片。
+  bool _softLimitsPendingApply = false;
+
   // 虚拟限位 recovery 后延迟恢复标志
   // motor_moveToMicrosteps() 在 VSTOP 恢复时禁用限位，
   // 需等电机离开边界后（STATUS 中 VSTOP flags 清除）才能重新使能

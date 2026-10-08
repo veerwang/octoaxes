@@ -183,7 +183,8 @@ void Axis::setMotionParameters(float maxVelocityMM, float maxAccelerationMM) {
 
   // 融合 new-W-axis cf93900（2026-06-16）：把当前 max vel/acc 回写进 _config，让它成为
   // 本次会话的"配置默认"。否则上位机 SET_MAX_VELOCITY_ACCELERATION 改了 chip VMAX 后，
-  // 任何后续 setMotionParameters(_config.maxVelocityMM) 都会把 VMAX 打回旧默认
+  // 任何后续 setMotionParameters(_config.maxVelocityMM)（handleReset / restoreNormal-
+  // Microsteps / switchToHomingMicrosteps / configureDriver）都会把 VMAX 打回旧默认
   // → 现象：上位机下发速度后第一次移动正确、第二次又变回原速。
   // 用 _config 值调本函数时这里是自赋值(无副作用)；只有上位机改速时才真正更新。
   _config.maxVelocityMM = maxVelocityMM;
@@ -460,7 +461,8 @@ void Axis::startMovement() {
   // 融合 new-W-axis f4c3c35（2026-06-16）：按本次移动 距离/速度 估算超时，避免低速移动被
   // 固定 5s 砍掉停在半路（实测 0.10 mm/s 走 0.68mm 需 6.8s > 5s）。此时 XTARGET 已由
   // motor_moveToMicrosteps 写入，取 |XTARGET-XACTUAL| 为距离。超时 = base(覆盖 ramp/settle)
-  // + 行程时间×2（安全系数），带 60s 上限防真卡死时等太久。velMM 用 _config.maxVelocityMM。
+  // + 行程时间×2（安全系数），带 60s 上限防真卡死时等太久。velMM 用 _config.maxVelocityMM
+  // （已随上位机设速更新）。
   int32_t distSteps = motor_getTargetMicrosteps(_icID) - motor_getPositionMicrosteps(_icID);
   if (distSteps < 0) distSteps = -distSteps;
   float distMM = motor_microstepsToMM(_icID, distSteps);
@@ -701,14 +703,15 @@ void Axis::smoothStop() {
 // 运动控制函数
 void Axis::disableAxis() {
   // 物镜「到位去使能、弹片自定位」（融合 A1b）：断电机电流（TOFF，A2 shadow-register 路径），
-  // 让弹片凹坑把转盘机械归中。★ 不碰 PID。其它轴 (_autoDisableAtRest=false) 行为与原来一致。
+  // 让弹片凹坑把转盘机械归中。★ 不碰 PID：驱动断电时闭环无电流、根本顶不动弹片；且不动 PID
+  // 让 homing 的 PID 处理与基线完全一致。其它轴 (_autoDisableAtRest=false) 行为与原来一致。
   motor_enableDriver(_icID, false);
   _isEnabled = false; // 更新使能状态
 }
 
 void Axis::enableAxis() {
   // 物镜「到位去使能」恢复（融合 A1b）：通电前把 XACTUAL/XTARGET 对齐到 ENC_POS（弹片沉降后
-  // 的真实位置），闭环以弹片归中后位置为目标、通电瞬间不回拽（跳枪）。其它轴只通电，行为不变。
+  // 的真实位置），让闭环以弹片归中后的位置为目标、通电瞬间不回拽（跳枪）。其它轴只通电，行为不变。
   if (_autoDisableAtRest && _config.enableEncoder) {
     motor_syncXActualToEncoder(_icID);
   }
@@ -718,7 +721,7 @@ void Axis::enableAxis() {
 
 // 物镜「到位去使能」安全网（融合 A1b）：move/moveRelative/homing 起步时，若电机仍处于 rest
 // 去使能态则兜底使能。正常流程 GUI 已先发 cmd32 使能（GUI 是使能态唯一权威），此处只防漏。
-// 仅 _autoDisableAtRest 轴生效。
+// enableAxis 内含 sync，故兜底使能也完整。仅 _autoDisableAtRest 轴生效。
 void Axis::wakeForMotion() {
   if (_autoDisableAtRest && _currentState == STATE_IDLE && !_isEnabled) {
     enableAxis();
@@ -807,9 +810,10 @@ bool Axis::startHoming() {
   // 物镜「到位去使能」：homing 起步前唤醒恢复使能（下面会再关 PID 走开环速度搜索）。融合 A1b。
   wakeForMotion();
 
-  // homing 走开环速度搜索：先关闭芯片 PID 闭环，避免 REGULATION_MODUS 与 velocity 命令打架。
-  // 只清芯片寄存器，保留 _pidState.enabled 软件标志 → homing 完成 performHomingSequence
-  // 末尾自动恢复。融合 new-W-axis A1b（bd3f47f）。
+  // homing 走开环速度搜索：先关闭芯片 PID 闭环，避免 REGULATION_MODUS 与
+  // motor_setVelocityInternal 速度命令打架、以及搜索触发时 setCurrentPosition(0) 踢 PID。
+  // 只清芯片寄存器，保留 _pidState.enabled 软件标志不动 → homing 完成时 performHomingSequence
+  // 末尾的 `if (_pidState.enabled) motor_enablePID()` 自动恢复。融合 new-W-axis A1b（bd3f47f）。
   if (_pidState.enabled) {
     motor_disablePID(_icID);
     DEBUG_PRINT(_axisName);
@@ -841,19 +845,39 @@ void Axis::setSoftLimits(float lowerLimitMM, float upperLimitMM) {
   int32_t lowerMicrosteps = motor_mmToMicrosteps(_icID, lowerLimitMM);
   int32_t upperMicrosteps = motor_mmToMicrosteps(_icID, upperLimitMM);
 
-  motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
-
   // 同步方向闸门 shadow（双侧）
   _softLimits.leftEnabled = true;
   _softLimits.leftValue = lowerMicrosteps;
   _softLimits.rightEnabled = true;
   _softLimits.rightValue = upperMicrosteps;
 
+  // homing 进行中只存值不碰芯片（2026-10-08 Y 轴实测竞态根因）：GUI
+  // wait_until_idle 假完成后下发的 SET_LIM 会把 HOMING_INIT 刚禁用的虚拟
+  // 限位重新武装 → 搜索越过软下限立即被 VSTOPL 拦死 → 40s homing-timeout。
+  // 与「homing 期间 reject move 命令」同款防御；_softLimitsEnabled 置位保证
+  // homing 结束恢复路径调 enableSoftLimits(true)，届时统一补写新值。
+  if (isHomingInProgress()) {
+    _softLimitsEnabled = true;
+    _softLimitsPendingApply = true;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred (homing in progress)");
+    return;
+  }
+
+  motor_setSoftLimits(_icID, lowerMicrosteps, upperMicrosteps);
+
   enableSoftLimits(true);
 }
 
 // 启用/禁用软限位 (使用新 API)
 void Axis::enableSoftLimits(bool enable) {
+  if (enable && _softLimitsPendingApply) {
+    // homing 期间延迟的 SET_LIM 值在此（homing 结束恢复路径）补写进芯片
+    motor_setSoftLimits(_icID, _softLimits.leftValue, _softLimits.rightValue);
+    _softLimitsPendingApply = false;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred values applied");
+  }
   motor_enableSoftLimits(_icID, enable, enable);
   _softLimitsEnabled = enable;
   if (!enable) {
@@ -865,6 +889,27 @@ void Axis::enableSoftLimits(bool enable) {
 
 // 设置单侧软限位 (direction: +1=上限/右, -1=下限/左)
 void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
+  // shadow 先记录（无论是否延迟生效）
+  if (direction > 0) {
+    _softLimits.rightEnabled = true;
+    _softLimits.rightValue = valueMicrosteps;
+  } else {
+    _softLimits.leftEnabled = true;
+    _softLimits.leftValue = valueMicrosteps;
+  }
+
+  // homing 进行中只存 shadow 延迟生效——GUI 的二进制 SET_LIM 实际走的是
+  // 本函数（handleSetLim→setOneSoftLimit），不是 setSoftLimits！首版防御
+  // 只挡了后者，这里漏网导致竞态下 VSTOP 仍被重新武装（10-08 二轮实测）。
+  // homing 结束恢复路径 enableSoftLimits(true) 统一补写 shadow 值。
+  if (isHomingInProgress()) {
+    _softLimitsEnabled = true;
+    _softLimitsPendingApply = true;
+    SerialUSB.print(_axisName);
+    SerialUSB.println(":SET_LIM deferred (homing in progress)");
+    return;
+  }
+
   // 先将 XTARGET 设为当前位置，防止放宽限位后电机自动恢复运动
   int32_t xactual = tmc4361A_readRegister(_icID, TMC4361A_XACTUAL);
   tmc4361A_writeRegister(_icID, TMC4361A_XTARGET, xactual);
@@ -874,14 +919,10 @@ void Axis::setOneSoftLimit(int direction, int32_t valueMicrosteps) {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_RIGHT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_RIGHT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
-    _softLimits.rightEnabled = true;
-    _softLimits.rightValue = valueMicrosteps;
   } else {
     tmc4361A_writeRegister(_icID, TMC4361A_VIRT_STOP_LEFT, valueMicrosteps);
     refConf |= TMC4361A_VIRTUAL_LEFT_LIMIT_EN_MASK;
     refConf |= (1 << TMC4361A_VIRT_STOP_MODE_SHIFT);
-    _softLimits.leftEnabled = true;
-    _softLimits.leftValue = valueMicrosteps;
   }
   tmc4361A_writeRegister(_icID, TMC4361A_REFERENCE_CONF, refConf);
   _softLimitsEnabled = true;
@@ -960,13 +1001,16 @@ void Axis::configureStagePID(bool flip_direction, uint16_t transitions_per_rev) 
 
   // 根据轴名称区分参数
   if (strcmp(_axisName, "W") == 0 || strcmp(_axisName, "W2") == 0) {
-    // 2026-05-26 速度优化（与 octoaxes 同步）：target_tolerance / pid_tolerance 2→20。
+    // 2026-05-26 速度优化：target_tolerance / pid_tolerance 2→20 让 chip 提早判完末端 settling，
+    // 同时压制 PID hunting（位置精度 ±1.8°，滤光转盘 45°/槽视觉无感）。
+    // 2026-05-27：曾尝试 pid_tolerance=5 收紧但未烧实测；最终实测验证配置为 ms=8 + P=8192 + tol=20。
     target_tolerance = 20;
     pid_tolerance = 20;
     pid_iclip = 4096;
   } else if (strcmp(_axisName, "Turret") == 0) {
-    // 物镜转换器（融合 new-W-axis A1c/4844a5a）：tolerance=10 收紧停位精度
-    // （物镜盘 ±0.10°，÷2.75 齿轮比）。收紧后若 PID 抖动/啸叫再回调。W 滤光轮维持 20。
+    // 物镜转换器（融合 new-W-axis A1c/4844a5a）：tolerance=10 收紧停位精度。
+    // 换算：10 微步 = 电机 0.28° = 物镜盘 ±0.10°（÷2.75 齿轮比，12800 µstep/电机转）。
+    // 20 = 物镜盘 ±0.20°。收紧后若 PID 抖动/啸叫再回调。（W 滤光轮维持 20 不变）
     target_tolerance = 10;
     pid_tolerance = 10;
     pid_iclip = 4096;

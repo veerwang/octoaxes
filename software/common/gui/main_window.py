@@ -692,6 +692,21 @@ class TeensyControlGUI(QMainWindow):
         self.log(f"Axis {axis} wait-until-idle timed out after {timeout} s.")
         return False
 
+    def _wait_until_active(self, axis: str, timeout: float) -> bool:
+        """等待广播明确报 MOVING（固件确实开始执行），超时返回 False。
+
+        只认 "MOVING"（广播 10ms 周期、固件 busy 时的唯一状态值），不认
+        「≠ IDLE」——后者会被本地手工预置的状态值瞬间假通过（10-08 实测教训）。
+        用于关闭「命令还在 FIFO 里、广播仍报 IDLE」的假完成窗口。"""
+        start = time.time()
+        while time.time() - start < timeout:
+            status = self.axis_manager.get_axis_status(axis)
+            if status and status.get("state") == "MOVING":
+                return True
+            QApplication.processEvents()
+            time.sleep(0.02)
+        return False
+
     def send_homing(self):
         """发送 Homing 命令到当前轴"""
         axis = self.get_current_axis()
@@ -723,10 +738,23 @@ class TeensyControlGUI(QMainWindow):
             self._objective_set_enable(axis, True)
         self._home_or_zero(protocol_axis, home_dir)
 
-        # 更新状态
-        self.axis_manager.axis_status[axis]["state"] = "HOMING_INIT"
+        # 注意：此处绝不能手工预置 axis_status["state"]（旧代码设 "HOMING_INIT"）——
+        # 预置非 IDLE 值会让下面的 _wait_until_active 瞬间假通过（10-08 二轮实测：
+        # 首版守卫因此完全失效），且 10ms 广播很快就会覆盖它，没有任何收益。
 
-        # 等待轴回到 IDLE（成功或超时）
+        # 先确认固件真的进入 homing（广播报 MOVING）再等完成。
+        # HOME 命令经 SerialThread FIFO 最多延迟 50ms+，期间广播仍报 IDLE，
+        # 直接 wait_until_idle 会瞬间假完成 → 后续 set_limits 落进 homing 进行中、
+        # 重新武装软限位拦死搜索（2026-10-08 Y 轴实测竞态）。
+        # homing 实际耗时数百 ms，2s 观察窗足够。
+        if not self._wait_until_active(axis, 2.0):
+            self.log(f"Axis {axis} homing: no motion observed within 2s, "
+                     f"skip post-homing steps (command lost?)")
+            return
+
+        # 等待轴回到 IDLE（成功或超时）。
+        # 注意：固件 STATE_ERROR 在广播里同样表现为非 moving（IDLE），此处无法
+        # 区分成功/ERROR，homing 失败以固件侧日志为准。
         if not self.wait_until_idle(15):
             self.log(f"Axis {axis} homing timeout")
             return

@@ -300,8 +300,11 @@ namespace AxisConstDefinition {
 		const float FILTERWHEEL_SAFEMARGIN = 0.2;
 		const float OBJECTIVES_SAFEMARGIN = 0.004;
 
-		const float X_SAFEPOSITION = 0.6;
-		const float Y_SAFEPOSITION = 0.6;
+		// X/Y 0.6→1.5（2026-10-08 octoaxes 板实测同步）：0.6mm 退出余量不够清出
+		// home 开关感应区 → 原地 homing 陈旧 latch 概率性失败（octoaxes 板 X/Y 均实测
+		// 复现；本板同款开关假设同步加大，加大退出距离无副作用）。验证标准：DONE 时 limit=0x0。
+		const float X_SAFEPOSITION = 1.5;
+		const float Y_SAFEPOSITION = 1.5;
 		const float Z_SAFEPOSITION = 0.7;
 		const float FILTERWHEEL_SAFEPOSITION = 0;
 		const float OBJECTIVES_SAFEPOSITION = 0;
